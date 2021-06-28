@@ -10,7 +10,7 @@ packages <- c("curl", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2",
               "jsonlite","lubridate", "matrixStats", "readr", "readxl", "rvest",   
               "sjmisc", "stringr", "tidyr", "xml2", "zoo")
 invisible(lapply(packages, require, character.only = TRUE))
-
+{
 #
 ##
 ### ********************************************************************************************
@@ -18,7 +18,7 @@ invisible(lapply(packages, require, character.only = TRUE))
 ### ********************************************************************************************
 ##
 #
- 
+
 # Load risk sheets
 # healthsheet <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/healthsheet.csv") %>% dplyr::select(-X)
 # foodsecurity <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/foodsecuritysheet.csv") %>% dplyr::select(-X)
@@ -168,9 +168,9 @@ riskflags$EMERGING_FLAGS <- as.numeric(unlist(row_count(
 )))
 
 riskflags$medium_risk_underlying <- as.numeric(unlist(row_count(riskflags,
-                                                              UNDERLYING_RISK_HEALTH_RISKLEVEL:UNDERLYING_RISK_FRAGILITY_INSTITUTIONS_RISKLEVEL,
-                                                              count = "Medium risk",
-                                                              append = F
+                                                                UNDERLYING_RISK_HEALTH_RISKLEVEL:UNDERLYING_RISK_FRAGILITY_INSTITUTIONS_RISKLEVEL,
+                                                                count = "Medium risk",
+                                                                append = F
 )))
 
 riskflags$medium_risk_emerging <- as.numeric(unlist(row_count(riskflags,
@@ -236,7 +236,7 @@ names <- c(
   "H_new_cases_smoothed_per_million_norm", "H_new_deaths_smoothed_per_million_norm",
   "F_Proteus_Score_norm", "F_fews_crm_norm", "F_fao_wfp_warning", "F_fpv_rating", #"D_WB_external_debt_distress_norm",
   "M_EIU_12m_change_norm", "M_EIU_Score_12m_norm",
-   "NH_GDAC_Hazard_Score_Norm",  "H_GovernmentResponseIndexForDisplay_norm",  "H_GovernmentResponseIndexForDisplay_norm", 
+  "NH_GDAC_Hazard_Score_Norm",  "H_GovernmentResponseIndexForDisplay_norm",  "H_GovernmentResponseIndexForDisplay_norm", 
   "S_Household.risks", "S_phone_average_index_norm",  "NH_seasonal_risk_norm","NH_locust_norm", "NH_natural_acaps","Fr_FCS_Normalised", 
   "Fr_REIGN_Normalised", "Fr_Displaced_UNHCR_Normalised", "Fr_BRD_Normalised"
 )
@@ -258,7 +258,7 @@ altflag <- altflag %>%
       H_GovernmentResponseIndexForDisplay_norm_plus1,
       H_wmo_don_alert_plus1,
       na.rm = T
-      )),
+    )),
     EMERGING_RISK_MACRO_FISCAL_AV = M_EIU_12m_change_norm,
     EMERGING_RISK_FRAGILITY_INSTITUTIONS_AV = geoMean(c(
       Fr_REIGN_Normalised,
@@ -296,9 +296,9 @@ altflag <- altflag %>%
       # H_add_death_prec_current,
       H_wmo_don_alert),
       na.rm = T
-      ),
+    ),
     M_coefvar = cv(c(M_EIU_12m_change_norm),
-      na.rm = T
+                   na.rm = T
     ),
     Fr_coefvar = cv(c(
       Fr_REIGN_Normalised,
@@ -581,18 +581,18 @@ riskflags$OVERALL_FLAGS_FILTER_7_5_MED <-  rowSums(riskflags[filter75nam] >= 7, 
 reliabilitysheet <- globalrisk %>%
   mutate(
     RELIABILITY_UNDERLYING_HEALTH = rowSums(is.na(globalrisk %>%
-                                                                   dplyr::select(H_HIS_Score_norm, H_INFORM_rating.Value_norm)),
-                                                           na.rm = T
+                                                    dplyr::select(H_HIS_Score_norm, H_INFORM_rating.Value_norm)),
+                                            na.rm = T
     ) / 2,
     RELIABILITY_UNDERLYING_FOOD_SECURITY = case_when(
       is.na(F_Proteus_Score_norm) ~ 1,
       TRUE ~ 0
     ),
     RELIABILITY_UNDERLYING_MACRO_FISCAL = rowSums(is.na(globalrisk %>%
-                                                        dplyr::select(
-                                                          M_EIU_Score_12m_norm 
-                                                        )),
-                                                na.rm = T
+                                                          dplyr::select(
+                                                            M_EIU_Score_12m_norm 
+                                                          )),
+                                                  na.rm = T
     ) / 4,
     RELIABILITY_UNDERLYING_SOCIOECONOMIC_VULNERABILITY = case_when(
       is.na(S_INFORM_vul_norm) ~ 1,
@@ -615,7 +615,7 @@ reliabilitysheet <- globalrisk %>%
                                                     H_new_deaths_smoothed_per_million_norm,
                                                     H_GovernmentResponseIndexForDisplay_norm
                                                   )),
-    na.rm = T
+                                          na.rm = T
     ) / 6,
     RELIABILITY_EMERGING_FOOD_SECURITY = rowSums(is.na(globalrisk %>%
                                                          dplyr::select(
@@ -702,3 +702,170 @@ riskflags <- left_join(riskflags %>%
 # Write csv file of all risk flags (+reliability scores)
 
 write.csv(riskflags, "Risk_sheets/Compound_Risk_Flag_Sheets.csv")
+
+
+#
+##
+### ********************************************************************************************
+####    LONG AND MINIMAL OUTPUT FILE ----
+### ********************************************************************************************
+##
+#
+
+# —Only use the relevant aggregated metrics; renamed for dashboard ----
+names <- read_csv("riskflags-dashboard-names.csv")
+riskflags_select <- riskflags[,c("Country", "Countryname", names$old_name)]
+names(riskflags_select) <- c("Country", "Countryname", names$new_name)
+write_csv(riskflags_select, "Risk_sheets/dashboard-inputs/crm-aggregated.csv")
+}
+
+# —Lengthen data ----
+flags_long <- pivot_longer(riskflags_select, !c("Country", "Countryname"), values_to = "Value") %>%
+  separate(name, into = c("Outlook", "Key"), sep = "_" ) %>%
+  mutate(
+    Dimension = case_when(
+      grepl("Flag", Key) ~ "Flag",
+      TRUE ~ Key),
+    Key = case_when(
+      Dimension == "Flag" ~ "Number of Flags",
+      TRUE ~ Key),
+    `Data Level` = case_when(
+      Dimension == "Flag" ~ "Flag Count",
+      TRUE ~ "Dimension Value"
+    ),
+    `Display Status` = "Main"
+    )
+
+indicators_select <- read_csv("crm-indicators.csv") # written in `indicators.R` 
+
+indicators_long <- pivot_longer(indicators_select, !c("Country", "Countryname"), values_to = "Value") %>% 
+  separate(name, into = c("Outlook", "Dimension", "Key"), sep = "_" ) %>%
+  mutate(`Data Level` = "Indicator",
+         `Display Status` = "Secondary")
+
+long <- rbind(indicators_long, flags_long) %>%
+  mutate(
+    `Overall Contribution` = case_when(
+      Outlook == "Overall" ~ T,
+      `Data Level` == "Indicator" ~ T,
+      TRUE ~ F),
+    `Risk Label` = case_when(
+      `Data Level` == 'Dimension Value' & (Outlook == 'Emerging' | Outlook == 'Underlying') & Value >= 10 ~ "High",
+      `Data Level` == 'Dimension Value' & (Outlook == 'Emerging' | Outlook == 'Underlying') & Value >= 7 ~ "Medium",
+      `Data Level` == 'Dimension Value' & (Outlook == 'Emerging' | Outlook == 'Underlying') & Value >= 0 ~ "Low",
+      `Data Level` == 'Dimension Value' & (Outlook == 'Overall') & Value >= 7 ~ "High",
+      `Data Level` == 'Dimension Value' & (Outlook == 'Overall') & Value >= 5 ~ "Medium",
+      `Data Level` == 'Dimension Value' & (Outlook == 'Overall') & Value >= 0 ~ "Low",
+      `Data Level` == 'Flag Count' ~ as.character(floor(Value)),
+      `Data Level` == 'Indicator' ~ as.character(floor(Value))
+    ),
+    Value = case_when(
+      `Data Level` == "Flag Count" ~ (Value),
+      TRUE ~ floor(Value)
+    ),
+    Value_Char = case_when(
+      `Data Level` == "Flag Count" ~ as.character(Value),
+      TRUE ~ as.character(floor(Value))
+    )
+    ) %>% mutate(
+    Outlook = factor(Outlook, levels = c("Overall", "Underlying", "Emerging")),
+    Dimension = factor(Dimension, c("Flag", "Food Security", "Conflict and Fragility", "Health", "Macro Fiscal",  "Natural Hazard", "Socioeconomic Vulnerability")),
+    Country = factor(Country, levels = sort(unique(Country))),
+    Countryname = factor(Countryname, levels = sort(unique(Countryname))),
+    `Data Level` = factor(`Data Level`, c("Flag Count", "Dimension Value", "Indicator")),  
+    `Display Status` = factor(`Display Status`)
+  ) %>%
+  relocate(Value_Char, `Risk Label`, .after = Value) %>%
+  relocate(`Data Level`, .before = Outlook) %>%
+  arrange(Country, Outlook, Dimension, `Data Level`) %>%
+  subset(Key != "Indicator Reliability") %>%
+  mutate(Index = row_number(), .before = 1)
+
+
+
+
+# Compare to previous version (updates-log.csv) ----
+# Problem with this is that some countries will stay the same even the file updates.
+# We want to see which indicators have updated, not how many countries
+# previous <- read_csv("Risk_sheets/dashboard-inputs/crm-long.csv")
+
+# length(which(subset(long, `Data Level` == "Indicator")[, 'Value'] != subset(prev, `Data Level` == "Indicator")[, 'Value']))
+# 
+# long[which(subset(long)[, 'Value'] != subset(prev)[, 'Value']),]
+# prev[which(subset(long)[, 'Value'] != subset(prev)[, 'Value']),]
+# 
+# subset(long, Country == "AFG" & Dimension == "Health" & Outlook == "Emerging")
+# subset(prev, Country == "AFG" & Dimension == "Health" & Outlook == "Emerging")
+# 
+# summary(subset(long, `Data Level` == "Indicator")[,"Value"])
+# summary(subset(prev, `Data Level` == "Indicator")[,"Value"])
+# 
+# summary(previous$Value)
+# 
+# long %>% group_by(`Data Level`) %>% summary()
+# 
+# View(previous)
+# Sys.Date()
+# 
+# subset(long, Key == "FEWS NET Score")
+# 
+# sum(c(F, F, F))
+
+# Compare, attempt 2
+prev <- read_csv("external/crm-output-latest.csv")
+
+indicatorChanges <- function(indicator) {
+  long_ind <- subset(long, Key == indicator)
+  prev_ind <- subset(prev, Key == indicator)
+  
+  # Make sure Countries line up in the two columns
+  wrong_rows <- which(subset(long_ind)[, 'Country'] != subset(prev_ind)[, 'Country'])
+  if (sum(wrong_rows) > 0) {
+    warning("Rows are not aligned. See following rows in the newer dataframe: ", long$Index[wrong_rows,])
+  }
+  
+  changes <- which(subset(long_ind)[, 'Value'] != subset(prev_ind)[, 'Value'])
+  
+  return(sum(changes))
+}
+
+updateLog <- data.frame(Indicator = indicators$Indicator, Changed_Countries = sapply(indicators$Indicator, indicatorChanges)) %>%
+  mutate(
+    Update_Date = case_when(
+      Changed_Countries > 0 ~ Sys.Date()
+      ))
+updateLogPrevious <- read_csv("external/updates-log.csv")
+updateLogCombined <- rbind(updateLog, updateLogPrevious) %>%
+  .[!is.na(.$Update_Date),]
+write_csv(updateLogCombined, "external/updates-log.csv")
+
+# Write long output file (crm-output-latest.csv) ----
+# outputPrevious <- read_csv("external/crm-output-latest.csv")
+write_csv(long, "external/crm-output-latest.csv")
+
+long <- long %>%
+  mutate(
+    Date = Sys.Date(),
+    Record_ID = if(!is.null(prev$Record_ID)) {
+      max(prev$Record_ID) + long$Index
+    } else {Index}
+    )
+
+outputAll <- read_csv("external/crm-output-all.csv")
+outputAll <- rbind(long, outputAll)
+
+write_csv(outputAll, "external/crm-output-all.csv")
+
+# Country changes ----
+# List countries that changed 
+flagChanges  <- merge(subset(long, Dimension == "Flag")[,c("Index", "Countryname", "Country", "Outlook", "Value", "Risk Label")],
+      subset(outputPrevious, Dimension == "Flag")[,c("Index", "Value", "Risk Label")],
+      by = "Index") %>%
+       rename(Count = Value.x,
+              `Previous Count` = Value.y,
+              Risk = `Risk Label.x`,
+              `Previous Risk` = `Risk Label.y`) %>%
+  mutate(`Flag Change` = Count - `Previous Count`,
+         `Risk Change` = as.numeric(Risk) - as.numeric(`Previous Risk`))
+
+
