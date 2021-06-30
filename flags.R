@@ -676,6 +676,8 @@ reliabilitysheet <- reliabilitysheet %>%
 
 # Write as a csv file for the reliability sheet
 write.csv(reliabilitysheet, "Risk_sheets/reliabilitysheet.csv")
+write.csv(reliabilitysheet, "external/risk-sheets/reliabilitysheet.csv")
+write.csv(reliabilitysheet, paste0("external/risk-sheets/archive/", Sys.Date(), "-reliabilitysheet.csv"))
 
 #------------------------------—Combine the reliability sheet with the global database------------------------------------
 reliable <- reliabilitysheet %>%
@@ -685,6 +687,8 @@ globalrisk <- left_join(globalrisk, reliable, by = c("Countryname", "Country"))
 
 # Save database of all risk indicators (+ reliability scores)
 write.csv(globalrisk, "Risk_sheets/Global_compound_risk_database.csv")
+write.csv(globalrisk, "external/risk-sheets/Global_compound_risk_database.csv")
+write.csv(globalrisk, paste0("external/risk-sheets/archive/", Sys.Date(),"-Global_compound_risk_database.csv"))
 
 #------------------------------—Combine the reliability sheet with the summary risk flag sheet-----------------------------
 reliable <- reliabilitysheet %>%
@@ -702,7 +706,8 @@ riskflags <- left_join(riskflags %>%
 # Write csv file of all risk flags (+reliability scores)
 
 write.csv(riskflags, "Risk_sheets/Compound_Risk_Flag_Sheets.csv")
-
+write.csv(riskflags, "external/risk-sheets/Compound_Risk_Flag_Sheets.csv")
+write.csv(riskflags, paste0("external/risk-sheets/archive/", Sys.Date(), "-Compound_Risk_Flag_Sheets.csv"))
 
 #
 ##
@@ -716,7 +721,7 @@ write.csv(riskflags, "Risk_sheets/Compound_Risk_Flag_Sheets.csv")
 names <- read_csv("riskflags-dashboard-names.csv")
 riskflags_select <- riskflags[,c("Country", "Countryname", names$old_name)]
 names(riskflags_select) <- c("Country", "Countryname", names$new_name)
-write_csv(riskflags_select, "Risk_sheets/dashboard-inputs/crm-aggregated.csv")
+write_csv(riskflags_select, "Risk_sheets/crm-aggregated.csv")
 }
 
 # —Lengthen data ----
@@ -826,7 +831,7 @@ indicatorChanges <- function(indicator) {
   
   changes <- which(subset(long_ind)[, 'Value'] != subset(prev_ind)[, 'Value'])
   
-  return(sum(changes))
+  return(length(changes))
 }
 
 updateLog <- data.frame(Indicator = indicators$Indicator, Changed_Countries = sapply(indicators$Indicator, indicatorChanges)) %>%
@@ -859,7 +864,7 @@ write_csv(outputAll, "external/crm-output-all.csv")
 # Country changes ----
 # List countries that changed 
 flagChanges  <- merge(subset(long, Dimension == "Flag")[,c("Index", "Countryname", "Country", "Outlook", "Value", "Risk Label")],
-      subset(outputPrevious, Dimension == "Flag")[,c("Index", "Value", "Risk Label")],
+      subset(prev, Dimension == "Flag")[,c("Index", "Value", "Risk Label")],
       by = "Index") %>%
        rename(Count = Value.x,
               `Previous Count` = Value.y,
@@ -867,5 +872,3 @@ flagChanges  <- merge(subset(long, Dimension == "Flag")[,c("Index", "Countryname
               `Previous Risk` = `Risk Label.y`) %>%
   mutate(`Flag Change` = Count - `Previous Count`,
          `Risk Change` = as.numeric(Risk) - as.numeric(`Previous Risk`))
-
-
