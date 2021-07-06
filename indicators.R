@@ -17,7 +17,7 @@ packages <- c("curl", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2",
 invisible(lapply(packages, require, quietly = TRUE, character.only = TRUE))
 
 # github <- "https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/"
-github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/"
+github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 
 {
   #--------------------FUNCTION TO CALCULATE NORMALISED SCORES-----------------
@@ -720,7 +720,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/"
   
   write.csv(food_sheet, "Risk_sheets/foodsecuritysheet.csv")
 
-  lap <- Sys.time() - lapstart
+  lap <- Sys.time() - lapStart
   print(paste("Food sheet written", lap, units(lap)))
   lapStart <- Sys.time()
   #
@@ -843,7 +843,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/"
   
   write.csv(macro_sheet, "Risk_sheets/macrosheet.csv")
 
-  lap <- Sys.time() - lapstart
+  lap <- Sys.time() - lapStart
   print(paste("Macro sheet written", lap, units(lap)))
   lapStart <- Sys.time()
   #
@@ -980,7 +980,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/"
   
   write.csv(socioeconomic_sheet, "Risk_sheets/Socioeconomic_sheet.csv")
 
-  lap <- Sys.time() - lapstart
+  lap <- Sys.time() - lapStart
   print(paste("Socioeconomic sheet written", lap, units(lap)))
   lapStart <- Sys.time()
   #
@@ -1183,7 +1183,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/"
   
   write.csv(nathazard_sheet, "Risk_sheets/Naturalhazards.csv")
 
-  lap <- Sys.time() - lapstart
+  lap <- Sys.time() - lapStart
   print(paste("Natural hazard sheet written", lap, units(lap)))
   lapStart <- Sys.time()
   #
@@ -1453,7 +1453,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/"
   
   write.csv(fragility_sheet, "Risk_sheets/fragilitysheet.csv")
 
-  lap <- Sys.time() - lapstart
+  lap <- Sys.time() - lapStart
   print(paste("Fragility sheet written", lap, units(lap)))
   lapStart <- Sys.time()
   #
