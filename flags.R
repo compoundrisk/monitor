@@ -841,6 +841,8 @@ updateLog <- data.frame(Indicator = indicators$Indicator, Changed_Countries = sa
     Update_Date = case_when(
       Changed_Countries > 0 ~ Sys.Date()
       ))
+
+updateLog <- updateLog %>% .[!is.na(.$Update_Date),]    
 updateLogPrevious <- read_csv("external/updates-log.csv")
 updateLogCombined <- rbind(updateLog, updateLogPrevious) %>%
   .[!is.na(.$Update_Date),]
@@ -850,8 +852,8 @@ write_csv(updateLogCombined, "external/updates-log.csv")
 # outputPrevious <- read_csv("external/crm-output-latest.csv")
 write_csv(long, "external/crm-output-latest.csv")
 
-outputAll <- read_csv("external/crm-output-all.csv")[,-1]
-colnames(outputAll) <- colnames(outputAll) %>% gsub("\\.", " ", .)
+outputAll <- read_csv("external/crm-output-all.csv")
+# colnames(outputAll) <- colnames(outputAll) %>% gsub("\\.", " ", .)
 
 long <- long %>%
   mutate(
@@ -868,18 +870,46 @@ write_csv(outputAll, "external/crm-output-all.csv")
 
 # Country changes ----
 # List countries that changed 
-flagChanges  <- merge(subset(long, Dimension == "Flag")[,c("Index", "Countryname", "Country", "Outlook", "Value")],
-      subset(prev, Dimension == "Flag")[,c("Index", "Value")],
-      by = "Index") %>%
-       rename(Count = Value.x,
-              `Previous Count` = Value.y) %>%
-              # Risk = `Risk Label.x`,
-              # `Previous Risk` = `Risk Label.y`) %>%
-  mutate(`Flag Change` = Count - `Previous Count`
-         # `Risk Change` = as.numeric(Risk) - as.numeric(`Previous Risk`)
-         )
+# flagChanges  <- merge(subset(long, Dimension == "Flag")[,c("Index", "Countryname", "Country", "Outlook", "Value")],
+#       subset(prev, Dimension == "Flag")[,c("Index", "Value")],
+#       by = "Index") %>%
+#        rename(Count = Value.x,
+#               `Previous Count` = Value.y) %>%
+#               # Risk = `Risk Label.x`,
+#               # `Previous Risk` = `Risk Label.y`) %>%
+#   mutate(`Flag Change` = Count - `Previous Count`
+#          # `Risk Change` = as.numeric(Risk) - as.numeric(`Previous Risk`)
+#          )
+
+ countFlagChanges <- function(data, early = Sys.Date() -1 , late = Sys.Date()) {
+  data <- data %>%
+    select(Record_ID, Index, Countryname, Country, Outlook, Value, Date, `Data Level`) %>%
+    subset(`Data Level` == 'Flag Count') %>%
+    select(-`Data Level`) %>%
+    arrange(Date) %>%
+    group_by(Index)
+  current <- subset(data, Date <= late) %>%
+    slice_tail()
+  prior <- subset(data, Date <= early) %>%
+    slice_tail()
+  if(sum(select(prior, -Value, -Date, -Record_ID) != select(current, -Value, -Date, -Record_ID)) > 0) warning("Rows do not match between comparison dates.")
+  current <- current %>%
+    rename(Count = Value)
+  prior <- prior %>%
+    rename(`Prior Count` = Value,
+           `Prior Date` = Date,
+           `Prior Record_ID` = Record_ID)
+  combined <- merge(current, select(prior, -Countryname, -Country, -Outlook), by = "Index") %>%
+    mutate(`Flag Change` = Count - `Prior Count`) %>% 
+    relocate(`Prior Record_ID`, .after = Record_ID) %>%
+    relocate(`Count`, .after = Date) %>%
+    relocate(`Prior Date`, .after = Date)
+  return(combined)
+}        
+
+flagChanges <- countFlagChanges(outputAll)
 
 # rmarkdown::render('output-report.Rmd', output_format = c("html_document", "pdf_document"), output_file = paste0("reports/", Sys.Date(), "-report") %>% rep(2))
 write.csv(flagChanges, "external/reports/flag-changes.csv")
 
-rmarkdown::render('output-report.Rmd', output_format = c("html_document", "pdf_document"), output_file = rep(paste0("output/reports/", Sys.Date(), "-report"),2))
+rmarkdown::render('output-report.Rmd', output_format = "html_document", output_file = paste0("external/reports/", Sys.Date(), "-report"))

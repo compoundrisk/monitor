@@ -541,7 +541,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #------------------—FEWSNET (with CRW threshold)---
   
   #Load database
-  fewswb <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/FEWS%20February%202021%20Update_04-05-21.csv"), col_types = cols()))
+  fewswb <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
   
   #Calculate country totals
   fewsg <- fewswb %>%
@@ -647,49 +647,53 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #------------------------—WBG FOOD PRICE MONITOR------------------------------------
   ag_ob_data <- read.csv(paste0(github, "Indicator_dataset/food-inflation.csv"))
-  
+
   ag_ob_data <- ag_ob_data %>%
-    mutate_at(
-      vars(contains("19"), contains("20"), contains("21")),
-      ~ as.numeric(as.character(gsub(",", ".", .)))
-    )
-  
+  mutate_at(
+    vars(contains("19"), contains("20"), contains("21")),
+    ~ as.numeric(as.character(gsub(",", ".", .)))
+  )
+
   ag_ob <- ag_ob_data %>%
-    filter(X == "Food Change Yoy") %>%
-    dplyr::select(-Income.Level, -Color.Bin, -X) %>%
-    group_by(Country) %>%
-    summarise(
-      Apr = Apr.20[which(!is.na(Apr.20))[1]],
-      May = May.20[which(!is.na(May.20))[1]],
-      June = Jun.20[which(!is.na(Jun.20))[1]],
-      Jul = Jul.20[which(!is.na(Jul.20))[1]],
-      Aug = Aug.20[which(!is.na(Aug.20))[1]],
-      Sep = Sep.20[which(!is.na(Sep.20))[1]],
-      Oct = Oct.20[which(!is.na(Oct.20))[1]],
-      Nov = Nov.20[which(!is.na(Nov.20))[1]],
-    ) %>%
-    mutate(fpv = case_when(
-      !is.na(June) ~ June,
-      is.na(June) & !is.na(May) ~ May,
-      is.na(June) & is.na(May) & !is.na(Apr) ~ Apr,
-      TRUE ~ NA_real_
-    ),
-    fpv_rating = case_when(
-      fpv <= 0.02 ~ 1,
-      fpv > 0.02 & fpv <= 0.05 ~ 3,
-      fpv > 0.05 & fpv <= 0.30 ~ 5,
-      fpv >= 0.30 ~ 7,
-      TRUE ~ NA_real_
-    ),
-    Country = countrycode(Country,
-                          origin = "country.name",
-                          destination = "iso3c",
-                          nomatch = NULL
-    )) %>%
-    rename_with(   
-      .fn = ~ paste0("F_", .),
-      .cols = colnames(.)[!colnames(.) %in% c("Country")]
-    )
+  filter(X == "Food Change Yoy") %>%
+  dplyr::select(-Income.Level, -Color.Bin, -X) %>%
+  group_by(Country) %>%
+  summarise(
+    Mar = Mar.20[which(!is.na(Mar.20))[1]],
+    Apr = Apr.20[which(!is.na(Apr.20))[1]],
+    May = May.20[which(!is.na(May.20))[1]],
+    June = Jun.20[which(!is.na(Jun.20))[1]],
+    Jul = Jul.20[which(!is.na(Jul.20))[1]],
+    Aug = Aug.20[which(!is.na(Aug.20))[1]],
+    Sep = Sep.20[which(!is.na(Sep.20))[1]],
+    Oct = Oct.20[which(!is.na(Oct.20))[1]],
+    Nov = Nov.20[which(!is.na(Nov.20))[1]],
+    Dec = Dec.20[which(!is.na(Dec.20))[1]],
+    Jan = Jan.21[which(!is.na(Jan.21))[1]],
+    Feb = Feb.21[which(!is.na(Feb.21))[1]]
+      ) %>%
+  mutate(fpv = case_when(
+    !is.na(Feb) ~ Feb,
+    is.na(Feb) & !is.na(Jan) ~ Jan,
+    is.na(Feb) & is.na(Jan) & !is.na(Dec) ~ Nov,
+    TRUE ~ NA_real_
+  ),
+  fpv_rating = case_when(
+    fpv <= 0.02 ~ 1,
+    fpv > 0.02 & fpv <= 0.05 ~ 3,
+    fpv > 0.05 & fpv <= 0.30 ~ 5,
+    fpv >= 0.30 ~ 7,
+    TRUE ~ NA_real_
+  ),
+  Country = countrycode(Country,
+                        origin = "country.name",
+                        destination = "iso3c",
+                        nomatch = NULL
+  )) %>%
+  rename_with(   
+    .fn = ~ paste0("F_", .),
+    .cols = colnames(.)[!colnames(.) %in% c("Country")]
+  )
   
   #-------------------------—FAO/WFP HOTSPOTS----------------------------
   fao_wfp <- suppressWarnings(read_csv(paste0(github, "Indicator_dataset/WFP%3AFAO_food.csv"), col_types = cols()) %>%
@@ -732,8 +736,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #
   
   #---------------------------—Economist Intelligence Unit---------------------------------
-  url <- "https://github.com/ljonestz/compoundriskdata/blob/master/Indicator_dataset/RBTracker%20(4).xls?raw=true"
-  destfile <- "RBTracker(4).xls"
+  url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls"
+  destfile <- "RBTracker.xls"
   curl::curl_download(url, destfile)
   eiu_data <- read_excel(destfile, sheet = "Data Values", skip = 3)
   
@@ -929,7 +933,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
            S_Household.risks_raw = M_Household.risks_raw)
   
   #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
-  phone_index_data <- read.csv("https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/Indicator_dataset/phone.csv")
+  phone_index_data <- read.csv(paste0(github, "Indicator_dataset/phone.csv"))
   
   #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
   imf_un <- read.csv(paste0(github, "Indicator_dataset/imf_unemployment.csv"))
@@ -1247,7 +1251,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
         TRUE ~ NA_character_
       )
     ) %>%
-    filter(Year == 2019) %>%
+    filter(Year == 2020) %>%
     dplyr::select(`Country of origin (ISO)`, refugees, z_refugees, refugees_fragile, idps, z_idps, idps_fragile)
   
   # Normalise scores
