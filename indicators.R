@@ -736,7 +736,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #
   
   #---------------------------—Economist Intelligence Unit---------------------------------
-  url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls"
+  url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
   destfile <- "RBTracker.xls"
   curl::curl_download(url, destfile)
   eiu_data <- read_excel(destfile, sheet = "Data Values", skip = 3)
@@ -1213,48 +1213,48 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
     )
   
   #-----------------------------—IDPs--------------------------------------------------------
-  idp_data <- read_csv(paste0(github, "Indicator_dataset/population.csv"),
-                       col_types = cols(
-                         `IDPs of concern to UNHCR` = col_number(),
-                         `Refugees under UNHCR’s mandate` = col_number(),
-                         Year = col_number()
-                       ), skip = 14
-  )
-  
-  # Calculate metrics
-  idp <- idp_data %>%
-    group_by(`Country of origin (ISO)`, Year) %>%
-    summarise(
-      refugees = sum(`Refugees under UNHCR’s mandate`, na.rm = T),
-      idps = sum(`IDPs of concern to UNHCR`, na.rm = T)
-    ) %>%
-    group_by(`Country of origin (ISO)`) %>%
-    mutate(
-      sd_refugees = sd(refugees, na.rm = T),
-      mean_refugees = mean(refugees, na.rm = T),
-      z_refugees = (refugees - mean_refugees) / sd(refugees),
-      refugees_fragile = case_when(
-        z_refugees > 1 ~ "Fragile",
-        z_refugees < 1 ~ "Not Fragile",
-        z_refugees == NaN ~ "Not Fragile",
-        TRUE ~ NA_character_
-      ),
-      mean_idps = mean(idps, na.rm = T),
-      z_idps = case_when(
-        sd(idps) != 0 ~ (idps - mean_idps) / sd(idps),
-        sd(idps) == 0 ~ 0,
-        TRUE ~ NA_real_
-      ),
-      idps_fragile = case_when(
-        z_idps > 1 ~ "Fragile",
-        z_idps < 1 ~ "Not Fragile",
-        TRUE ~ NA_character_
-      )
-    ) %>%
-    filter(Year == 2020) %>%
-    dplyr::select(`Country of origin (ISO)`, refugees, z_refugees, refugees_fragile, idps, z_idps, idps_fragile)
-  
-  # Normalise scores
+idp_data <- read_csv(paste0(github, "Indicator_dataset/population.csv"),
+                      col_types = cols(
+                        `IDPs of concern to UNHCR` = col_number(),
+                        `Refugees under UNHCR's mandate` = col_number(),
+                        Year = col_number()
+                      ), skip = 14
+)
+
+# Calculate metrics
+idp <- idp_data %>%
+  group_by(`Country of origin (ISO)`, Year) %>%
+  summarise(
+    refugees = sum(`Refugees under UNHCR's mandate`, na.rm = T),
+    idps = sum(`IDPs of concern to UNHCR`, na.rm = T)
+  ) %>%
+  group_by(`Country of origin (ISO)`) %>%
+  mutate(
+    sd_refugees = sd(refugees, na.rm = T),
+    mean_refugees = mean(refugees, na.rm = T),
+    z_refugees = (refugees - mean_refugees) / sd(refugees),
+    refugees_fragile = case_when(
+      z_refugees > 1 ~ "Fragile",
+      z_refugees < 1 ~ "Not Fragile",
+      z_refugees == NaN ~ "Not Fragile",
+      TRUE ~ NA_character_
+    ),
+    mean_idps = mean(idps, na.rm = T),
+    z_idps = case_when(
+      sd(idps) != 0 ~ (idps - mean_idps) / sd(idps),
+      sd(idps) == 0 ~ 0,
+      TRUE ~ NA_real_
+    ),
+    idps_fragile = case_when(
+      z_idps > 1 ~ "Fragile",
+      z_idps < 1 ~ "Not Fragile",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(Year == 2020) %>%
+  dplyr::select(`Country of origin (ISO)`, refugees, z_refugees, refugees_fragile, idps, z_idps, idps_fragile)
+
+# Normalise scores
   idp <- normfuncpos(idp, 1, 0, "z_refugees")
   idp <- normfuncpos(idp, 1, 0, "z_idps")
   
