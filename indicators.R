@@ -1216,7 +1216,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 idp_data <- read_csv(paste0(github, "Indicator_dataset/population.csv"),
                       col_types = cols(
                         `IDPs of concern to UNHCR` = col_number(),
-                        `Refugees under UNHCR's mandate` = col_number(),
+                        `Refugees under UNHCR’s mandate` = col_number(),
                         Year = col_number()
                       ), skip = 14
 )
@@ -1225,7 +1225,7 @@ idp_data <- read_csv(paste0(github, "Indicator_dataset/population.csv"),
 idp <- idp_data %>%
   group_by(`Country of origin (ISO)`, Year) %>%
   summarise(
-    refugees = sum(`Refugees under UNHCR's mandate`, na.rm = T),
+    refugees = sum(`Refugees under UNHCR’s mandate`, na.rm = T),
     idps = sum(`IDPs of concern to UNHCR`, na.rm = T)
   ) %>%
   group_by(`Country of origin (ISO)`) %>%
