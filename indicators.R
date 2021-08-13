@@ -227,6 +227,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   OXrollback <- normfuncpos(OXrollback, upperrisk, lowerrisk, "H_Oxrollback_score")
   
   #------------------------—COVID deaths and cases--------------------------
+  # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
   covidweb <- read.csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv")
   
   covid <- covidweb %>%
@@ -251,6 +252,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
     filter(!is.na(meandeaths) & !is.na(meancase)) 
   
   # remove countries without two weeks
+  # Slow (~4 seconds)
   covidgrowth <- covidgrowth %>%
     mutate(remove = iso_code %in% 
              as.data.frame(covidgrowth %>% 
@@ -367,6 +369,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   # cov_forcast_alt <- normfuncpos(cov_forcast_alt, 100, 0, "H_add_death_prec_current")
   
   #--------------------------—Oxford Response Tracker----------------------------
+  # SLOW: 10 seconds with w/ `read.csv`, 5 with `read_csv`
   Oxres <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv")
   
   #Select latest data
@@ -386,6 +389,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   Ox_cov_resp <- normfuncneg(Ox_cov_resp, 0, 100, "H_EconomicSupportIndexForDisplay")
   
   #------------------------------—INFORM COVID------------------------------------------------------
+  # SLOW
   inform_cov <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Covid-19/INFORM-Covid-19-Warning-beta-version")
   
   all_dat <- lapply(2:24, function(tt) {
@@ -1198,6 +1202,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   ##
   #
   
+  # SLOW: Takes 50 seconds.
   
   #-------------------------—FCS---------------------------------------------
   
@@ -1216,7 +1221,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 idp_data <- read_csv(paste0(github, "Indicator_dataset/population.csv"),
                       col_types = cols(
                         `IDPs of concern to UNHCR` = col_number(),
-                        `Refugees under UNHCR’s mandate` = col_number(),
+                        `Refugees under UNHCR mandate` = col_number(),
                         Year = col_number()
                       ), skip = 14
 )
@@ -1225,7 +1230,7 @@ idp_data <- read_csv(paste0(github, "Indicator_dataset/population.csv"),
 idp <- idp_data %>%
   group_by(`Country of origin (ISO)`, Year) %>%
   summarise(
-    refugees = sum(`Refugees under UNHCR’s mandate`, na.rm = T),
+    refugees = sum(`Refugees under UNHCR mandate`, na.rm = T),
     idps = sum(`IDPs of concern to UNHCR`, na.rm = T)
   ) %>%
   group_by(`Country of origin (ISO)`) %>%
