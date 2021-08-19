@@ -16,6 +16,12 @@ packages <- c("curl", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2",
               "sjmisc", "stringr", "tidyr", "xml2", "zoo")
 invisible(lapply(packages, require, quietly = TRUE, character.only = TRUE))
 
+# # install.packages("sparklyr")
+# SparkR::sparkR.session()
+# library(sparklyr)
+# sc <- spark_connect(method = "databricks")
+
+
 # github <- "https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/"
 github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 
@@ -58,6 +64,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #--------------------—LOAD ACAPS realtime database-------------------------------------------
   # Load website
   acaps <- read_html("https://www.acaps.org/countries")
+  # ERROR: running this in Databricks I get `Error in open.connection(x, "rb") : 
+  # gnutls_handshake() failed: Error in the pull function.`
   
   # Select relevant columns from the site all merged into a single string
   country <- acaps %>%
@@ -453,9 +461,11 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   inform_covid_warning <- normfuncpos(inform_covid_warning, 6, 2, "H_INFORM_rating.Value")
   
   write.csv(inform_covid_warning, "Indicator_dataset/inform_covid_warning.csv")
+  # FIX: for databricks, will need to replace this with copy_to a spark table, or similar
   
   #----------------------------------—WMO DONS--------------------------------------------------------------
   dons_raw <- read_html("https://www.who.int/emergencies/disease-outbreak-news")
+  # FIX: same error as for reading acaps. Note that read_html() does work in databricks; works for inform_cov
   
   dons_select <- dons_raw %>%
     html_nodes(".sf-list-vertical") %>%
@@ -901,7 +911,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #--------------------------—MPO: Poverty projections----------------------------------------------------
   mpo_data <- read.csv("https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/Indicator_dataset/mpo.csv")
-  
+  # FIX: replace with paste0(github...)
   #-----------------------------—HOUSEHOLD HEATMAP FROM MACROFIN-------------------------------------
   # If Macro Fin Review is re-included above, we can reuse that. For clarity, moving data read here because it's not being used by macrosheet
   data <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
@@ -943,9 +953,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   imf_un <- read.csv(paste0(github, "Indicator_dataset/imf_unemployment.csv"))
   
   imf_un <- imf_un %>%
-    mutate_at(
-      vars(contains("X2")),
-      ~ as.numeric(as.character(.))
+    mutate(across(
+      contains("X2"),
+      ~ as.numeric(as.character(.)))
     ) %>%
     mutate(change_unemp_21 = X2021 - X2020,
            change_unemp_20 = X2020 - X2019) %>%
@@ -1208,11 +1218,12 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   fcv <- read.csv(paste0(github, "Indicator_dataset/Country_classification.csv")) %>%
     dplyr::select(-X, Countryname, -IDA.status) %>%
+    mutate(FCV_status = tolower(FCV_status)) %>%
     mutate(
       FCV_normalised = case_when(
-        FCV_status == "High-Intensity conflict" ~ 10,
-        FCV_status == "Medium-Intensity conflict" ~ 10,
-        FCV_status == "High-Institutional and Social Fragility" ~ 10,
+        FCV_status == tolower("High-Intensity conflict") ~ 10,
+        FCV_status == tolower("Medium-Intensity conflict") ~ 10,
+        FCV_status == tolower("High-Institutional and Social Fragility") ~ 10,
         TRUE ~ 0
       )
     )
@@ -1361,6 +1372,7 @@ idp <- idp_data %>%
       {
         reign_data <- suppressMessages(read_csv(paste0("https://cdn.rawgit.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
                                                 col_types = cols()))
+                                                # FIX: same error as acaps, but message supressed
         l <- T
         print(paste0("Found REIGN csv at ", year, "-", month))
       }, error = function(e) {
