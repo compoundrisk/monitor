@@ -44,6 +44,80 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
     )
     df
   }
+  
+  #--------------------FUNCTIONS TO ARCHIVE ALL INPUT DATA-----------------
+  archiveInputs <- function(data,
+                            path = paste0("output/inputs-archive/", deparse(substitute(data)), ".csv"), 
+                            newFile = F,
+                            # group_by defines the groups for which most recent data should be taken
+                            group_by = "CountryCode",
+                            today = Sys.Date(),
+                            return = F,
+                            large = F) {
+    # Read in the existing file for the input, which will be appended with new data
+    prev <- read_csv(path) %>%
+      mutate(access_date = as.Date(access_date))
+    
+    # Select the most recently added data for each unless group_by is set to false
+    if(is.null(group_by)) {
+      most_recent <- prev
+    } else {
+      most_recent <- prev %>%
+        # .dots allows group_by to take a vector of character strings
+        group_by(.dots = group_by) %>%
+        slice_max(order_by = access_date)
+    }
+    
+    # Add access_date for new data
+    data <- mutate(data, access_date = today)
+    
+    # Row bind `most_recent` and `data`, in order to make comparison (probably a better way)
+    # Could quicken a bit by only looking at columns that matter (ie. don't compare
+    # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
+    # new dates. Those automatically get added. 
+    if(!large) {
+      bound <- rbind(most_recent, data)
+      data_fresh <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
+        filter(access_date == today) %>% 
+        distinct()
+    } else {
+      # (Other way) Paste all columns together in order to compare via %in%, and then select the
+      # data rows that aren't in 
+      # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
+      data_paste <- do.call(paste0, select(data, -access_date))
+      most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
+      data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
+    }
+    # Append new data to CSV
+    combined <- rbind(prev, data_fresh) %>% distinct()
+    write.csv(combined, path, row.names = F)
+    if(return == T) return(combined)
+  }
+  
+  loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), full = F){
+    # The as_of argument let's you run the function from a given historical date. Update indicators.R
+    # to use this feature -- turning indicators.R into a function? with desired date as an argument
+    # Read in CSV
+    data <- read_csv(paste0("output/inputs-archive/", filename, ".csv"))
+    # Select only data from before the as_of date, for reconstructing historical indicators
+    if(as_of < Sys.Date()) {
+      data <- filter(data, access_date <= as_of)
+    }
+    # Select the most recent access_date for each group, unless group_by = F
+    if(is.null(group_by)) {
+      most_recent <- data
+    } else {
+      most_recent <- data %>%
+        # .dots allows group_by to take a vector of character strings
+        group_by(.dots = group_by) %>%
+        slice_max(order_by = access_date) %>%
+        ungroup()
+    }
+    if(!full) return(most_recent)
+    return(data)
+  }
+  
+  
   lap <- Sys.time() - runtime
   print(paste("Setup:", lap, units(lap)))
   lapStart <- Sys.time()
@@ -192,8 +266,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
     dplyr::select(-X)
   
   # DELETE for first time only
-  ghsi <- mutate(ghsi, access_date = Sys.Date() - 1)
-  write.csv(ghsi, "output/inputs-archive/ghsi.csv", row.names = F)
+  # ghsi <- mutate(ghsi, access_date = Sys.Date() - 1)
+  # write.csv(ghsi, "output/inputs-archive/ghsi.csv", row.names = F)
   
   archiveInputs(ghsi, group_by = "Country")
   # SPLIT: move above to inputs.R
@@ -213,9 +287,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   oxford_openness_risk <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-scratchpad/master/risk_of_openness_index/data/riskindex_timeseries_latest.csv") %>%
     mutate(Date = as.Date(Date))
   
-  # DELETE for first time only
-  oxford_openness_risk <- mutate(oxford_openness_risk, access_date = Sys.Date() - 1)
-  write.csv(oxford_openness_risk, "output/inputs-archive/oxford_openness_risk.csv", row.names = F)
+  # # DELETE for first time only
+  # oxford_openness_risk <- mutate(oxford_openness_risk, access_date = Sys.Date() - 1)
+  # write.csv(oxford_openness_risk, "output/inputs-archive/oxford_openness_risk.csv", row.names = F)
   
   archiveInputs(oxford_openness_risk, group_by = c("CountryCode", "Date"))
   # SPLIT: move above to inputs.R
@@ -492,10 +566,10 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   # FIX renaming
   inform_covid <- type_convert(inform_covid_warning)
   
-  # DELETE for first time only
-  inform_covid <- mutate(inform_covid_warning, access_date = Sys.Date()) %>% 
-    type_convert()
-  write.csv(inform_covid, "output/inputs-archive/inform_covid.csv", row.names = F)
+  # # DELETE for first time only
+  # inform_covid <- mutate(inform_covid, access_date = Sys.Date()) %>% 
+  #   type_convert()
+  # write.csv(inform_covid, "output/inputs-archive/inform_covid.csv", row.names = F)
 
   archiveInputs(inform_covid, group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -538,9 +612,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   who_don <- wmo_don_full
   
-  # DELETE for first time only
-  who_don <- mutate(wmo_don_full, access_date = Sys.Date())
-  write.csv(who_don, "output/inputs-archive/who_don.csv", row.names = F)
+  # # DELETE for first time only
+  # who_don <- mutate(wmo_don_full, access_date = Sys.Date())
+  # write.csv(who_don, "output/inputs-archive/who_don.csv", row.names = F)
   
   archiveInputs(who_don, group_by = NULL)
   # SPLIT: move above to inputs.R
@@ -602,9 +676,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
                             nomatch = NULL
       ))
   
-  # DELETE for first time only
-  proteus <- mutate(proteus, access_date = Sys.Date())
-  write.csv(proteus, "output/inputs-archive/proteus.csv", row.names = F)
+  # # DELETE for first time only
+  # proteus <- mutate(proteus, access_date = Sys.Date())
+  # write.csv(proteus, "output/inputs-archive/proteus.csv", row.names = F)
   
   archiveInputs(proteus, group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -619,9 +693,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #Load database
   fewswb <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
   
-  # DELETE for first time only
-  fewsnet <- mutate(fewswb, access_date = Sys.Date())
-  write.csv(fewsnet, "output/inputs-archive/fewsnet.csv", row.names = F)
+  # # DELETE for first time only
+  # fewswb <- mutate(fewswb, access_date = Sys.Date())
+  # write.csv(fewswb, "output/inputs-archive/fewsnet.csv", row.names = F)
   
   archiveInputs(fewswb, path = "output/inputs-archive/fewsnet.csv", group_by = c("country", "year_month"))
   # SPLIT: move above to inputs.R
@@ -803,9 +877,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   fao_wfp <- fao_all
   
-  # DELETE for first time only
-  fao_wfp <- mutate(fao_wfp, access_date = Sys.Date())
-  write.csv(fao_wfp, "output/inputs-archive/fao_wfp.csv", row.names = F)
+  # # DELETE for first time only
+  # fao_wfp <- mutate(fao_wfp, access_date = Sys.Date())
+  # write.csv(fao_wfp, "output/inputs-archive/fao_wfp.csv", row.names = F)
   
   archiveInputs(fao_wfp, group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -844,9 +918,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   curl::curl_download(url, destfile)
   eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
 
-  # DELETE for first time only
-  eiu <- mutate(eiu, access_date = Sys.Date() - 1)
-  write.csv(eiu, "output/inputs-archive/eiu.csv", row.names = F)
+  # # DELETE for first time only
+  # eiu <- mutate(eiu, access_date = Sys.Date() - 1)
+  # write.csv(eiu, "output/inputs-archive/eiu.csv", row.names = F)
   
   archiveInputs(eiu, group_by = c("`SERIES NAME`", "MONTH"))
   # SPLIT: move above to inputs.R
@@ -973,9 +1047,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #---------------------------—Alternative socio-economic data (based on INFORM)
   inform_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_2021.csv"), col_types = cols()))
   
-  # DELETE for first time only
-  inform_risk <- mutate(inform_risk, access_date = Sys.Date())
-  write.csv(inform_risk, "output/inputs-archive/inform_risk.csv", row.names = F)
+  # # DELETE for first time only
+  # inform_risk <- mutate(inform_risk, access_date = Sys.Date())
+  # write.csv(inform_risk, "output/inputs-archive/inform_risk.csv", row.names = F)
   
   archiveInputs(inform_risk, group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -1018,9 +1092,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #--------------------------—MPO: Poverty projections----------------------------------------------------
   mpo <- read_csv(paste0(github, "Indicator_dataset/mpo.csv"))
   
-  # DELETE for first time only
-  mpo <- mutate(mpo, access_date = Sys.Date())
-  write.csv(mpo, "output/inputs-archive/mpo.csv", row.names = F)
+  # # DELETE for first time only
+  # mpo <- mutate(mpo, access_date = Sys.Date())
+  # write.csv(mpo, "output/inputs-archive/mpo.csv", row.names = F)
   
   archiveInputs(mpo, group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -1030,9 +1104,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   # If EFI Macro Financial Review is re-included above, we can reuse that. For clarity, moving data read here because it's not being used by macrosheet
   macrofin <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
   
-  # DELETE for first time only
-  macrofin <- mutate(macrofin, access_date = Sys.Date())
-  write.csv(macrofin, "output/inputs-archive/macrofin.csv", row.names = F)
+  # # DELETE for first time only
+  # macrofin <- mutate(macrofin, access_date = Sys.Date())
+  # write.csv(macrofin, "output/inputs-archive/macrofin.csv", row.names = F)
   
   archiveInputs(macrofin, group_by = c("ISO3"))
   # SPLIT: move above to inputs.R
@@ -1071,9 +1145,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
   wb_phone <- read.csv(paste0(github, "Indicator_dataset/phone.csv"))
   
-  # DELETE for first time only
-  wb_phone <- mutate(wb_phone , access_date = Sys.Date())
-  write.csv(wb_phone , "output/inputs-archive/wb_phone.csv", row.names = F)
+  # # DELETE for first time only
+  # wb_phone <- mutate(wb_phone , access_date = Sys.Date())
+  # write.csv(wb_phone , "output/inputs-archive/wb_phone.csv", row.names = F)
   
   archiveInputs(wb_phone , group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -1082,9 +1156,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
   imf_unemployment <- read_csv(paste0(github, "Indicator_dataset/imf_unemployment.csv"))
   
-  # DELETE for first time only
-  imf_unemployment  <- mutate(imf_unemployment , access_date = Sys.Date())
-  write.csv(imf_unemployment , "output/inputs-archive/imf_unemployment.csv", row.names = F)
+  # # DELETE for first time only
+  # imf_unemployment  <- mutate(imf_unemployment , access_date = Sys.Date())
+  # write.csv(imf_unemployment , "output/inputs-archive/imf_unemployment.csv", row.names = F)
   
   archiveInputs(imf_unemployment , group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -1365,9 +1439,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   iri_forecast <- seasonl_risk #Go through and reduce renamings
   
-  # DELETE for first time only
-  iri_forecast <- mutate(iri_forecast, access_date = Sys.Date())
-  write.csv(iri_forecast, "output/inputs-archive/iri_forecast.csv", row.names = F)
+  # # DELETE for first time only
+  # iri_forecast <- mutate(iri_forecast, access_date = Sys.Date())
+  # write.csv(iri_forecast, "output/inputs-archive/iri_forecast.csv", row.names = F)
   
   archiveInputs(iri_forecast, group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -1382,9 +1456,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
     dplyr::select(-X1)
   
   fao_locust <- locust_risk
-  # DELETE for first time only
-  fao_locust <- mutate(fao_locust, access_date = Sys.Date())
-  write.csv(fao_locust, "output/inputs-archive/fao_locust.csv", row.names = F)
+  # # DELETE for first time only
+  # fao_locust <- mutate(fao_locust, access_date = Sys.Date())
+  # write.csv(fao_locust, "output/inputs-archive/fao_locust.csv", row.names = F)
   
   archiveInputs(fao_locust, group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -1440,9 +1514,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   fcs <- fcv
   
-  # DELETE for first time only
-  fcs <- mutate(fcs, access_date = Sys.Date())
-  write.csv(fcs, "output/inputs-archive/fcs.csv", row.names = F)
+  # # DELETE for first time only
+  # fcs <- mutate(fcs, access_date = Sys.Date())
+  # write.csv(fcs, "output/inputs-archive/fcs.csv", row.names = F)
   
   archiveInputs(fcs, group_by = c("Country"))
   # SPLIT: move above to inputs.R
@@ -1648,9 +1722,9 @@ idp <- un_idp %>%
   # Also, update code to use Spark
   # Also, run profiler on code
   
-  # DELETE for first time only
-  reign <- mutate(reign, access_date = Sys.Date(), precip = round(precip, 10)) # truncating precip so that it's easier to tell whether data matches
-  # write.csv(reign, "output/inputs-archive/reign.csv", row.names = F) #1.361MB
+  # # DELETE for first time only
+  # reign <- mutate(reign, access_date = Sys.Date(), precip = round(precip, 10)) # truncating precip so that it's easier to tell whether data matches
+  # # write.csv(reign, "output/inputs-archive/reign.csv", row.names = F) #1.361MB
   
   archiveInputs(reign, group_by = c("country", "leader", "year", "month"))
   # SPLIT: move above to inputs.R
