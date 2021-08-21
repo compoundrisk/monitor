@@ -19,31 +19,76 @@ invisible(lapply(packages, require, quietly = TRUE, character.only = TRUE))
 # github <- "https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/"
 github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 
-{
-  #--------------------FUNCTION TO CALCULATE NORMALISED SCORES-----------------
-  # Function to normalise with upper and lower bounds (when low score = high vulnerability)
-  normfuncneg <- function(df, upperrisk, lowerrisk, col1) {
-    # Create new column col_name as sum of col1 and col2
-    df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] <= upperrisk, 10,
-                                          ifelse(df[[col1]] >= lowerrisk, 0,
-                                                 ifelse(df[[col1]] > upperrisk & df[[col1]] < lowerrisk, 10 - (upperrisk - df[[col1]]) / 
-                                                          (upperrisk - lowerrisk) * 10, NA)
-                                          )
-    )
-    df
+archiveInputs <- function(data,
+                          path = paste0("output/inputs-archive/", deparse(substitute(data)), ".csv"), 
+                          newFile = F,
+                          # group_by defines the groups for which most recent data should be taken
+                          group_by = "CountryCode",
+                          today = Sys.Date(),
+                          return = F,
+                          large = F) {
+  # Read in the existing file for the input, which will be appended with new data
+  prev <- read_csv(path) %>%
+    mutate(access_date = as.Date(access_date))
+  
+  # Select the most recently added data for each unless group_by is set to false
+  if(is.null(group_by)) {
+    most_recent <- prev
+  } else {
+    most_recent <- prev %>%
+      # .dots allows group_by to take a vector of character strings
+      group_by(.dots = group_by) %>%
+      slice_max(order_by = access_date)
   }
   
-  # Function to normalise with upper and lower bounds (when high score = high vulnerability)
-  normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
-    # Create new column col_name as sum of col1 and col2
-    df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] >= upperrisk, 10,
-                                          ifelse(df[[col1]] <= lowerrisk, 0,
-                                                 ifelse(df[[col1]] < upperrisk & df[[col1]] > lowerrisk, 10 - (upperrisk - df[[col1]]) / 
-                                                          (upperrisk - lowerrisk) * 10, NA)
-                                          )
-    )
-    df
+  # Add access_date for new data
+  data <- mutate(data, access_date = today)
+  
+  # Row bind `most_recent` and `data`, in order to make comparison (probably a better way)
+  # Could quicken a bit by only looking at columns that matter (ie. don't compare
+  # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
+  # new dates. Those automatically get added. 
+  if(!large) {
+    bound <- rbind(most_recent, data)
+    data_fresh <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
+      filter(access_date == today) %>% 
+      distinct()
+  } else {
+    # (Other way) Paste all columns together in order to compare via %in%, and then select the
+    # data rows that aren't in 
+    # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
+    data_paste <- do.call(paste0, select(data, -access_date))
+    most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
+    data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
+    }
+  # Append new data to CSV
+  combined <- rbind(prev, data_fresh) %>% distinct()
+  write.csv(combined, path, row.names = F)
+  if(return == T) return(combined)
+}
+
+loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), full = F){
+  # Read in CSV
+  data <- read_csv(paste0("output/inputs-archive/", filename, ".csv"))
+  # Select only data from before the as_of date, for reconstructing historical indicators
+  if(as_of < Sys.Date()) {
+    data <- filter(data, access_date <= as_of)
   }
+  # Select the most recent access_date for each group, unless group_by = F
+  if(is.null(group_by)) {
+    most_recent <- data
+  } else {
+    most_recent <- data %>%
+      # .dots allows group_by to take a vector of character strings
+      group_by(.dots = group_by) %>%
+      slice_max(order_by = access_date) %>%
+      ungroup()
+  }
+  if(!full) return(most_recent)
+  return(data)
+}
+
+
   lap <- Sys.time() - runtime
   print(paste("Setup:", lap, units(lap)))
   lapStart <- Sys.time()
@@ -94,6 +139,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   gaplist <- na.locf(gap)
   
   # Create new dataframe with correct countrynames
+  # FIX: column names are swapped. Country column lists event, not countryname
   acapslist <- cbind.data.frame(country, gaplist)
   acapslist <- acapslist[!acapslist$country %in% countrynam, ]
   acapslist <- acapslist %>%
@@ -386,8 +432,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #Create normalised scores
   Ox_cov_resp <- normfuncneg(Ox_cov_resp, 15, 80, "H_GovernmentResponseIndexForDisplay")
-  Ox_cov_resp <- normfuncneg(Ox_cov_resp, 0, 100, "H_EconomicSupportIndexForDisplay")
-  
+
   #------------------------------—INFORM COVID------------------------------------------------------
   # SLOW
   inform_cov <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Covid-19/INFORM-Covid-19-Warning-beta-version")
@@ -487,6 +532,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
   wmo_don <- countrylist %>%
     dplyr::select(-X) %>%
+    # Should we specify which dates we care about?
+    # Also a problem where *end* of outbreaks are also reported
     mutate(wmo_don_alert = case_when(Country %in% wmo_don_full$wmo_country_alert ~ 10,
                                      TRUE ~ 0))  %>%
     rename(H_wmo_don_alert = wmo_don_alert) %>%

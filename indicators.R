@@ -94,6 +94,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   gaplist <- na.locf(gap)
   
   # Create new dataframe with correct countrynames
+  # FIX: column names are swapped. Country column lists event, not countryname
   acapslist <- cbind.data.frame(country, gaplist)
   acapslist <- acapslist[!acapslist$country %in% countrynam, ]
   acapslist <- acapslist %>%
@@ -184,25 +185,47 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #
   
   #--------------------—HIS Score-----------------
-  HIS <- read.csv(paste0(github, "Indicator_dataset/HIS.csv"))
+  ghsi <- read.csv(paste0(github, "Indicator_dataset/HIS.csv"))
   
-  HIS <- HIS %>%
+  ghsi <- ghsi %>%
     rename(Country = H_Country) %>%
     dplyr::select(-X)
   
-  #Normalise scores
-  HIS <- normfuncneg(HIS, 20, 70, "H_HIS_Score")
+  # DELETE for first time only
+  ghsi <- mutate(ghsi, access_date = Sys.Date() - 1)
+  write.csv(ghsi, "output/inputs-archive/ghsi.csv", row.names = F)
+  
+  archiveInputs(ghsi, group_by = "Country")
+  # SPLIT: move above to inputs.R
+  # OR instead of splitting, I could wrap everything above this (read.csv to archive) 
+  # in an if statement, so you can run the script without this section if you're
+  # trying to recreate data
+  ghsi <- loadInputs("ghsi", group_by = "Country")
+  
+  # Normalise scores
+  # Rename HIS to ghsi *everywhere*
+  HIS <- normfuncneg(ghsi, 20, 70, "H_HIS_Score")
   
   #-----------------------—Oxford rollback Score-----------------
   #OXrollback <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-scratchpad/master/rollback_checklist/rollback_checklist.csv")
   
-  # Risk of Openness is the reviewed, and updated, version of Oxford Rollback.
-  OXrollback <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-scratchpad/master/risk_of_openness_index/data/riskindex_timeseries_latest.csv")
+  # Risk of Openness is the reviewed, and updated, version of Oxford Rollback. RENAME
+  oxford_openness_risk <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-scratchpad/master/risk_of_openness_index/data/riskindex_timeseries_latest.csv") %>%
+    mutate(Date = as.Date(Date))
+  
+  # DELETE for first time only
+  oxford_openness_risk <- mutate(oxford_openness_risk, access_date = Sys.Date() - 1)
+  write.csv(oxford_openness_risk, "output/inputs-archive/oxford_openness_risk.csv", row.names = F)
+  
+  archiveInputs(oxford_openness_risk, group_by = c("CountryCode", "Date"))
+  # SPLIT: move above to inputs.R
+  # RENAME Oxrollback to oxford_openness_risk
+  OXrollback <- loadInputs("oxford_openness_risk", group_by = c("CountryCode", "Date"))
   
   # Remove NAs and select columns
   # Risk of Openness is a time series; select most recent
   OXrollback <- OXrollback[!is.na(OXrollback$openness_risk),c("CountryCode", "Date", "openness_risk")] %>%
-    mutate(Date = as.Date(Date)) %>%
+    # mutate(Date = as.Date(Date)) %>%
     arrange(desc(Date)) %>%
     { .[!duplicated(.$CountryCode),] } %>%
     dplyr::select(-Date)
@@ -228,7 +251,18 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #------------------------—COVID deaths and cases--------------------------
   # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
-  covidweb <- read.csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv")
+  # See warning
+  covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv")
+  
+  # Super slow to find changed data in this 30MB file. For now, not important because
+  # it includes its own historical data
+  # # DELETE for first time only
+  # owid_covid <- mutate(covidweb, access_date = Sys.Date() - 1)
+  # write.csv(owid_covid, "output/inputs-archive/owid_covid.csv", row.names = F)
+  # 
+  # archiveInputs(owid_covid, group_by = c("iso_code", "date"))
+  # # SPLIT: move above to inputs.R
+  # covidweb <- loadInputs("owid_covid", group_by = c("iso_code", "date"))
   
   covid <- covidweb %>%
     mutate(date = as.Date(date)) %>%
@@ -370,7 +404,12 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #--------------------------—Oxford Response Tracker----------------------------
   # SLOW: 10 seconds with w/ `read.csv`, 5 with `read_csv`
-  Oxres <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv")
+  # see warning
+  Oxres <- read_csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv")
+  Oxres$Date <- as.Date(as.character(Oxres$Date), "%Y%m%d")
+
+  # Not including inputsArchive because dataset is large and includes historical data.
+  # Still SPLIT?
   
   #Select latest data
   Ox_cov_resp <- Oxres %>%
@@ -379,7 +418,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
     dplyr::select(
       CountryCode, Date, GovernmentResponseIndex, GovernmentResponseIndexForDisplay,
       EconomicSupportIndex, EconomicSupportIndexForDisplay, ContainmentHealthIndex,
-      ContainmentHealthIndexForDisplay, E1_Income.support, E1_Flag
+      ContainmentHealthIndexForDisplay, `E1_Income support`, E1_Flag
     )
   
   colnames(Ox_cov_resp) <- c("Country", paste0("H_", colnames(Ox_cov_resp[,-1])))
@@ -450,11 +489,24 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
       .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname")]
     )
   
+  # FIX renaming
+  inform_covid <- type_convert(inform_covid_warning)
+  
+  # DELETE for first time only
+  inform_covid <- mutate(inform_covid_warning, access_date = Sys.Date()) %>% 
+    type_convert()
+  write.csv(inform_covid, "output/inputs-archive/inform_covid.csv", row.names = F)
+
+  archiveInputs(inform_covid, group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"))
+  
   inform_covid_warning <- normfuncpos(inform_covid_warning, 6, 2, "H_INFORM_rating.Value")
   
   write.csv(inform_covid_warning, "Indicator_dataset/inform_covid_warning.csv")
   
   #----------------------------------—WMO DONS--------------------------------------------------------------
+  # REPLACE all WMO with WHO
   dons_raw <- read_html("https://www.who.int/emergencies/disease-outbreak-news")
   
   dons_select <- dons_raw %>%
@@ -473,8 +525,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   wmo_don_full <- bind_cols(dons_text, dons_date) %>%
     rename(text = "...1" ,
            date = "...2") %>%
-    mutate(disease = trimws(sub("\\s[-——].*", "", text)),
-           country = trimws(sub(".*–", "", text)),
+    mutate(disease = trimws(sub("\\s[-——ｰ].*", "", text)),
+           country = trimws(sub(".*[-——ｰ]", "", text)),
            country = trimws(sub(".*-", "", country)),
            date = dmy(date)) %>%
     separate_rows(country, sep = ",") %>%
@@ -484,9 +536,21 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
                                            nomatch = NULL
     ))
   
+  who_don <- wmo_don_full
+  
+  # DELETE for first time only
+  who_don <- mutate(wmo_don_full, access_date = Sys.Date())
+  write.csv(who_don, "output/inputs-archive/who_don.csv", row.names = F)
+  
+  archiveInputs(who_don, group_by = NULL)
+  # SPLIT: move above to inputs.R
+  wmo_don_full <- loadInputs("who_don", group_by = NULL)
+  
   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
   wmo_don <- countrylist %>%
     dplyr::select(-X) %>%
+    # Should we specify which dates we care about?
+    # Also a problem where *end* of outbreaks are also reported
     mutate(wmo_don_alert = case_when(Country %in% wmo_don_full$wmo_country_alert ~ 10,
                                      TRUE ~ 0))  %>%
     rename(H_wmo_don_alert = wmo_don_alert) %>%
@@ -538,6 +602,14 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
                             nomatch = NULL
       ))
   
+  # DELETE for first time only
+  proteus <- mutate(proteus, access_date = Sys.Date())
+  write.csv(proteus, "output/inputs-archive/proteus.csv", row.names = F)
+  
+  archiveInputs(proteus, group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  proteus <- loadInputs("proteus", group_by = c("Country"))
+  
   upperrisk <- quantile(proteus$F_Proteus_Score, probs = c(0.90), na.rm = T)
   lowerrisk <- quantile(proteus$F_Proteus_Score, probs = c(0.10), na.rm = T)
   proteus <- normfuncpos(proteus, upperrisk, lowerrisk, "F_Proteus_Score")
@@ -546,6 +618,14 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #Load database
   fewswb <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
+  
+  # DELETE for first time only
+  fewsnet <- mutate(fewswb, access_date = Sys.Date())
+  write.csv(fewsnet, "output/inputs-archive/fewsnet.csv", row.names = F)
+  
+  archiveInputs(fewswb, path = "output/inputs-archive/fewsnet.csv", group_by = c("country", "year_month"))
+  # SPLIT: move above to inputs.R
+  fewswb <- loadInputs("fewsnet", group_by = c("country", "year_month"))
   
   #Calculate country totals
   fewsg <- fewswb %>%
@@ -651,7 +731,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #------------------------—WBG FOOD PRICE MONITOR------------------------------------
   ag_ob_data <- read.csv(paste0(github, "Indicator_dataset/food-inflation.csv"))
-
+  # FIX: Not yet recording historical data because data is structured messily, with 
+  # dates as columns. Fortunately, dataset includes historical data
   ag_ob_data <- ag_ob_data %>%
   mutate_at(
     vars(contains("19"), contains("20"), contains("21")),
@@ -710,7 +791,25 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
                                  nomatch = NULL
     ))
   
-  fao_wfp$F_fao_wfp_warning <- 10
+  # fao_wfp$F_fao_wfp_warning <- 10
+  
+  fao_all <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv")) %>%
+    mutate(F_fao_wfp_warning = 0)
+  
+  fao_all <- subset(countrylist, Country %in% fao_wfp$Country) %>%
+    mutate(F_fao_wfp_warning = 10)
+  
+  fao_all[fao_all$Country %in% fao_wfp$Country,"F_fao_wfp_warning"] <- 10
+  
+  fao_wfp <- fao_all
+  
+  # DELETE for first time only
+  fao_wfp <- mutate(fao_wfp, access_date = Sys.Date())
+  write.csv(fao_wfp, "output/inputs-archive/fao_wfp.csv", row.names = F)
+  
+  archiveInputs(fao_wfp, group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"))
   
   #------------------------—Create combined Food Security sheet--------------------
   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
@@ -743,7 +842,16 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
   destfile <- "RBTracker.xls"
   curl::curl_download(url, destfile)
-  eiu_data <- read_excel(destfile, sheet = "Data Values", skip = 3)
+  eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
+
+  # DELETE for first time only
+  eiu <- mutate(eiu, access_date = Sys.Date() - 1)
+  write.csv(eiu, "output/inputs-archive/eiu.csv", row.names = F)
+  
+  archiveInputs(eiu, group_by = c("`SERIES NAME`", "MONTH"))
+  # SPLIT: move above to inputs.R
+  eiu_data <- loadInputs("eiu", group_by = c("`SERIES NAME`", "MONTH")) %>%
+    select(-access_date)
   
   country_nam <- colnames(eiu_data) 
   country_nam <- country_nam[4:length(country_nam)]
@@ -863,9 +971,17 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #
   
   #---------------------------—Alternative socio-economic data (based on INFORM)
-  inform_2021 <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_2021.csv"), col_types = cols()))
+  inform_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_2021.csv"), col_types = cols()))
   
-  inform_data <- inform_2021 %>%
+  # DELETE for first time only
+  inform_risk <- mutate(inform_risk, access_date = Sys.Date())
+  write.csv(inform_risk, "output/inputs-archive/inform_risk.csv", row.names = F)
+  
+  archiveInputs(inform_risk, group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  inform_risk <- loadInputs("inform_risk", group_by = c("Country"))
+  
+  inform_data <- inform_risk %>%
     dplyr::select(Country, "Socio-Economic Vulnerability") %>%
     rename(S_INFORM_vul = "Socio-Economic Vulnerability")
   
@@ -900,28 +1016,44 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
       ))
   
   #--------------------------—MPO: Poverty projections----------------------------------------------------
-  mpo_data <- read.csv("https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/Indicator_dataset/mpo.csv")
+  mpo <- read_csv(paste0(github, "Indicator_dataset/mpo.csv"))
+  
+  # DELETE for first time only
+  mpo <- mutate(mpo, access_date = Sys.Date())
+  write.csv(mpo, "output/inputs-archive/mpo.csv", row.names = F)
+  
+  archiveInputs(mpo, group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  mpo <- loadInputs("mpo", group_by = c("Country"))
   
   #-----------------------------—HOUSEHOLD HEATMAP FROM MACROFIN-------------------------------------
-  # If Macro Fin Review is re-included above, we can reuse that. For clarity, moving data read here because it's not being used by macrosheet
-  data <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
+  # If EFI Macro Financial Review is re-included above, we can reuse that. For clarity, moving data read here because it's not being used by macrosheet
+  macrofin <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
   
-  macrofin <- data %>%
+  # DELETE for first time only
+  macrofin <- mutate(macrofin, access_date = Sys.Date())
+  write.csv(macrofin, "output/inputs-archive/macrofin.csv", row.names = F)
+  
+  archiveInputs(macrofin, group_by = c("ISO3"))
+  # SPLIT: move above to inputs.R
+  macrofin <- loadInputs("macrofin", group_by = c("ISO3"))
+  
+  macrofin <- macrofin %>%
     mutate_at(
-      vars(Monetary.and.financial.conditions, contains("risk")),
+      vars(`Monetary.and.financial.conditions`, contains("risk")),
       funs(case_when(
         . == "Low" ~ 0,
         . == "Medium" ~ 0.5,
         . == "High" ~ 1,
         TRUE ~ NA_real_
       ))) %>%
-    mutate(macrofin_risk = dplyr::select(., Spillover.risks.from.the.external.environment.outside.the.region:Household.risks) %>% rowSums(na.rm=T)) %>%
+    mutate(macrofin_risk = dplyr::select(., `Spillover.risks.from.the.external.environment.outside.the.region`:`Household.risks`) %>% rowSums(na.rm=T)) %>%
     rename_with(
       .fn = ~ paste0("M_", .),
       .cols = colnames(.)[!colnames(.) %in% c("Country.Name","ISO3")]
     ) %>%
     rename(Country = ISO3) %>%
-    dplyr::select(-Country.Name)
+    dplyr::select(-`Country.Name`)
   
   macrofin <- normfuncpos(macrofin, 2.1, 0, "M_macrofin_risk")
   
@@ -937,18 +1069,35 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
            S_Household.risks_raw = M_Household.risks_raw)
   
   #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
-  phone_index_data <- read.csv(paste0(github, "Indicator_dataset/phone.csv"))
+  wb_phone <- read.csv(paste0(github, "Indicator_dataset/phone.csv"))
+  
+  # DELETE for first time only
+  wb_phone <- mutate(wb_phone , access_date = Sys.Date())
+  write.csv(wb_phone , "output/inputs-archive/wb_phone.csv", row.names = F)
+  
+  archiveInputs(wb_phone , group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  wb_phone  <- loadInputs("wb_phone", group_by = c("Country"))
   
   #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
-  imf_un <- read.csv(paste0(github, "Indicator_dataset/imf_unemployment.csv"))
+  imf_unemployment <- read_csv(paste0(github, "Indicator_dataset/imf_unemployment.csv"))
   
-  imf_un <- imf_un %>%
+  # DELETE for first time only
+  imf_unemployment  <- mutate(imf_unemployment , access_date = Sys.Date())
+  write.csv(imf_unemployment , "output/inputs-archive/imf_unemployment.csv", row.names = F)
+  
+  archiveInputs(imf_unemployment , group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"))
+  # FIX
+  
+  imf_un <- imf_unemployment %>%
     mutate_at(
-      vars(contains("X2")),
+      vars(starts_with("20")),
       ~ as.numeric(as.character(.))
     ) %>%
-    mutate(change_unemp_21 = X2021 - X2020,
-           change_unemp_20 = X2020 - X2019) %>%
+    mutate(change_unemp_21 = `2021` - `2020`,
+           change_unemp_20 = `2020` - `2019`) %>%
     rename(
       Countryname = Country,
       Country = ISO3
@@ -957,6 +1106,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
       .fn = ~ paste0("S_", .),
       .cols = -contains("Country")
     ) %>%
+    rename_with(.fn = ~ gsub("\\s", ".", .)) %>%
     dplyr::select(-Countryname) %>%
     filter(S_Subject.Descriptor == "Unemployment rate")
   
@@ -980,10 +1130,10 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
     #dplyr::select(-Countryname) %>%
     left_join(countrylist, inform_data, by = "Country") %>%
     left_join(., socio_forward, by = "Country") %>%
-    left_join(., mpo_data, by = "Country") %>%
+    left_join(., mpo, by = "Country") %>%
     left_join(., imf_un, by = "Country") %>%
     left_join(., household_risk, by = "Country") %>%
-    left_join(., phone_index_data, by = "Country") %>%
+    left_join(., wb_phone, by = "Country") %>%
     arrange(Country)
   
   write.csv(socioeconomic_sheet, "Risk_sheets/Socioeconomic_sheet.csv")
@@ -1104,6 +1254,47 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   # Combine into one dataframe
   gdaclist <- rbind.data.frame(eq, cy, fl, vo, dr)
+  gdaclist[,1] <- gsub(c("\r\n\\s*"), "", gdaclist[,1])
+  gdaclist[,2] <- gsub(c("\r\n\\s*"), "", gdaclist[,2])
+  
+  gdacs <- mutate(gdaclist,
+                  access_date = Sys.Date(),
+                  mag = na_if(mag, ""),
+                  names = trimws(names)
+                  # , current = TRUE
+                  )
+  # DELETE for first time only
+  # write.csv(gdacs, "output/inputs-archive/gdacs.csv", row.names = F)
+  
+  # Add all currently online events to gdacs file unless most recent access_date and
+  # current data are fully identical
+  gdacs_prev <- read_csv("output/inputs-archive/gdacs.csv")
+  gdacs_prev_recent <- filter(gdacs_prev, access_date == max(access_date)) %>% distinct()
+  if(!identical(select(gdacs_prev_recent, -access_date), select(gdacs, -access_date))) {
+    gdacs <- rbind(gdacs_prev, gdacs) %>% distinct()
+    write.csv(gdacs, "output/inputs-archive/gdacs.csv", row.names = F)
+  }
+  
+  # # There may be a more efficient approach that gives all currently online events a TRUE `current` variable, and
+  # # when an event is no longer current, it receives a FALSE for its next entry.
+  # gdacs_prev <- read.csv("output/inputs-archive/gdacs.csv")
+  # # Select only the most recent entries for each event, which were current at least until "today"
+  # gdacs_prev_current <- filter(gdacs_prev, current == TRUE) %>%
+  #   group_by(names, mag, date, status, haz, hazard) %>%
+  #   slice_max(order_by = access_date)
+  # # I need to select the rows that appear in gdacs_prev_current but not gdacs
+  # bound <- rbind(gdacs, gdacs_prev_current)
+  # gdacs_changed <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
+  #   filter(access_date != today)
+  # gdacs_changed <- gdacs_changed %>% mutate(current = FALSE, access_date = Sys.Date())
+  # gdacs <- rbind(gdacs, gdacs_changed, gdacs_prev) %>% distinct()
+  
+  # SPLIT
+  gdacs <- read_csv("output/inputs-archive/gdacs.csv") %>%
+    mutate(access_date = as.Date(access_date)) %>%
+    filter(access_date == max(access_date))
+  
+  gdaclist <- gdacs
   
   # change times
   gdaclist$date <- ifelse(gdaclist$hazard != c("drought") & gdaclist$status == "active", paste(as.Date(parse_date_time(gdaclist$date, orders = c("dm HM")))),
@@ -1113,14 +1304,17 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   )
   
   # Remove duplicate countries for drought
-  gdaclist$names <- as.character(gdaclist$names)
+  gdaclist$names <- as.character(gdaclist$names) # does this do anything?
   add <- gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]
   gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names <- sub("-.*", "", gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names)
   add$names <- sub(".*-", "", add$names)
   gdaclist <- rbind(gdaclist, add)
   
   # Drought orange
+  # UPDATE? Does this need to now be 2021?
+  # All droughts on GDAC are current ... 
   gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2020", "active", gdaclist$status)
+  gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2021", "active", gdaclist$status)
   
   # Country names
   gdaclist$namesiso <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
@@ -1145,10 +1339,13 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
   
-  inform_2021 <- read.csv(paste0(github, "Indicator_dataset/INFORM_2021.csv"))
+  # inform_risk <- read.csv(paste0(github, "Indicator_dataset/INFORM_2021.csv"))
+  
+  # SPLIT: move above to inputs.R
+  inform_risk <- loadInputs("inform_risk", group_by = c("Country"))
   
   # Rename country
-  informnathaz <- inform_2021 %>%
+  informnathaz <- inform_risk %>%
     dplyr::select(Country, Natural) %>%
     rename(NH_Hazard_Score = Natural) %>%
     drop_na(Country, NH_Hazard_Score)
@@ -1166,12 +1363,35 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
       NH_seasonal_risk_norm = risklevel
     )
   
+  iri_forecast <- seasonl_risk #Go through and reduce renamings
+  
+  # DELETE for first time only
+  iri_forecast <- mutate(iri_forecast, access_date = Sys.Date())
+  write.csv(iri_forecast, "output/inputs-archive/iri_forecast.csv", row.names = F)
+  
+  archiveInputs(iri_forecast, group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  iri_forecast <- loadInputs("iri_forecast", group_by = c("Country"))
+  
+  seasonl_risk <- iri_forecast # Go through and actually name iri_forecast
   #-------------------------------------—Locust outbreaks----------------------------------------------
   # List of countries and risk factors associated with locusts (FAO), see:http://www.fao.org/ag/locusts/en/info/info/index.html
   
   locust_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/locust_risk.csv"), col_types = cols()))
   locust_risk <- locust_risk %>%
     dplyr::select(-X1)
+  
+  fao_locust <- locust_risk
+  # DELETE for first time only
+  fao_locust <- mutate(fao_locust, access_date = Sys.Date())
+  write.csv(fao_locust, "output/inputs-archive/fao_locust.csv", row.names = F)
+  
+  archiveInputs(fao_locust, group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  fao_locust <- loadInputs("fao_locust", group_by = c("Country"))
+  
+  locust_risk <- fao_locust
+  
   #---------------------------------—Natural Hazard ACAPS---------------------------------
   acaps_nh <- acapssheet[,c("Country", "NH_natural_acaps")]
   
@@ -1206,16 +1426,29 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #-------------------------—FCS---------------------------------------------
   
-  fcv <- read.csv(paste0(github, "Indicator_dataset/Country_classification.csv")) %>%
-    dplyr::select(-X, Countryname, -IDA.status) %>%
+  fcv <- read_csv(paste0(github, "Indicator_dataset/Country_classification.csv")) %>%
+    dplyr::select(-X1, Countryname, -`IDA-status`) %>%
+    mutate(FCV_status = tolower(FCV_status)) %>%
     mutate(
       FCV_normalised = case_when(
-        FCV_status == "High-Intensity conflict" ~ 10,
-        FCV_status == "Medium-Intensity conflict" ~ 10,
-        FCV_status == "High-Institutional and Social Fragility" ~ 10,
+        FCV_status == tolower("High-Intensity conflict") ~ 10,
+        FCV_status == tolower("Medium-Intensity conflict") ~ 10,
+        FCV_status == tolower("High-Institutional and Social Fragility") ~ 10,
         TRUE ~ 0
       )
     )
+  
+  fcs <- fcv
+  
+  # DELETE for first time only
+  fcs <- mutate(fcs, access_date = Sys.Date())
+  write.csv(fcs, "output/inputs-archive/fcs.csv", row.names = F)
+  
+  archiveInputs(fcs, group_by = c("Country"))
+  # SPLIT: move above to inputs.R
+  fcs <- loadInputs("fcs", group_by = c("Country"))
+  
+  fcv <- fcs
   
   #-----------------------------—IDPs--------------------------------------------------------
 idp_data <- read_csv(paste0(github, "Indicator_dataset/population.csv"),
@@ -1226,8 +1459,18 @@ idp_data <- read_csv(paste0(github, "Indicator_dataset/population.csv"),
                       ), skip = 14
 )
 
+  un_idp <- idp_data
+  
+  # # DELETE for first time only
+  # un_idp <- mutate(un_idp, access_date = Sys.Date())
+  # write.csv(un_idp, "output/inputs-archive/un_idp.csv", row.names = F)
+  
+  archiveInputs(un_idp, group_by = c("`Country of origin (ISO)`", "`Country of asylum (ISO)`", "`Year`"))
+  # SPLIT: move above to inputs.R
+  un_idp <- loadInputs("un_idp", group_by = c("`Country of origin (ISO)`", "`Country of asylum (ISO)`", "`Year`"))
+  
 # Calculate metrics
-idp <- idp_data %>%
+idp <- un_idp %>%
   group_by(`Country of origin (ISO)`, Year) %>%
   summarise(
     refugees = sum(`Refugees under UNHCR mandate`, na.rm = T),
@@ -1289,8 +1532,12 @@ idp <- idp_data %>%
   # Get ACLED API URL
   acled_url <- paste0("https://api.acleddata.com/acled/read/?key=*9t-89Rn*bDb4qFXBAmO&email=ljones12@worldbank.org&event_date=",
                       three_year,
-                      "&event_date_where=>&fields=iso3|fatalities|event_date&limit=0")
+                      "&event_date_where=>&fields=event_id_cnty|iso3|fatalities|event_date&limit=0")
   
+  # acled_url2 <- paste0("https://api.acleddata.com/acled/read/?key=*9t-89Rn*bDb4qFXBAmO&email=ljones12@worldbank.org&event_date=",
+  #                     three_year,
+  #                     "&event_date_where=>&fields=iso3|fatalities|event_date|event_type|actor1|&limit=0")
+  # 
   # #Get ACLED API URL
   # acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
   #                     three_year,
@@ -1299,14 +1546,25 @@ idp <- idp_data %>%
   # Retrieve information
   acled_data <- fromJSON(acled_url)
   
+  acled <- acled_data$data 
+
+  # # DELETE for first time only
+  # acled <- mutate(acled, access_date = Sys.Date())
+  # write.csv(acled, "output/inputs-archive/acled.csv", row.names = F)
+  
+  archiveInputs(acled, group_by = NULL)
+  # SPLIT: move above to inputs.R
+  acled <- loadInputs("acled", group_by = NULL) #158274
+  
   # Progress conflict data
-  acled <- acled_data$data %>%
+  acled <- acled %>%
     mutate(
       fatalities = as.numeric(as.character(fatalities)),
       date = as.Date(event_date),
       month_yr = as.yearmon(date)
     ) %>%
     # Remove dates for the latest month (or month that falls under the prior 6 weeks)
+    # Is there a way to still acknowledge countries with high fatalities in past 6 weeks?
     filter(as.Date(as.yearmon(date)) <= as.Date(as.yearmon(Sys.Date() - 45))) %>% 
     group_by(iso3, month_yr) %>%
     summarise(fatal_month = sum(fatalities, na.rm = T),
@@ -1379,7 +1637,28 @@ idp <- idp_data %>%
     i <- i + 1
   }
   
-  reign_start <- reign_data %>%
+  reign <- reign_data 
+  # could speed up by only filtering reign for last two years, assumption being that they're
+  # aren't many backfilled entries
+  reign <- filter(reign, year > (format.Date(Sys.Date(), "%Y") %>% as.numeric() - 3))
+  # thoughtfully develop a naming convention. perhaps the inputs-archive does append
+  # _data (or just _inputs?). What is called reign and what is called reign_data, etc.
+  # reign_raw reign_archive reign_data reign_inputs. What will all the tables be in Spark,
+  # for each dataset?
+  # Also, update code to use Spark
+  # Also, run profiler on code
+  
+  # DELETE for first time only
+  reign <- mutate(reign, access_date = Sys.Date(), precip = round(precip, 10)) # truncating precip so that it's easier to tell whether data matches
+  # write.csv(reign, "output/inputs-archive/reign.csv", row.names = F) #1.361MB
+  
+  archiveInputs(reign, group_by = c("country", "leader", "year", "month"))
+  # SPLIT: move above to inputs.R
+  # Note that the file-loaded data set is one fewer than the downloaded dataset because Maia Sandu is duplicated.
+  # Going forward, I need to fix this so that back-and-forths in leadership are acknowledged
+  reign <- loadInputs("reign", group_by = c("country", "leader", "year", "month"))
+  
+  reign_start <- reign %>%
     filter(year == max(year, na.rm= T)) %>%
     group_by(country) %>%
     slice(which.max(month)) %>%

@@ -826,7 +826,7 @@ indicatorChanges <- function(indicator) {
   # Make sure Countries line up in the two columns
   wrong_rows <- which(subset(long_ind)[, 'Country'] != subset(prev_ind)[, 'Country'])
   if (sum(wrong_rows) > 0) {
-    warning("Rows are not aligned. See following rows in the newer dataframe: ", long$Index[wrong_rows,])
+    warning("Rows are not aligned. See following rows in the newer dataframe: ", long_ind$Index[wrong_rows,])
   }
   
   changes <- which(subset(long_ind)[, 'Value'] != subset(prev_ind)[, 'Value'])
