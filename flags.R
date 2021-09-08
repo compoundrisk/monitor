@@ -676,8 +676,8 @@ reliabilitysheet <- reliabilitysheet %>%
 
 # Write as a csv file for the reliability sheet
 write.csv(reliabilitysheet, "Risk_sheets/reliabilitysheet.csv")
-write.csv(reliabilitysheet, "ouput/risk-sheets/reliabilitysheet.csv")
-write.csv(reliabilitysheet, paste0("ouput/risk-sheets/archive/", Sys.Date(), "-reliabilitysheet.csv"))
+write.csv(reliabilitysheet, "output/risk-sheets/reliabilitysheet.csv")
+write.csv(reliabilitysheet, paste0("output/risk-sheets/archive/", Sys.Date(), "-reliabilitysheet.csv"))
 
 #------------------------------—Combine the reliability sheet with the global database------------------------------------
 reliable <- reliabilitysheet %>%
@@ -687,8 +687,8 @@ globalrisk <- left_join(globalrisk, reliable, by = c("Countryname", "Country"))
 
 # Save database of all risk indicators (+ reliability scores)
 write.csv(globalrisk, "Risk_sheets/Global_compound_risk_database.csv")
-write.csv(globalrisk, "ouput/risk-sheets/Global_compound_risk_database.csv")
-write.csv(globalrisk, paste0("ouput/risk-sheets/archive/", Sys.Date(),"-Global_compound_risk_database.csv"))
+write.csv(globalrisk, "output/risk-sheets/Global_compound_risk_database.csv")
+write.csv(globalrisk, paste0("output/risk-sheets/archive/", Sys.Date(),"-Global_compound_risk_database.csv"))
 
 #------------------------------—Combine the reliability sheet with the summary risk flag sheet-----------------------------
 reliable <- reliabilitysheet %>%
@@ -706,8 +706,8 @@ riskflags <- left_join(riskflags %>%
 # Write csv file of all risk flags (+reliability scores)
 
 write.csv(riskflags, "Risk_sheets/Compound_Risk_Flag_Sheets.csv")
-write.csv(riskflags, "ouput/risk-sheets/Compound_Risk_Flag_Sheets.csv")
-write.csv(riskflags, paste0("ouput/risk-sheets/archive/", Sys.Date(), "-Compound_Risk_Flag_Sheets.csv"))
+write.csv(riskflags, "output/risk-sheets/Compound_Risk_Flag_Sheets.csv")
+write.csv(riskflags, paste0("output/risk-sheets/archive/", Sys.Date(), "-Compound_Risk_Flag_Sheets.csv"))
 
 #
 ##
@@ -817,7 +817,7 @@ long <- rbind(indicators_long, flags_long) %>%
 # sum(c(F, F, F))
 
 # Compare, attempt 2
-prev <- read_csv("ouput/crm-output-latest.csv")
+prev <- read_csv("output/crm-output-latest.csv")
 
 indicatorChanges <- function(indicator) {
   long_ind <- subset(long, Key == indicator)
@@ -843,16 +843,16 @@ updateLog <- data.frame(Indicator = indicators$Indicator, Changed_Countries = sa
       ))
 
 updateLog <- updateLog %>% .[!is.na(.$Update_Date),]    
-updateLogPrevious <- read_csv("ouput/updates-log.csv")
+updateLogPrevious <- read_csv("output/updates-log.csv")
 updateLogCombined <- rbind(updateLog, updateLogPrevious) %>%
   .[!is.na(.$Update_Date),]
-write_csv(updateLogCombined, "ouput/updates-log.csv")
+write_csv(updateLogCombined, "output/updates-log.csv")
 
 # Write long output file (crm-output-latest.csv) ----
-# outputPrevious <- read_csv("ouput/crm-output-latest.csv")
-write_csv(long, "ouput/crm-output-latest.csv")
+# outputPrevious <- read_csv("output/crm-output-latest.csv")
+write_csv(long, "output/crm-output-latest.csv")
 
-outputAll <- read_csv("ouput/crm-output-all.csv")
+outputAll <- read_csv("output/crm-output-all.csv")
 # colnames(outputAll) <- colnames(outputAll) %>% gsub("\\.", " ", .)
 
 long <- long %>%
@@ -866,7 +866,7 @@ long <- long %>%
 
 outputAll <- rbind(outputAll, long)
 
-write_csv(outputAll, "ouput/crm-output-all.csv")
+write_csv(outputAll, "output/crm-output-all.csv")
 
 # Country changes ----
 # List countries that changed 
@@ -910,6 +910,6 @@ write_csv(outputAll, "ouput/crm-output-all.csv")
 flagChanges <- countFlagChanges(outputAll)
 
 # rmarkdown::render('output-report.Rmd', output_format = c("html_document", "pdf_document"), output_file = paste0("reports/", Sys.Date(), "-report") %>% rep(2))
-write.csv(flagChanges, "ouput/reports/flag-changes.csv")
+write.csv(flagChanges, "output/reports/flag-changes.csv")
 
-rmarkdown::render('output-report.Rmd', output_format = "html_document", output_file = paste0("ouput/reports/", Sys.Date(), "-report"))
+rmarkdown::render('output-report.Rmd', output_format = "html_document", output_file = paste0("output/reports/", Sys.Date(), "-report"))
