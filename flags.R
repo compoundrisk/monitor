@@ -42,9 +42,9 @@ countrylist <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundrisk
 # Join datasets
 # — `globalrisk` ----
 globalrisk <- left_join(countrylist, healthsheet, by = c("Countryname", "Country")) %>%
-  left_join(., foodsecurity, by = c("Countryname", "Country")) %>%
+  left_join(., foodsecurity, by = c("Country")) %>%
   # left_join(., debtsheet, by = c("Countryname", "Country")) %>%
-  left_join(., fragilitysheet, by = c("Country")) %>%
+  left_join(., fragilitysheet, by = c("Country")) %>% # Removed Countryname because the column was missing
   left_join(., macrosheet, by = c("Countryname", "Country")) %>%
   left_join(., Naturalhazardsheet, by = c("Countryname", "Country")) %>%
   left_join(., Socioeconomic_sheet, by = c("Countryname", "Country")) %>%
@@ -826,7 +826,7 @@ indicatorChanges <- function(indicator) {
   # Make sure Countries line up in the two columns
   wrong_rows <- which(subset(long_ind)[, 'Country'] != subset(prev_ind)[, 'Country'])
   if (sum(wrong_rows) > 0) {
-    warning("Rows are not aligned. See following rows in the newer dataframe: ", long$Index[wrong_rows,])
+    warning("Rows are not aligned. See following rows in the newer dataframe: ", long_ind$Index[wrong_rows,])
   }
   
   changes <- which(subset(long_ind)[, 'Value'] != subset(prev_ind)[, 'Value'])

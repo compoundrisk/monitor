@@ -483,8 +483,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   wmo_don_full <- bind_cols(dons_text, dons_date) %>%
     rename(text = "...1" ,
            date = "...2") %>%
-    mutate(disease = trimws(sub("\\s[-——].*", "", text)),
-           country = trimws(sub(".*–", "", text)),
+    mutate(disease = trimws(sub("\\s[-——ｰ].*", "", text)),
+           country = trimws(sub(".*[-——ｰ]", "", text)),
            country = trimws(sub(".*-", "", country)),
            date = dmy(date)) %>%
     separate_rows(country, sep = ",") %>%
@@ -873,6 +873,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #
   
   #---------------------------—Alternative socio-economic data (based on INFORM)
+  # File is actually the 2022 INFORM, but called 2021 to not mess up Azavea
   inform_2021 <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_2021.csv"), col_types = cols()))
   
   inform_data <- inform_2021 %>%
@@ -910,8 +911,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
       ))
   
   #--------------------------—MPO: Poverty projections----------------------------------------------------
-  mpo_data <- read.csv("https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/Indicator_dataset/mpo.csv")
-  # FIX: replace with paste0(github...)
+  mpo_data <- read.csv(paste0(github, "Indicator_dataset/mpo.csv"))
+
   #-----------------------------—HOUSEHOLD HEATMAP FROM MACROFIN-------------------------------------
   # If Macro Fin Review is re-included above, we can reuse that. For clarity, moving data read here because it's not being used by macrosheet
   data <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
@@ -1123,6 +1124,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   )
   
   # Remove duplicate countries for drought
+  # Creates new rows for each country in a row; use tidyr::separate_rows() to split rows;
+  # Also deal with regions like "Balkans"
   gdaclist$names <- as.character(gdaclist$names)
   add <- gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]
   gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names <- sub("-.*", "", gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names)
@@ -1131,6 +1134,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   # Drought orange
   gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2020", "active", gdaclist$status)
+  # Include droughts from 2021
+  gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2021", "active", gdaclist$status)
   
   # Country names
   gdaclist$namesiso <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
