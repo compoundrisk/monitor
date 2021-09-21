@@ -1694,7 +1694,7 @@ i <- 0
 while(l == F & i < 20) {
   tryCatch(
     {
-      reign_data <- suppressMessages(read_csv(paste0("https://cdn.rawgit.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
+      reign_data <- suppressMessages(read_csv(paste0("https://raw.githubusercontent.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
                                               col_types = cols()))
       l <- T
       print(paste0("Found REIGN csv at ", year, "_", month))
@@ -1748,7 +1748,7 @@ reign_start <- reign %>%
     )) %>%
   rename(Country = country)
 
-# Add FSI/BRD threshold
+# Add FSI/BRD threshold (BRD is battle-related deaths)
 reign <- left_join(reign_start, fcv %>% dplyr::select(Country, FCV_normalised), by = "Country") %>%
   mutate(
     irreg_lead_ant = case_when(
