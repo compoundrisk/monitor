@@ -1354,7 +1354,7 @@ idp <- idp_data %>%
       ),
       fatal_z_norm = case_when(
         fatal_3_month_log == 0 ~ 0,
-        (fatal_3_month_log <= log(5 + 1) ~ 0,
+        (fatal_3_month_log <= log(5 + 1)) ~ 0,
         TRUE ~ fatal_z_norm
       )
     ) %>%
