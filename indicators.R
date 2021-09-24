@@ -1675,8 +1675,7 @@ acled <- acled %>%
     ),
     fatal_z_norm = case_when(
       fatal_3_month_log == 0 ~ 0,
-      (fatal_3_month_log <= log(5 + 1) & fatal_3_month_log != 0 ) & fatal_z <= 1 ~ 0,
-      (fatal_3_month_log <= log(5 + 1) & fatal_3_month_log != 0 ) & fatal_z >= 1 ~ 5,
+      (fatal_3_month_log <= log(5 + 1)) ~ 0,
       TRUE ~ fatal_z_norm
     )
   ) %>%
