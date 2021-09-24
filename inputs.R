@@ -16,39 +16,79 @@ packages <- c("curl", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2",
               "sjmisc", "stringr", "tidyr", "xml2", "zoo")
 invisible(lapply(packages, require, quietly = TRUE, character.only = TRUE))
 
-# # install.packages("sparklyr")
-# SparkR::sparkR.session()
-# library(sparklyr)
-# sc <- spark_connect(method = "databricks")
-
-
 # github <- "https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/"
 github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 
-  #--------------------FUNCTION TO CALCULATE NORMALISED SCORES-----------------
-  # Function to normalise with upper and lower bounds (when low score = high vulnerability)
-  normfuncneg <- function(df, upperrisk, lowerrisk, col1) {
-    # Create new column col_name as sum of col1 and col2
-    df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] <= upperrisk, 10,
-                                          ifelse(df[[col1]] >= lowerrisk, 0,
-                                                 ifelse(df[[col1]] > upperrisk & df[[col1]] < lowerrisk, 10 - (upperrisk - df[[col1]]) / 
-                                                          (upperrisk - lowerrisk) * 10, NA)
-                                          )
-    )
-    df
+archiveInputs <- function(data,
+                          path = paste0("output/inputs-archive/", deparse(substitute(data)), ".csv"), 
+                          newFile = F,
+                          # group_by defines the groups for which most recent data should be taken
+                          group_by = "CountryCode",
+                          today = Sys.Date(),
+                          return = F,
+                          large = F) {
+  # Read in the existing file for the input, which will be appended with new data
+  prev <- read_csv(path) %>%
+    mutate(access_date = as.Date(access_date))
+  
+  # Select the most recently added data for each unless group_by is set to false
+  if(is.null(group_by)) {
+    most_recent <- prev
+  } else {
+    most_recent <- prev %>%
+      # .dots allows group_by to take a vector of character strings
+      group_by(.dots = group_by) %>%
+      slice_max(order_by = access_date)
   }
   
-  # Function to normalise with upper and lower bounds (when high score = high vulnerability)
-  normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
-    # Create new column col_name as sum of col1 and col2
-    df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] >= upperrisk, 10,
-                                          ifelse(df[[col1]] <= lowerrisk, 0,
-                                                 ifelse(df[[col1]] < upperrisk & df[[col1]] > lowerrisk, 10 - (upperrisk - df[[col1]]) / 
-                                                          (upperrisk - lowerrisk) * 10, NA)
-                                          )
-    )
-    df
+  # Add access_date for new data
+  data <- mutate(data, access_date = today)
+  
+  # Row bind `most_recent` and `data`, in order to make comparison (probably a better way)
+  # Could quicken a bit by only looking at columns that matter (ie. don't compare
+  # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
+  # new dates. Those automatically get added. 
+  if(!large) {
+    bound <- rbind(most_recent, data)
+    data_fresh <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
+      filter(access_date == today) %>% 
+      distinct()
+  } else {
+    # (Other way) Paste all columns together in order to compare via %in%, and then select the
+    # data rows that aren't in 
+    # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
+    data_paste <- do.call(paste0, select(data, -access_date))
+    most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
+    data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
+    }
+  # Append new data to CSV
+  combined <- rbind(prev, data_fresh) %>% distinct()
+  write.csv(combined, path, row.names = F)
+  if(return == T) return(combined)
+}
+
+loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), full = F){
+  # Read in CSV
+  data <- read_csv(paste0("output/inputs-archive/", filename, ".csv"))
+  # Select only data from before the as_of date, for reconstructing historical indicators
+  if(as_of < Sys.Date()) {
+    data <- filter(data, access_date <= as_of)
   }
+  # Select the most recent access_date for each group, unless group_by = F
+  if(is.null(group_by)) {
+    most_recent <- data
+  } else {
+    most_recent <- data %>%
+      # .dots allows group_by to take a vector of character strings
+      group_by(.dots = group_by) %>%
+      slice_max(order_by = access_date) %>%
+      ungroup()
+  }
+  if(!full) return(most_recent)
+  return(data)
+}
+
+
   lap <- Sys.time() - runtime
   print(paste("Setup:", lap, units(lap)))
   lapStart <- Sys.time()
@@ -99,7 +139,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   gaplist <- na.locf(gap)
   
   # Create new dataframe with correct countrynames
-# FIX: column names are swapped. Country column lists event, not countryname
+  # FIX: column names are swapped. Country column lists event, not countryname
   acapslist <- cbind.data.frame(country, gaplist)
   acapslist <- acapslist[!acapslist$country %in% countrynam, ]
   acapslist <- acapslist %>%
@@ -392,8 +432,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   #Create normalised scores
   Ox_cov_resp <- normfuncneg(Ox_cov_resp, 15, 80, "H_GovernmentResponseIndexForDisplay")
-  Ox_cov_resp <- normfuncneg(Ox_cov_resp, 0, 100, "H_EconomicSupportIndexForDisplay")
-  
+
   #------------------------------—INFORM COVID------------------------------------------------------
   # SLOW
   inform_cov <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Covid-19/INFORM-Covid-19-Warning-beta-version")
@@ -459,11 +498,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   inform_covid_warning <- normfuncpos(inform_covid_warning, 6, 2, "H_INFORM_rating.Value")
   
   write.csv(inform_covid_warning, "Indicator_dataset/inform_covid_warning.csv")
-  # FIX: for databricks, will need to replace this with copy_to a spark table, or similar
   
   #----------------------------------—WMO DONS--------------------------------------------------------------
   dons_raw <- read_html("https://www.who.int/emergencies/disease-outbreak-news")
-  # FIX: same error as for reading acaps. Note that read_html() does work in databricks; works for inform_cov
   
   dons_select <- dons_raw %>%
     html_nodes(".sf-list-vertical") %>%
@@ -481,8 +518,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   wmo_don_full <- bind_cols(dons_text, dons_date) %>%
     rename(text = "...1" ,
            date = "...2") %>%
-    mutate(disease = trimws(sub("\\s[-——ｰ].*", "", text)),
-           country = trimws(sub(".*[-——ｰ]", "", text)),
+    mutate(disease = trimws(sub("\\s[-——].*", "", text)),
+           country = trimws(sub(".*–", "", text)),
            country = trimws(sub(".*-", "", country)),
            date = dmy(date)) %>%
     separate_rows(country, sep = ",") %>%
@@ -495,6 +532,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
   wmo_don <- countrylist %>%
     dplyr::select(-X) %>%
+    # Should we specify which dates we care about?
+    # Also a problem where *end* of outbreaks are also reported
     mutate(wmo_don_alert = case_when(Country %in% wmo_don_full$wmo_country_alert ~ 10,
                                      TRUE ~ 0))  %>%
     rename(H_wmo_don_alert = wmo_don_alert) %>%
@@ -871,7 +910,6 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   #
   
   #---------------------------—Alternative socio-economic data (based on INFORM)
-  # File is actually the 2022 INFORM, but called 2021 to not mess up Azavea
   inform_2021 <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_2021.csv"), col_types = cols()))
   
   inform_data <- inform_2021 %>%
@@ -909,8 +947,8 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
       ))
   
   #--------------------------—MPO: Poverty projections----------------------------------------------------
-  mpo_data <- read.csv(paste0(github, "Indicator_dataset/mpo.csv"))
-
+  mpo_data <- read.csv("https://raw.githubusercontent.com/bennotkin/compoundriskdata/docker/Indicator_dataset/mpo.csv")
+  
   #-----------------------------—HOUSEHOLD HEATMAP FROM MACROFIN-------------------------------------
   # If Macro Fin Review is re-included above, we can reuse that. For clarity, moving data read here because it's not being used by macrosheet
   data <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
@@ -952,9 +990,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   imf_un <- read.csv(paste0(github, "Indicator_dataset/imf_unemployment.csv"))
   
   imf_un <- imf_un %>%
-    mutate(across(
-      contains("X2"),
-      ~ as.numeric(as.character(.)))
+    mutate_at(
+      vars(contains("X2")),
+      ~ as.numeric(as.character(.))
     ) %>%
     mutate(change_unemp_21 = X2021 - X2020,
            change_unemp_20 = X2020 - X2019) %>%
@@ -1122,8 +1160,6 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   )
   
   # Remove duplicate countries for drought
-  # Creates new rows for each country in a row; use tidyr::separate_rows() to split rows;
-  # Also deal with regions like "Balkans"
   gdaclist$names <- as.character(gdaclist$names)
   add <- gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]
   gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names <- sub("-.*", "", gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names)
@@ -1132,8 +1168,6 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   # Drought orange
   gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2020", "active", gdaclist$status)
-  # Include droughts from 2021
-  gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2021", "active", gdaclist$status)
   
   # Country names
   gdaclist$namesiso <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
@@ -1221,12 +1255,11 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
   
   fcv <- read.csv(paste0(github, "Indicator_dataset/Country_classification.csv")) %>%
     dplyr::select(-X, Countryname, -IDA.status) %>%
-    mutate(FCV_status = tolower(FCV_status)) %>%
     mutate(
       FCV_normalised = case_when(
-        FCV_status == tolower("High-Intensity conflict") ~ 10,
-        FCV_status == tolower("Medium-Intensity conflict") ~ 10,
-        FCV_status == tolower("High-Institutional and Social Fragility") ~ 10,
+        FCV_status == "High-Intensity conflict" ~ 10,
+        FCV_status == "Medium-Intensity conflict" ~ 10,
+        FCV_status == "High-Institutional and Social Fragility" ~ 10,
         TRUE ~ 0
       )
     )
@@ -1354,7 +1387,8 @@ idp <- idp_data %>%
       ),
       fatal_z_norm = case_when(
         fatal_3_month_log == 0 ~ 0,
-        (fatal_3_month_log <= log(5 + 1) ~ 0,
+        (fatal_3_month_log <= log(5 + 1) & fatal_3_month_log != 0 ) & fatal_z <= 1 ~ 0,
+        (fatal_3_month_log <= log(5 + 1) & fatal_3_month_log != 0 ) & fatal_z >= 1 ~ 5,
         TRUE ~ fatal_z_norm
       )
     ) %>%
@@ -1372,8 +1406,7 @@ idp <- idp_data %>%
   while(l == F & i < 20) {
     tryCatch(
       {
-        # August file was too large for the previous URL
-        reign_data <- suppressMessages(read_csv(paste0("https://raw.githubusercontent.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
+        reign_data <- suppressMessages(read_csv(paste0("https://cdn.rawgit.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
                                                 col_types = cols()))
         l <- T
         print(paste0("Found REIGN csv at ", year, "-", month))
@@ -1406,7 +1439,7 @@ idp <- idp_data %>%
       )) %>%
     rename(Country = country)
   
-# Add FSI/BRD threshold (BRD is battle-related deaths)
+  # Add FSI/BRD threshold
   reign <- left_join(reign_start, fcv %>% dplyr::select(Country, FCV_normalised), by = "Country") %>%
     mutate(
       irreg_lead_ant = case_when(
@@ -1478,3 +1511,4 @@ idp <- idp_data %>%
 
   lap <- Sys.time() - lapStart
   print(paste("Fragility sheet written", lap, units(lap)))
+}
