@@ -820,25 +820,25 @@ filter(X == "Food Change Yoy") %>%
 dplyr::select(-Income.Level, -Color.Bin, -X) %>%
 group_by(Country) %>%
 summarise(
-  Mar = Mar.20[which(!is.na(Mar.20))[1]],
-  Apr = Apr.20[which(!is.na(Apr.20))[1]],
-  May = May.20[which(!is.na(May.20))[1]],
-  June = Jun.20[which(!is.na(Jun.20))[1]],
-  Jul = Jul.20[which(!is.na(Jul.20))[1]],
-  Aug = Aug.20[which(!is.na(Aug.20))[1]],
-  Sep = Sep.20[which(!is.na(Sep.20))[1]],
-  Oct = Oct.20[which(!is.na(Oct.20))[1]],
-  Nov = Nov.20[which(!is.na(Nov.20))[1]],
-  Dec = Dec.20[which(!is.na(Dec.20))[1]],
-  Jan = Jan.21[which(!is.na(Jan.21))[1]],
-  Feb = Feb.21[which(!is.na(Feb.21))[1]]
-    ) %>%
-mutate(fpv = case_when(
-  !is.na(Feb) ~ Feb,
-  is.na(Feb) & !is.na(Jan) ~ Jan,
-  is.na(Feb) & is.na(Jan) & !is.na(Dec) ~ Nov,
-  TRUE ~ NA_real_
-),
+    Sep = Sep.20[which(!is.na(Sep.20))[1]],
+    Oct = Oct.20[which(!is.na(Oct.20))[1]],
+    Nov = Nov.20[which(!is.na(Nov.20))[1]],
+    Dec = Dec.20[which(!is.na(Dec.20))[1]],
+    Jan = Jan.21[which(!is.na(Jan.21))[1]],
+    Feb = Feb.21[which(!is.na(Feb.21))[1]],
+    Mar = Mar.20[which(!is.na(Mar.21))[1]],
+    Apr = Apr.21[which(!is.na(Apr.21))[1]],
+    May = May.21[which(!is.na(May.21))[1]],
+    Jun = Jun.21[which(!is.na(Jun.21))[1]],
+    Jul = Jul.21[which(!is.na(Jul.21))[1]],
+    Aug = Aug.21[which(!is.na(Aug.21))[1]]
+  ) %>%
+  mutate(fpv = case_when(
+    !is.na(Aug) ~ Aug,
+    is.na(Aug) & !is.na(Jul) ~ Jul,
+    is.na(Aug) & is.na(Jul) & !is.na(Jun) ~ Jun,
+    TRUE ~ NA_real_
+  ),
 fpv_rating = case_when(
   fpv <= 0.02 ~ 1,
   fpv > 0.02 & fpv <= 0.05 ~ 3,
