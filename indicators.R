@@ -1606,32 +1606,32 @@ idp <- idp %>%
 
 #-------------------------—ACLED data---------------------------------------------
 # Select date as three years plus two month (date to retrieve ACLED data)
-three_year <- as.Date(as.yearmon(Sys.Date() - 45) - 3.2)
+# three_year <- as.Date(as.yearmon(Sys.Date() - 45) - 3.2)
 
-# Get ACLED API URL
-acled_url <- paste0("https://api.acleddata.com/acled/read/?key=*9t-89Rn*bDb4qFXBAmO&email=ljones12@worldbank.org&event_date=",
-                    three_year,
-                    "&event_date_where=>&fields=event_id_cnty|iso3|fatalities|event_date&limit=0")
-
-# acled_url2 <- paste0("https://api.acleddata.com/acled/read/?key=*9t-89Rn*bDb4qFXBAmO&email=ljones12@worldbank.org&event_date=",
-#                     three_year,
-#                     "&event_date_where=>&fields=iso3|fatalities|event_date|event_type|actor1|&limit=0")
-# 
-# #Get ACLED API URL
+# # Get ACLED API URL
 # acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
 #                     three_year,
-#                     "&event_date_where=>&fields=iso3|fatalities|event_date&limit=0")
+#                     "&event_date_where=>&fields=event_id_cnty|iso3|fatalities|event_date&limit=0")
 
-# Retrieve information
-acled_data <- fromJSON(acled_url)
+# # acled_url2 <- paste0("https://api.acleddata.com/acled/read/?key=*9t-89Rn*bDb4qFXBAmO&email=ljones12@worldbank.org&event_date=",
+# #                     three_year,
+# #                     "&event_date_where=>&fields=iso3|fatalities|event_date|event_type|actor1|&limit=0")
+# # 
+# # #Get ACLED API URL
+# # acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
+# #                     three_year,
+# #                     "&event_date_where=>&fields=iso3|fatalities|event_date&limit=0")
 
-acled <- acled_data$data 
+# # Retrieve information
+# acled_data <- fromJSON(acled_url)
 
-# # DELETE for first time only
-# acled <- mutate(acled, access_date = Sys.Date())
-# write.csv(acled, "output/inputs-archive/acled.csv", row.names = F)
+# acled <- acled_data$data 
 
-archiveInputs(acled, group_by = NULL)
+# # # DELETE for first time only
+# # acled <- mutate(acled, access_date = Sys.Date())
+# # write.csv(acled, "output/inputs-archive/acled.csv", row.names = F)
+
+# archiveInputs(acled, group_by = NULL)
 # SPLIT: move above to inputs.R
 acled <- loadInputs("acled", group_by = NULL) #158274
 
@@ -1685,52 +1685,52 @@ acled <- acled %>%
   dplyr::select(-iso3)
 
 #--------------------------—REIGN--------------------------------------------
-# reign_data <- suppressMessages(read_csv("https://cdn.rawgit.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_2021_5.csv", col_types = cols()))
+# # reign_data <- suppressMessages(read_csv("https://cdn.rawgit.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_2021_5.csv", col_types = cols()))
 
-month <- as.numeric(format(Sys.Date(),"%m"))
-year <- as.numeric(format(Sys.Date(),"%Y"))
+# month <- as.numeric(format(Sys.Date(),"%m"))
+# year <- as.numeric(format(Sys.Date(),"%Y"))
 
-l <- F
-i <- 0
-while(l == F & i < 20) {
-  tryCatch(
-    {
-      reign_data <- suppressMessages(read_csv(paste0("https://raw.githubusercontent.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
-                                              col_types = cols()))
-      l <- T
-      print(paste0("Found REIGN csv at ", year, "_", month))
-    }, error = function(e) {
-      print(paste0("No REIGN csv for ", year, "_", month))
-    }, warning = function(w) {
-    }, finally = {
-    }
-  )
+# l <- F
+# i <- 0
+# while(l == F & i < 20) {
+#   tryCatch(
+#     {
+#       reign_data <- suppressMessages(read_csv(paste0("https://raw.githubusercontent.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
+#                                               col_types = cols()))
+#       l <- T
+#       print(paste0("Found REIGN csv at ", year, "_", month))
+#     }, error = function(e) {
+#       print(paste0("No REIGN csv for ", year, "_", month))
+#     }, warning = function(w) {
+#     }, finally = {
+#     }
+#   )
   
-  if(month > 1) {
-    month <- month - 1
-  } else {
-    month <- 12
-    year <- year - 1
-  }
-  i <- i + 1
-}
+#   if(month > 1) {
+#     month <- month - 1
+#   } else {
+#     month <- 12
+#     year <- year - 1
+#   }
+#   i <- i + 1
+# }
 
-reign <- reign_data 
-# could speed up by only filtering reign for last two years, assumption being that they're
-# aren't many backfilled entries
-reign <- filter(reign, year > (format.Date(Sys.Date(), "%Y") %>% as.numeric() - 3))
-# thoughtfully develop a naming convention. perhaps the inputs-archive does append
-# _data (or just _inputs?). What is called reign and what is called reign_data, etc.
-# reign_raw reign_archive reign_data reign_inputs. What will all the tables be in Spark,
-# for each dataset?
-# Also, update code to use Spark
-# Also, run profiler on code
+# reign <- reign_data 
+# # could speed up by only filtering reign for last two years, assumption being that they're
+# # aren't many backfilled entries
+# reign <- filter(reign, year > (format.Date(Sys.Date(), "%Y") %>% as.numeric() - 3))
+# # thoughtfully develop a naming convention. perhaps the inputs-archive does append
+# # _data (or just _inputs?). What is called reign and what is called reign_data, etc.
+# # reign_raw reign_archive reign_data reign_inputs. What will all the tables be in Spark,
+# # for each dataset?
+# # Also, update code to use Spark
+# # Also, run profiler on code
 
-# # DELETE for first time only
-# reign <- mutate(reign, access_date = Sys.Date(), precip = round(precip, 10)) # truncating precip so that it's easier to tell whether data matches
-# # write.csv(reign, "output/inputs-archive/reign.csv", row.names = F) #1.361MB
+# # # DELETE for first time only
+# # reign <- mutate(reign, access_date = Sys.Date(), precip = round(precip, 10)) # truncating precip so that it's easier to tell whether data matches
+# # # write.csv(reign, "output/inputs-archive/reign.csv", row.names = F) #1.361MB
 
-archiveInputs(reign, group_by = c("country", "leader", "year", "month"))
+# archiveInputs(reign, group_by = c("country", "leader", "year", "month"))
 # SPLIT: move above to inputs.R
 # Note that the file-loaded data set is one fewer than the downloaded dataset because Maia Sandu is duplicated.
 # Going forward, I need to fix this so that back-and-forths in leadership are acknowledged
