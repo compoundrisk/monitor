@@ -81,20 +81,26 @@ archiveInputs <- function(data,
 
 ## GHSI
 #---------------------------------
-ghsi <- read.csv(paste0(github, "Indicator_dataset/HIS.csv"))
-ghsi <- ghsi %>%
-  rename(Country = H_Country) %>%
-  dplyr::select(-X)
-archiveInputs(ghsi, group_by = "Country")
+ghsi_collect <- function() {
+  ghsi <- read.csv(paste0(github, "Indicator_dataset/HIS.csv"))
+  ghsi <- ghsi %>%
+    rename(Country = H_Country) %>%
+    dplyr::select(-X)
+  archiveInputs(ghsi, group_by = "Country")
+}
+ghsi_collect()
 #---------------------------------
 
 ## Oxford Openness
 #---------------------------------
-# Risk of Openness is the reviewed, and updated, version of Oxford Rollback. RENAME
-oxford_openness_risk <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-scratchpad/master/risk_of_openness_index/data/riskindex_timeseries_latest.csv") %>%
-  mutate(Date = as.Date(Date))
-
-archiveInputs(oxford_openness_risk, group_by = c("CountryCode", "Date"))
+oxford_openness_collect <- function() {
+  # Risk of Openness is the reviewed, and updated, version of Oxford Rollback. RENAME
+  oxford_openness_risk <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-scratchpad/master/risk_of_openness_index/data/riskindex_timeseries_latest.csv") %>%
+    mutate(Date = as.Date(Date))
+  
+  archiveInputs(oxford_openness_risk, group_by = c("CountryCode", "Date"))
+}
+oxford_openness_collect()
 #---------------------------------
 
 ## OWID Covid
@@ -107,6 +113,7 @@ archiveInputs(oxford_openness_risk, group_by = c("CountryCode", "Date"))
 # Also used for INFORM Income Support (Socio-economic vulnerability)
 #---------------------------------
 # SLOW
+inform_covid_collect <- function() {
 inform_cov <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Covid-19/INFORM-Covid-19-Warning-beta-version")
 
 all_dat <- lapply(2:24, function(tt) {
@@ -170,10 +177,13 @@ inform_covid_warning <-  inform_covid_warning_raw %>%
 # FIX renaming
 inform_covid <- suppressMessages(type_convert(inform_covid_warning))
 archiveInputs(inform_covid, group_by = c("Country"))
+}
+inform_covid_collect()
 #---------------------------------
 
 ## WHO DONS
 #---------------------------------
+dons_collect <- function() {
 dons_raw <- read_html("https://www.who.int/emergencies/disease-outbreak-news")
 
 dons_select <- dons_raw %>%
@@ -206,11 +216,14 @@ wmo_don_full <- bind_cols(dons_text, dons_date) %>%
 who_don <- wmo_don_full
 
 archiveInputs(who_don, group_by = NULL)
+}
+dons_collect()
 #---------------------------------
 
 #### FOOD SECURITY
 ## Proteus Index
 #---------------------------------
+proteus_collect <- function() {
 proteus <- read.csv(paste0(github, "Indicator_dataset/proteus.csv"))
 
 proteus <- proteus %>%
@@ -224,14 +237,19 @@ proteus <- proteus %>%
     ))
 
 archiveInputs(proteus, group_by = c("Country"))
+}
+proteus_collect()
 #---------------------------------
 
 ## FEWSNET
 #---------------------------------
 
 #Load database
+fews_collect <- function() {
 fewswb <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
 archiveInputs(fewswb, path = "output/inputs-archive/fewsnet.csv", group_by = c("country", "year_month"))
+}
+fews_collect()
 #---------------------------------
 
 ## WBG FOOD PRICE MONITOR
@@ -239,6 +257,7 @@ archiveInputs(fewswb, path = "output/inputs-archive/fewsnet.csv", group_by = c("
 
 ## FAO/WFP HOTSPOTS
 #---------------------------------
+fao_wfp_collect <- function() {
 fao_wfp <- suppressWarnings(read_csv(paste0(github, "Indicator_dataset/WFP%3AFAO_food.csv"), col_types = cols()) %>%
                               dplyr::select(-X2))
 
@@ -263,12 +282,15 @@ fao_all[fao_all$Country %in% fao_wfp$Country,"F_fao_wfp_warning"] <- 10
 fao_wfp <- fao_all
 
 archiveInputs(fao_wfp, group_by = c("Country"))
+}
+fao_wfp_collect()
 #---------------------------------
 
 #### MACRO
 
 ## Economist Intelligence Unit
 #---------------------------------
+eiu_collect <- function() {
 url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
 destfile <- "RBTracker.xls"
 curl::curl_download(url, destfile)
@@ -276,40 +298,55 @@ eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
 file.remove("RBTracker.xls")
 
 archiveInputs(eiu, group_by = c("`SERIES NAME`", "MONTH"))
+}
+eiu_collect()
 #---------------------------------
 
 #### SOCIO-ECONOMIC
 
 ## MPO: Poverty projections
 #---------------------------------
+mpo_collect <- function() {
 mpo <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/mpo.csv")))
 archiveInputs(mpo, group_by = c("Country"))
+}
+mpo_collect()
 #---------------------------------
 
 ## MACROFIN / EFI Macro Financial Review Household Level Risk
 #---------------------------------
+mfr_collect <- function() {
 # If EFI Macro Financial Review is re-included above, we can reuse that. For clarity, moving data read here because it's not being used by macrosheet
 macrofin <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
 archiveInputs(macrofin, group_by = c("ISO3"))
+}
+mfr_collect()
 #---------------------------------
 
 ## WB COVID PHONE SURVEYS
-_Incorporate phone.R_
+#Incorporate phone.R
 #---------------------------------
+phone_collect <- function() {
 wb_phone <- read.csv(paste0(github, "Indicator_dataset/phone.csv"))
 archiveInputs(wb_phone , group_by = c("Country"))
+}
+phone_collect()
 #---------------------------------
 
 ## IMF FORECASTED UNEMPLOYMENT
 #---------------------------------
+imf_collect <- function() {
 imf_unemployment <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/imf_unemployment.csv")))
 archiveInputs(imf_unemployment, group_by = c("Country"))
+}
+imf_collect()
 #---------------------------------
 
 #### NATURAL HAZARDS
 
 ## GDACS
 #---------------------------------
+gdacs_collect <- function() {
 gdacweb <- "https://www.gdacs.org/"
 gdac <- read_html(gdacweb)
 
@@ -430,7 +467,6 @@ if(!identical(select(gdacs_prev_recent, -access_date), select(gdacs, -access_dat
   gdacs <- rbind(gdacs_prev, gdacs) %>% distinct()
   write.csv(gdacs, "output/inputs-archive/gdacs.csv", row.names = F)
 }
-
 # # There may be a more efficient approach that gives all currently online events a TRUE `current` variable, and
 # # when an event is no longer current, it receives a FALSE for its next entry.
 # gdacs_prev <- read.csv("output/inputs-archive/gdacs.csv")
@@ -444,16 +480,22 @@ if(!identical(select(gdacs_prev_recent, -access_date), select(gdacs, -access_dat
 #   filter(access_date != today)
 # gdacs_changed <- gdacs_changed %>% mutate(current = FALSE, access_date = Sys.Date())
 # gdacs <- rbind(gdacs, gdacs_changed, gdacs_prev) %>% distinct()
+}
+gdacs_collect()
 #---------------------------------
 
 ## INFORM Natural Hazard and Exposure Rating
 #---------------------------------
+inform_risk_collect <- function() {
 inform_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_Risk.csv"), col_types = cols()))
 archiveInputs(inform_risk, group_by = c("Country"))
+}
+inform_risk_collect()
 #---------------------------------
 
 ## IRI Seasonal Forecast
 #---------------------------------
+iri_collect <- function() {
 # Load from Github
 seasonl_risk <- suppressWarnings(read_csv(paste0(github, "Indicator_dataset/seasonal_risk_list"), col_types = cols()))
 seasonl_risk <- seasonl_risk %>%
@@ -465,12 +507,14 @@ seasonl_risk <- seasonl_risk %>%
 
 iri_forecast <- seasonl_risk #Go through and reduce renamings
 archiveInputs(iri_forecast, group_by = c("Country"))
+}
+iri_collect()
 #---------------------------------
 
 ## Locust outbreaks
 #---------------------------------
 # List of countries and risk factors associated with locusts (FAO), see:http://www.fao.org/ag/locusts/en/info/info/index.html
-
+locust_collect <- function() {
 locust_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/locust_risk.csv"), col_types = cols()))
 locust_risk <- locust_risk %>%
   dplyr::select(-X1)
@@ -478,12 +522,15 @@ locust_risk <- locust_risk %>%
 fao_locust <- locust_risk
 
 archiveInputs(fao_locust, group_by = c("Country"))
+}
+locust_collect()
 #---------------------------------
 
 # FRAGILITY
 
 ## FCS
 #---------------------------------
+fcs_collect <- function() {
 fcv <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/Country_classification.csv"))) %>%
   dplyr::select(-X1, Countryname, -`IDA-status`) %>%
   mutate(FCV_status = tolower(FCV_status)) %>%
@@ -498,10 +545,13 @@ fcv <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/Country_class
 
 fcs <- fcv
 archiveInputs(fcs, group_by = c("Country"))
+}
+fcs_collect()
 #---------------------------------
 
 ## IDPs
 #---------------------------------
+idp_collect <- function() {
 idp_data <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/population.csv"),
                     col_types = cols(
                       `IDPs of concern to UNHCR` = col_number(),
@@ -512,86 +562,94 @@ idp_data <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/populati
 
 un_idp <- idp_data
 archiveInputs(un_idp, group_by = c("`Country of origin (ISO)`", "`Country of asylum (ISO)`", "`Year`"))
+}
+idp_collect()
 #---------------------------------
 
 ## ACLED
 #---------------------------------
+acled_collect <- function() {
 # Select date as three years plus two month (date to retrieve ACLED data)
-# three_year <- as.Date(as.yearmon(Sys.Date() - 45) - 3.2)
-# 
-# # Get ACLED API URL
+three_year <- as.Date(as.yearmon(Sys.Date() - 45) - 3.2)
+
+# Get ACLED API URL
+acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
+                    three_year,
+                    "&event_date_where=>&fields=event_id_cnty|iso3|fatalities|event_date&limit=0")
+
+# acled_url2 <- paste0("https://api.acleddata.com/acled/read/?key=*9t-89Rn*bDb4qFXBAmO&email=ljones12@worldbank.org&event_date=",
+#                     three_year,
+#                     "&event_date_where=>&fields=iso3|fatalities|event_date|event_type|actor1|&limit=0")
+#
+# #Get ACLED API URL
 # acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
 #                     three_year,
-#                     "&event_date_where=>&fields=event_id_cnty|iso3|fatalities|event_date&limit=0")
-# 
-# # acled_url2 <- paste0("https://api.acleddata.com/acled/read/?key=*9t-89Rn*bDb4qFXBAmO&email=ljones12@worldbank.org&event_date=",
-# #                     three_year,
-# #                     "&event_date_where=>&fields=iso3|fatalities|event_date|event_type|actor1|&limit=0")
-# # 
-# # #Get ACLED API URL
-# # acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
-# #                     three_year,
-# #                     "&event_date_where=>&fields=iso3|fatalities|event_date&limit=0")
-# 
-# # Retrieve information
-# acled_data <- fromJSON(acled_url)
-# 
-# acled <- acled_data$data 
-# 
-# # # DELETE for first time only
-# # acled <- mutate(acled, access_date = Sys.Date())
-# # write.csv(acled, "output/inputs-archive/acled.csv", row.names = F)
-# 
-# archiveInputs(acled, group_by = NULL)
+#                     "&event_date_where=>&fields=iso3|fatalities|event_date&limit=0")
+
+# Retrieve information
+acled_data <- fromJSON(acled_url)
+
+acled <- acled_data$data
+
+# # DELETE for first time only
+# acled <- mutate(acled, access_date = Sys.Date())
+# write.csv(acled, "output/inputs-archive/acled.csv", row.names = F)
+
+archiveInputs(acled, group_by = NULL)
+}
+# acled_collect()
 #---------------------------------
 
 ## REIGN
 #---------------------------------
-# # reign_data <- suppressMessages(read_csv("https://cdn.rawgit.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_2021_5.csv", col_types = cols()))
-# 
-# month <- as.numeric(format(Sys.Date(),"%m"))
-# year <- as.numeric(format(Sys.Date(),"%Y"))
-# 
-# l <- F
-# i <- 0
-# while(l == F & i < 20) {
-#   tryCatch(
-#     {
-#       reign_data <- suppressMessages(read_csv(paste0("https://raw.githubusercontent.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
-#                                               col_types = cols()))
-#       l <- T
-#       print(paste0("Found REIGN csv at ", year, "_", month))
-#     }, error = function(e) {
-#       print(paste0("No REIGN csv for ", year, "_", month))
-#     }, warning = function(w) {
-#     }, finally = {
-#     }
-#   )
-#   
-#   if(month > 1) {
-#     month <- month - 1
-#   } else {
-#     month <- 12
-#     year <- year - 1
-#   }
-#   i <- i + 1
-# }
-# 
-# reign <- reign_data 
-# # could speed up by only filtering reign for last two years, assumption being that they're
-# # aren't many backfilled entries
-# reign <- filter(reign, year > (format.Date(Sys.Date(), "%Y") %>% as.numeric() - 3))
-# # thoughtfully develop a naming convention. perhaps the inputs-archive does append
-# # _data (or just _inputs?). What is called reign and what is called reign_data, etc.
-# # reign_raw reign_archive reign_data reign_inputs. What will all the tables be in Spark,
-# # for each dataset?
-# # Also, update code to use Spark
-# # Also, run profiler on code
-# 
-# # # DELETE for first time only
-# # reign <- mutate(reign, access_date = Sys.Date(), precip = round(precip, 10)) # truncating precip so that it's easier to tell whether data matches
-# # # write.csv(reign, "output/inputs-archive/reign.csv", row.names = F) #1.361MB
-# 
-# archiveInputs(reign, group_by = c("country", "leader", "year", "month"))
+reign_collect <- function() {
+# reign_data <- suppressMessages(read_csv("https://cdn.rawgit.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_2021_5.csv", col_types = cols()))
+
+month <- as.numeric(format(Sys.Date(),"%m"))
+year <- as.numeric(format(Sys.Date(),"%Y"))
+
+l <- F
+i <- 0
+while(l == F & i < 20) {
+  tryCatch(
+    {
+      reign_data <- suppressMessages(read_csv(paste0("https://raw.githubusercontent.com/OEFDataScience/REIGN.github.io/gh-pages/data_sets/REIGN_", year, "_", month, ".csv"),
+                                              col_types = cols()))
+      l <- T
+      print(paste0("Found REIGN csv at ", year, "_", month))
+    }, error = function(e) {
+      print(paste0("No REIGN csv for ", year, "_", month))
+    }, warning = function(w) {
+    }, finally = {
+    }
+  )
+
+  if(month > 1) {
+    month <- month - 1
+  } else {
+    month <- 12
+    year <- year - 1
+  }
+  i <- i + 1
+}
+
+reign <- reign_data
+# could speed up by only filtering reign for last two years, assumption being that they're
+# aren't many backfilled entries
+reign <- filter(reign, year > (format.Date(Sys.Date(), "%Y") %>% as.numeric() - 3))
+# thoughtfully develop a naming convention. perhaps the inputs-archive does append
+# _data (or just _inputs?). What is called reign and what is called reign_data, etc.
+# reign_raw reign_archive reign_data reign_inputs. What will all the tables be in Spark,
+# for each dataset?
+# Also, update code to use Spark
+# Also, run profiler on code
+
+# # DELETE for first time only
+# reign <- mutate(reign, access_date = Sys.Date(), precip = round(precip, 10)) # truncating precip so that it's easier to tell whether data matches
+# # write.csv(reign, "output/inputs-archive/reign.csv", row.names = F) #1.361MB
+
+archiveInputs(reign, group_by = c("country", "leader", "year", "month"))
+}
+# reign_collect()
 #---------------------------------
 
