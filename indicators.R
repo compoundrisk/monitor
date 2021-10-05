@@ -1,23 +1,25 @@
-####
-#
 #  CODE USED TO TO PRODUCE INDIVIDUAL INDICATOR DATASETS AND RISK COMPONENT SHEETS
-#
-####
+
 runtime <- Sys.time()
 #--------------------LOAD PACKAGES-----------------------------------------
-# packagesAll <- c("cowplot", "lubridate", "rvest", "viridis", "countrycode", 
-#                  "clipr", "awalker89", "openxlsx", "dplyr", "readxl", "gsheet",
-#                  "zoo", "wppExplorer", "haven", "EnvStats", "jsonlite", 
-#                  "matrixStats", "ggalt", "raster", "sf", "mapview", "maptools", 
-#                  "ggthemes", "tidyverse", "sjmsc", "googledrive", "rgdal")
-
 packages <- c("curl", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2", 
               "jsonlite","lubridate", "matrixStats", "readr", "readxl", "rvest",   
               "sjmisc", "stringr", "tidyr", "xml2", "zoo")
 invisible(lapply(packages, require, quietly = TRUE, character.only = TRUE))
 
-# github <- "https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/"
+## Set up Spark
+sc <- spark_connect(master = "local") # This is only for when running locally
+# sc <- spark_connect(method = "databricks")
+DBI::dbSendQuery(sc,"CREATE DATABASE IF NOT EXISTS crm")
+sparklyr::tbl_change_db(sc, "crm")
+# setwd("../../../dbfs/mnt/CompoundRiskMonitor")
+setwd("output/inputs-archive")
+#---------------------------------
+
+## Direct Github location (data folder)
+#---------------------------------
 github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
+#---------------------------------
 
 #--------------------FUNCTION TO CALCULATE NORMALISED SCORES-----------------
 # Function to normalise with upper and lower bounds (when low score = high vulnerability)
@@ -26,10 +28,8 @@ normfuncneg <- function(df, upperrisk, lowerrisk, col1) {
   df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] <= upperrisk, 10,
                                         ifelse(df[[col1]] >= lowerrisk, 0,
                                                ifelse(df[[col1]] > upperrisk & df[[col1]] < lowerrisk, 10 - (upperrisk - df[[col1]]) / 
-                                                        (upperrisk - lowerrisk) * 10, NA)
-                                        )
-  )
-  df
+                                                        (upperrisk - lowerrisk) * 10, NA)))
+  return(df)
 }
 
 # Function to normalise with upper and lower bounds (when high score = high vulnerability)
@@ -38,61 +38,11 @@ normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
   df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] >= upperrisk, 10,
                                         ifelse(df[[col1]] <= lowerrisk, 0,
                                                ifelse(df[[col1]] < upperrisk & df[[col1]] > lowerrisk, 10 - (upperrisk - df[[col1]]) / 
-                                                        (upperrisk - lowerrisk) * 10, NA)
-                                        )
-  )
-  df
+                                                        (upperrisk - lowerrisk) * 10, NA)))
+  return(df)
 }
 
-#--------------------FUNCTIONS TO ARCHIVE ALL INPUT DATA-----------------
-archiveInputs <- function(data,
-                          path = paste0("output/inputs-archive/", deparse(substitute(data)), ".csv"), 
-                          newFile = F,
-                          # group_by defines the groups for which most recent data should be taken
-                          group_by = "CountryCode",
-                          today = Sys.Date(),
-                          return = F,
-                          large = F) {
-  # Read in the existing file for the input, which will be appended with new data
-  prev <- suppressMessages(read_csv(path)) %>%
-    mutate(access_date = as.Date(access_date))
-  
-  # Select the most recently added data for each unless group_by is set to false
-  if(is.null(group_by)) {
-    most_recent <- prev
-  } else {
-    most_recent <- prev %>%
-      # .dots allows group_by to take a vector of character strings
-      group_by(.dots = group_by) %>%
-      slice_max(order_by = access_date)
-  }
-  
-  # Add access_date for new data
-  data <- mutate(data, access_date = today)
-  
-  # Row bind `most_recent` and `data`, in order to make comparison (probably a better way)
-  # Could quicken a bit by only looking at columns that matter (ie. don't compare
-  # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
-  # new dates. Those automatically get added. 
-  if(!large) {
-    bound <- rbind(most_recent, data)
-    data_fresh <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
-      filter(access_date == today) %>% 
-      distinct()
-  } else {
-    # (Other way) Paste all columns together in order to compare via %in%, and then select the
-    # data rows that aren't in 
-    # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
-    data_paste <- do.call(paste0, select(data, -access_date))
-    most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
-    data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
-  }
-  # Append new data to CSV
-  combined <- rbind(prev, data_fresh) %>% distinct()
-  write.csv(combined, path, row.names = F)
-  if(return == T) return(combined)
-}
-
+#--------------------FUNCTIONS TO LOAD INPUT DATA-----------------
 loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), full = F){
   # The as_of argument let's you run the function from a given historical date. Update indicators.R
   # to use this feature -- turning indicators.R into a function? with desired date as an argument
@@ -116,7 +66,6 @@ loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), f
   return(data)
 }
 
-
 lap <- Sys.time() - runtime
 print(paste("Setup:", lap, units(lap)))
 lapStart <- Sys.time()
@@ -129,6 +78,8 @@ lapStart <- Sys.time()
 #
 
 #--------------------—LOAD ACAPS realtime database-------------------------------------------
+acaps_process <- function() {
+# SPLIT UP INTO INPUTS SECTION
 # Load website
 acaps <- read_html("https://www.acaps.org/countries")
 
@@ -243,8 +194,9 @@ acapssheet <- countrylist %>%
     )
   )
 
-# Write ACAPS sheet
-write.csv(acapssheet, "Risk_sheets/acapssheet.csv")
+return(acapssheet)
+}
+acapssheet <- acaps_process()
 
 lap <- Sys.time() - lapStart
 print(paste("ACAPS sheet written", lap, units(lap)))
@@ -258,6 +210,8 @@ lapStart <- Sys.time()
 #
 
 #--------------------—HIS Score-----------------
+ghsi_process <- function() {
+  
 # OR instead of splitting, I could wrap everything above this (read.csv to archive) 
 # in an if statement, so you can run the script without this section if you're
 # trying to recreate data
@@ -266,9 +220,13 @@ ghsi <- loadInputs("ghsi", group_by = "Country")
 # Normalise scores
 # Rename HIS to ghsi *everywhere*
 HIS <- normfuncneg(ghsi, 20, 70, "H_HIS_Score")
+return(HIS)
+}
+HIS <- ghsi_process()
 
 #-----------------------—Oxford rollback Score-----------------
 # RENAME Oxrollback to oxford_openness_risk
+oxford_openness_process <- function() {
 OXrollback <- loadInputs("oxford_openness_risk", group_by = c("CountryCode", "Date"))
 
 # Remove NAs and select columns
@@ -297,8 +255,12 @@ upperrisk <- quantile(OXrollback$H_Oxrollback_score, probs = c(0.9), na.rm = T)
 lowerrisk <- quantile(OXrollback$H_Oxrollback_score, probs = c(0.1), na.rm = T)
 
 OXrollback <- normfuncpos(OXrollback, upperrisk, lowerrisk, "H_Oxrollback_score")
+return(OXrollback)
+}
+OXrollback <- oxford_openness_process()
 
 #------------------------—COVID deaths and cases--------------------------
+owid_covid_process <- function() {
 # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
 # See warning
 covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
@@ -451,8 +413,18 @@ colnames(covidcurrent) <- c(
 # 
 # # Normalise
 # cov_forcast_alt <- normfuncpos(cov_forcast_alt, 100, 0, "H_add_death_prec_current")
+return(list(
+  covidcurrent,
+  covidgrowth
+))
+}
+
+owid_covid <- owid_covid_process()
+covidcurrent <- owid_covid[1]
+covidgrowth <- owid_covid[2]
 
 #--------------------------—Oxford Response Tracker----------------------------
+Oxres_process <- function() {
 # SLOW: 10 seconds with w/ `read.csv`, 5 with `read_csv`
 # see warning
 Oxres <- read_csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv",
@@ -478,16 +450,21 @@ colnames(Ox_cov_resp) <- c("Country", paste0("H_", colnames(Ox_cov_resp[,-1])))
 #Create normalised scores
 Ox_cov_resp <- normfuncneg(Ox_cov_resp, 15, 80, "H_GovernmentResponseIndexForDisplay")
 Ox_cov_resp <- normfuncneg(Ox_cov_resp, 0, 100, "H_EconomicSupportIndexForDisplay")
+return(Ox_cov_resp)
+}
+Ox_cov_resp <- Oxres_process()
 
 #------------------------------—INFORM COVID------------------------------------------------------
+inform_covid_process <- function() {
 inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"))
-
 inform_covid_warning <- normfuncpos(inform_covid_warning, 6, 2, "H_INFORM_rating.Value")
-
-write.csv(inform_covid_warning, "Indicator_dataset/inform_covid_warning.csv")
+return(inform_covid_warning)
+}
+inform_covid_warning <- inform_covid_process()
 
 #----------------------------------—WHO DONS--------------------------------------------------------------
 # REPLACE all WMO with WHO
+who_process <- function() {
 wmo_don_full <- loadInputs("who_don", group_by = NULL)
 
 countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
@@ -499,11 +476,15 @@ wmo_don <- countrylist %>%
                                    TRUE ~ 0))  %>%
   rename(H_wmo_don_alert = wmo_don_alert) %>%
   dplyr::select(-Countryname)
+return(wmo_don)
+}
+wmo_don <- who_process()
 
 #---------------------------------—Health ACAPS---------------------------------
 acaps_health <- acapssheet[,c("Country", "H_health_acaps")]
 
 #----------------------------------—Create combined Health Sheet-------------------------------------------
+collate_health <- function() {
 countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
 countrylist <- countrylist %>%
   dplyr::select(-X)
@@ -520,6 +501,7 @@ health_sheet <- left_join(countrylist, HIS, by = "Country") %>%
   arrange(Country)
 
 write.csv(health_sheet, "Risk_sheets/healthsheet.csv")
+}
 
 lap <- Sys.time() - lapStart
 print(paste("Health sheet written", lap, units(lap)))
@@ -534,13 +516,19 @@ lapStart <- Sys.time()
 
 #---------------------------------—LOAD FOOD SECURITY DATA---------------------------
 # -------------------------------— Proteus Index -------------------------------
+proteus_process <- function() {
+  
 proteus <- loadInputs("proteus", group_by = c("Country"))
 
 upperrisk <- quantile(proteus$F_Proteus_Score, probs = c(0.90), na.rm = T)
 lowerrisk <- quantile(proteus$F_Proteus_Score, probs = c(0.10), na.rm = T)
 proteus <- normfuncpos(proteus, upperrisk, lowerrisk, "F_Proteus_Score")
+return(proteus)
+}
+proteus <- proteus_process()
 
 #------------------—FEWSNET (with CRW threshold)---
+fews_process <- function() {
 fewswb <- loadInputs("fewsnet", group_by = c("country", "year_month"))
 
 #Calculate country totals
@@ -644,8 +632,12 @@ fews_dataset <- left_join(fewssum, fews_summary, by = "country") %>%
   )
 
 colnames(fews_dataset[-1]) <- paste0("F_", colnames(fews_dataset[-1])) 
+}
+
+fews_dataset <- fews_process()
 
 #------------------------—WBG FOOD PRICE MONITOR------------------------------------
+fpi_process <- function() {
 ag_ob_data <- read.csv(paste0(github, "Indicator_dataset/food-inflation.csv"))
 # FIX: Not yet recording historical data because data is structured messily, with 
 # dates as columns. Fortunately, dataset includes historical data
@@ -695,10 +687,18 @@ rename_with(
   .fn = ~ paste0("F_", .),
   .cols = colnames(.)[!colnames(.) %in% c("Country")]
 )
+return(ag_ob)
+}
+ag_ob <- fpi_process()
+
 
 #-------------------------—FAO/WFP HOTSPOTS----------------------------
+fao_wfp_process <- function() {
+  # Kind of unnecessary
 fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"))
+}
 
+collate_food <- function() {
 #------------------------—Create combined Food Security sheet--------------------
 countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
 countrylist <- countrylist %>%
@@ -714,6 +714,7 @@ food_sheet <- left_join(countrylist, proteus, by = "Country") %>%
   arrange(Country)
 
 write.csv(food_sheet, "Risk_sheets/foodsecuritysheet.csv")
+}
 
 lap <- Sys.time() - lapStart
 print(paste("Food sheet written", lap, units(lap)))
@@ -727,6 +728,7 @@ lapStart <- Sys.time()
 #
 
 #---------------------------—Economist Intelligence Unit---------------------------------
+eiu_process <- function() {
 eiu_data <- loadInputs("eiu", group_by = c("`SERIES NAME`", "MONTH")) %>%
   select(-access_date)
 
@@ -821,7 +823,11 @@ eiu_joint <- left_join(eiu_latest_month, eiu_three_month, by = "Country") %>%
 eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.90), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
 eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_12m_change, 0.90), quantile(eiu_joint$M_EIU_12m_change, 0.10), "M_EIU_12m_change")
 eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score_12m, 0.90), quantile(eiu_joint$M_EIU_Score_12m, 0.10), "M_EIU_Score_12m")
+return(eiu_joint)
+}
+eiu_joint <- eiu_process()
 
+collate_macro <- function() {
 #-----------------------------—Create Combined Macro sheet-----------------------------------------
 countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
 countrylist <- countrylist %>%
@@ -835,6 +841,7 @@ macro_sheet <- #left_join(countrylist, macro, by = "Country") %>% # not current
   arrange(Country) 
 
 write.csv(macro_sheet, "Risk_sheets/macrosheet.csv")
+}
 
 lap <- Sys.time() - lapStart
 print(paste("Macro sheet written", lap, units(lap)))
@@ -866,6 +873,7 @@ lapStart <- Sys.time()
 # inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
 # inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
 
+income_support_process <- function() {
 #------------------------—Forward-looking socio-economic variables from INFORM---------------------------
 inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"))
 socio_forward <- inform_covid_warning %>%
@@ -893,14 +901,19 @@ socio_forward <- inform_covid_warning %>%
       S_income_support.Value == "Government is replacing less than 50% of lost salary (or if a flat sum, it  ..." ~ 0,
       TRUE ~ NA_real_
     ))
+return(socio_forward)
+}
+socio_forward <- income_support_process()
 
 #--------------------------—MPO: Poverty projections----------------------------------------------------
-
+mpo_process <- function() {
 mpo <- loadInputs("mpo", group_by = c("Country"))
+}
+mpo <- mpo_process()
 
 #-----------------------------—HOUSEHOLD HEATMAP FROM MACROFIN-------------------------------------
+macrofin_process <- function() {
 macrofin <- loadInputs("macrofin", group_by = c("ISO3"))
-
 macrofin <- macrofin %>%
   mutate_at(
     vars(`Monetary.and.financial.conditions`, contains("risk")),
@@ -930,11 +943,17 @@ household_risk <- macrofin %>%
          )) %>%
   rename(S_Household.risks = M_Household.risks,
          S_Household.risks_raw = M_Household.risks_raw)
+return(household_risk)
+}
+household_risk <- macrofin_process()
 
 #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
+phone_process <- function() {
 wb_phone  <- loadInputs("wb_phone", group_by = c("Country"))
-
+}
+wb_phone <- phone_process()
 #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
+imf_process <- function() {
 imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"))
 # FIX
 
@@ -972,6 +991,12 @@ imf_un <- imf_un %>%
                                     TRUE ~ S_change_unemp_norm)
   )
 
+return(imf_un)
+}
+# FIX WARNINGS
+imf_un <- imf_process()
+
+collate_socioeconomic <- function() {
 #--------------------------—Create Socioeconomic sheet -------------------------------------------
 socioeconomic_sheet <- #left_join(countrylist, ocha, by = "Country") %>% # not current
   #dplyr::select(-Countryname) %>%
@@ -984,6 +1009,7 @@ socioeconomic_sheet <- #left_join(countrylist, ocha, by = "Country") %>% # not c
   arrange(Country)
 
 write.csv(socioeconomic_sheet, "Risk_sheets/Socioeconomic_sheet.csv")
+}
 
 lap <- Sys.time() - lapStart
 print(paste("Socioeconomic sheet written", lap, units(lap)))
@@ -1000,6 +1026,7 @@ lapStart <- Sys.time()
 
 #------------------------------—Load GDACS database--------------------------------------------------
 # SPLIT
+gdacs_process <- function() {
 gdacs <- suppressMessages(read_csv("output/inputs-archive/gdacs.csv")) %>%
   mutate(access_date = as.Date(access_date)) %>%
   filter(access_date == max(access_date))
@@ -1044,12 +1071,13 @@ gdac <- gdac %>%
   NH_GDAC_Hazard_Score = paste(NH_GDAC_Hazard_Status, NH_GDAC_Hazard_Severity, sep = " - ")
   ) %>%
   drop_na(Country)
-
-write.csv(gdac, "Indicator_dataset/gdaclistnormalised.csv")
+return(gdac)
+}
+gdac <- gdacs_process()
 
 #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
+inform_nathaz_process <- function() {
 inform_risk <- loadInputs("inform_risk", group_by = c("Country"))
-
 # Rename country
 informnathaz <- inform_risk %>%
   dplyr::select(Country, Natural) %>%
@@ -1058,19 +1086,28 @@ informnathaz <- inform_risk %>%
 
 # Normalise scores
 informnathaz <- normfuncpos(informnathaz, 7, 1, "NH_Hazard_Score")
+return(informnathaz)
+}
+informnathaz <- inform_nathaz_process()
 
 #---------------------------------- —IRI Seasonal Forecast ------------------------------------------
+iri_process <- function() {
 iri_forecast <- loadInputs("iri_forecast", group_by = c("Country"))
-seasonl_risk <- iri_forecast # Go through and actually name iri_forecast
+return(iri_forecast)
+}
+seasonl_risk <- iri_process() # Go through and actually name iri_forecast
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
+locust_process <- function() {
 fao_locust <- loadInputs("fao_locust", group_by = c("Country"))
-
-locust_risk <- fao_locust
+return(fao_locust)
+}
+locust_risk <- locust_process()
 
 #---------------------------------—Natural Hazard ACAPS---------------------------------
 acaps_nh <- acapssheet[,c("Country", "NH_natural_acaps")]
 
+collate_nathaz <- function() {
 #-------------------------------------------—Create combined Natural Hazard sheet------------------------------
 countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
 countrylist <- countrylist %>%
@@ -1086,6 +1123,7 @@ nathazard_sheet <- left_join(countrylist, gdac, by = "Country") %>%
   arrange(Country)
 
 write.csv(nathazard_sheet, "Risk_sheets/Naturalhazards.csv")
+}
 
 lap <- Sys.time() - lapStart
 print(paste("Natural hazard sheet written", lap, units(lap)))
@@ -1101,13 +1139,14 @@ lapStart <- Sys.time()
 # SLOW: Takes 50 seconds.
 
 #-------------------------—FCS---------------------------------------------
+fcs_process <- function() {
 fcs <- loadInputs("fcs", group_by = c("Country"))
-
-fcv <- fcs
+}
+fcv <- fcs_process()
 
 #-----------------------------—IDPs--------------------------------------------------------
+un_idp_process <- function() {
 un_idp <- loadInputs("un_idp", group_by = c("`Country of origin (ISO)`", "`Country of asylum (ISO)`", "`Year`"))
-
 # Calculate metrics
 idp <- un_idp %>%
 group_by(`Country of origin (ISO)`, Year) %>%
@@ -1163,8 +1202,12 @@ idp <- idp %>%
     )
   ) %>%
   dplyr::select(-`Country of origin (ISO)`)
+return(idp)
+}
+idp <- un_idp_process()
 
 #-------------------------—ACLED data---------------------------------------------
+acled_process <- function() {
 acled <- loadInputs("acled", group_by = NULL) #158274
 
 # Progress conflict data
@@ -1215,10 +1258,14 @@ acled <- acled %>%
   ) %>%
   ungroup() %>%
   dplyr::select(-iso3)
+return(acled)
+}
+acled <- acled_process()
 
 #--------------------------—REIGN--------------------------------------------
 # Note that the file-loaded data set is one fewer than the downloaded dataset because Maia Sandu is duplicated.
 # Going forward, I need to fix this so that back-and-forths in leadership are acknowledged
+reign_process <- function() {
 reign <- loadInputs("reign", group_by = c("country", "leader", "year", "month"))
 
 reign_start <- reign %>%
@@ -1259,7 +1306,11 @@ reign <- left_join(reign_start, fcv %>% dplyr::select(Country, FCV_normalised), 
     )
   ) %>%
   dplyr::select(-FCV_normalised)
+return(reign)
+}
+reign <- reign_process()
 
+collate_conflict <- function() {
 #-----------------—Join all dataset-----------------------------------
 conflict_dataset_raw <- left_join(fcv, reign, by = "Country") %>%
   left_join(., idp, by = "Country") %>%
@@ -1303,6 +1354,9 @@ fragility_sheet <- left_join(countrylist, conflict_dataset, by = "Country") %>%
   )
 
 write.csv(fragility_sheet, "Risk_sheets/fragilitysheet.csv")
+}
 
 lap <- Sys.time() - lapStart
 print(paste("Fragility sheet written", lap, units(lap)))
+total_time <- Sys.time() - runtime
+print(paste("Total time", total_time, units(total_time)))
