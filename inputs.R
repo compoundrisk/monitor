@@ -70,6 +70,16 @@ archiveInputs <- function(data,
   write.csv(combined, path, row.names = F)
   if(return == T) return(combined)
 }
+
+try_log <- function(expr) {
+  fun <- sub("\\(.*", "", deparse(substitute(expr)))
+  tryCatch({
+    expr
+  }, error = function(e) {
+    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "input-errors.log", append = T)
+  })
+}
+
 #---------------------------------
 
 ## Add in ACAPS
@@ -85,7 +95,7 @@ ghsi_collect <- function() {
     dplyr::select(-X)
   archiveInputs(ghsi, group_by = "Country")
 }
-ghsi_collect()
+try_log(ghsi_collect())
 #---------------------------------
 
 ## Oxford Openness
@@ -97,7 +107,7 @@ oxford_openness_collect <- function() {
   
   archiveInputs(oxford_openness_risk, group_by = c("CountryCode", "Date"))
 }
-oxford_openness_collect()
+try_log(oxford_openness_collect())
 #---------------------------------
 
 ## OWID Covid
@@ -175,7 +185,7 @@ inform_covid_collect <- function() {
   inform_covid <- suppressMessages(type_convert(inform_covid_warning))
   archiveInputs(inform_covid, group_by = c("Country"))
 }
-inform_covid_collect()
+try_log(inform_covid_collect())
 #---------------------------------
 
 ## WHO DONS
@@ -214,7 +224,7 @@ dons_collect <- function() {
   
   archiveInputs(who_don, group_by = NULL)
 }
-dons_collect()
+try_log(dons_collect())
 #---------------------------------
 
 #### FOOD SECURITY
@@ -235,7 +245,7 @@ proteus_collect <- function() {
   
   archiveInputs(proteus, group_by = c("Country"))
 }
-proteus_collect()
+try_log(proteus_collect())
 #---------------------------------
 
 ## FEWSNET
@@ -246,7 +256,7 @@ fews_collect <- function() {
   fewswb <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
   archiveInputs(fewswb, path = "inputs-archive/fewsnet.csv", group_by = c("country", "year_month"))
 }
-fews_collect()
+try_log(fews_collect())
 #---------------------------------
 
 ## WBG FOOD PRICE MONITOR
@@ -280,7 +290,7 @@ fao_wfp_collect <- function() {
   
   archiveInputs(fao_wfp, group_by = c("Country"))
 }
-fao_wfp_collect()
+try_log(fao_wfp_collect())
 #---------------------------------
 
 #### MACRO
@@ -296,7 +306,7 @@ eiu_collect <- function() {
   
   archiveInputs(eiu, group_by = c("`SERIES NAME`", "MONTH"))
 }
-eiu_collect()
+try_log(eiu_collect())
 #---------------------------------
 
 #### SOCIO-ECONOMIC
@@ -307,7 +317,7 @@ mpo_collect <- function() {
   mpo <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/mpo.csv")))
   archiveInputs(mpo, group_by = c("Country"))
 }
-mpo_collect()
+try_log(mpo_collect())
 #---------------------------------
 
 ## MACROFIN / EFI Macro Financial Review Household Level Risk
@@ -317,7 +327,7 @@ mfr_collect <- function() {
   macrofin <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
   archiveInputs(macrofin, group_by = c("ISO3"))
 }
-mfr_collect()
+try_log(mfr_collect())
 #---------------------------------
 
 ## WB COVID PHONE SURVEYS
@@ -327,7 +337,7 @@ phone_collect <- function() {
   wb_phone <- read.csv(paste0(github, "Indicator_dataset/phone.csv"))
   archiveInputs(wb_phone , group_by = c("Country"))
 }
-phone_collect()
+try_log(phone_collect())
 #---------------------------------
 
 ## IMF FORECASTED UNEMPLOYMENT
@@ -336,7 +346,7 @@ imf_collect <- function() {
   imf_unemployment <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/imf_unemployment.csv")))
   archiveInputs(imf_unemployment, group_by = c("Country"))
 }
-imf_collect()
+try_log(imf_collect())
 #---------------------------------
 
 #### NATURAL HAZARDS
@@ -478,7 +488,7 @@ gdacs_collect <- function() {
   # gdacs_changed <- gdacs_changed %>% mutate(current = FALSE, access_date = Sys.Date())
   # gdacs <- rbind(gdacs, gdacs_changed, gdacs_prev) %>% distinct()
 }
-gdacs_collect()
+try_log(gdacs_collect())
 #---------------------------------
 
 ## INFORM Natural Hazard and Exposure Rating
@@ -487,7 +497,7 @@ inform_risk_collect <- function() {
   inform_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_Risk.csv"), col_types = cols()))
   archiveInputs(inform_risk, group_by = c("Country"))
 }
-inform_risk_collect()
+try_log(inform_risk_collect())
 #---------------------------------
 
 ## IRI Seasonal Forecast
@@ -505,7 +515,7 @@ iri_collect <- function() {
   iri_forecast <- seasonl_risk #Go through and reduce renamings
   archiveInputs(iri_forecast, group_by = c("Country"))
 }
-iri_collect()
+try_log(iri_collect())
 #---------------------------------
 
 ## Locust outbreaks
@@ -520,7 +530,7 @@ locust_collect <- function() {
   
   archiveInputs(fao_locust, group_by = c("Country"))
 }
-locust_collect()
+try_log(locust_collect())
 #---------------------------------
 
 # FRAGILITY
@@ -543,7 +553,7 @@ fcs_collect <- function() {
   fcs <- fcv
   archiveInputs(fcs, group_by = c("Country"))
 }
-fcs_collect()
+try_log(fcs_collect())
 #---------------------------------
 
 ## IDPs
@@ -560,7 +570,7 @@ idp_collect <- function() {
   un_idp <- idp_data
   archiveInputs(un_idp, group_by = c("`Country of origin (ISO)`", "`Country of asylum (ISO)`", "`Year`"))
 }
-idp_collect()
+try_log(idp_collect())
 #---------------------------------
 
 ## ACLED
@@ -594,7 +604,7 @@ acled_collect <- function() {
   
   archiveInputs(acled, group_by = NULL)
 }
-# acled_collect()
+# try_log(acled_collect())
 #---------------------------------
 
 ## REIGN
@@ -647,6 +657,6 @@ reign_collect <- function() {
   
   archiveInputs(reign, group_by = c("country", "leader", "year", "month"))
 }
-# reign_collect()
+# try_log(reign_collect())
 #---------------------------------
 

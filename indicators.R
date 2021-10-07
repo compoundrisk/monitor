@@ -47,7 +47,7 @@ normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
 }
 
 #--------------------FUNCTIONS TO LOAD INPUT DATA-----------------
-loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), format == "csv", full = F){
+loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), format = "csv", full = F){
   # The as_of argument let's you run the function from a given historical date. Update indicators.R
   # to use this feature -- turning indicators.R into a function? with desired date as an argument
   
@@ -74,6 +74,16 @@ loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), f
   }
   if(!full) return(most_recent)
   return(data)
+}
+
+# Move external to functions file
+try_log <- function(expr) {
+  fun <- sub("\\(.*", "", deparse(substitute(expr)))
+  tryCatch({
+    expr
+  }, error = function(e) {
+    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "input-errors.log", append = T)
+  })
 }
 
 lap <- Sys.time() - runtime
@@ -146,7 +156,7 @@ acaps_process <- function(as_of, format) {
     filter(country != "")
   
   # Save csv with full acapslist
-  write.csv(acapslist, "Indicator_dataset/acaps.csv")
+  # write.csv(acapslist, "Indicator_dataset/acaps.csv")
   
   # List of countries with specific hazards
   conflictnams <- acapslist %>%
@@ -206,7 +216,8 @@ acaps_process <- function(as_of, format) {
   
   return(acapssheet)
 }
-acapssheet <- acaps_process(as_of = as_of, format = format)
+
+acapssheet <- try_log(acaps_process(as_of = as_of, format = format))
 
 lap <- Sys.time() - lapStart
 print(paste("ACAPS sheet written", lap, units(lap)))
@@ -232,7 +243,7 @@ ghsi_process <- function(as_of, format) {
   HIS <- normfuncneg(ghsi, 20, 70, "H_HIS_Score")
   return(HIS)
 }
-HIS <- ghsi_process(as_of = as_of, format = format)
+HIS <- try_log(ghsi_process(as_of = as_of, format = format))
 
 #-----------------------—Oxford rollback Score-----------------
 # RENAME Oxrollback to oxford_openness_risk
@@ -267,7 +278,7 @@ oxford_openness_process <- function(as_of, format) {
   OXrollback <- normfuncpos(OXrollback, upperrisk, lowerrisk, "H_Oxrollback_score")
   return(OXrollback)
 }
-OXrollback <- oxford_openness_process(as_of = as_of, format = format)
+OXrollback <- try_log(oxford_openness_process(as_of = as_of, format = format))
 
 #------------------------—COVID deaths and cases--------------------------
 owid_covid_process <- function(as_of, format) {
@@ -429,7 +440,7 @@ owid_covid_process <- function(as_of, format) {
   ))
 }
 
-owid_covid <- owid_covid_process(as_of = as_of, format = format)
+owid_covid <- try_log(owid_covid_process(as_of = as_of, format = format))
 covidcurrent <- owid_covid[1]
 covidgrowth <- owid_covid[2]
 
@@ -462,7 +473,7 @@ Oxres_process <- function(as_of, format) {
   Ox_cov_resp <- normfuncneg(Ox_cov_resp, 0, 100, "H_EconomicSupportIndexForDisplay")
   return(Ox_cov_resp)
 }
-Ox_cov_resp <- Oxres_process(as_of = as_of, format = format)
+Ox_cov_resp <- try_log(Oxres_process(as_of = as_of, format = format))
 
 #------------------------------—INFORM COVID------------------------------------------------------
 inform_covid_process <- function(as_of, format) {
@@ -470,7 +481,7 @@ inform_covid_process <- function(as_of, format) {
   inform_covid_warning <- normfuncpos(inform_covid_warning, 6, 2, "H_INFORM_rating.Value")
   return(inform_covid_warning)
 }
-inform_covid_warning <- inform_covid_process(as_of = as_of, format = format)
+inform_covid_warning <- try_log(inform_covid_process(as_of = as_of, format = format))
 
 #----------------------------------—WHO DONS--------------------------------------------------------------
 # REPLACE all WMO with WHO
@@ -488,7 +499,7 @@ who_process <- function(as_of, format) {
     dplyr::select(-Countryname)
   return(wmo_don)
 }
-wmo_don <- who_process(as_of = as_of, format = format)
+wmo_don <- try_log(who_process(as_of = as_of, format = format))
 
 #---------------------------------—Health ACAPS---------------------------------
 acaps_health <- acapssheet[,c("Country", "H_health_acaps")]
@@ -543,7 +554,7 @@ proteus_process <- function(as_of, format) {
   proteus <- normfuncpos(proteus, upperrisk, lowerrisk, "F_Proteus_Score")
   return(proteus)
 }
-proteus <- proteus_process(as_of = as_of, format = format)
+proteus <- try_log(proteus_process(as_of = as_of, format = format))
 
 #------------------—FEWSNET (with CRW threshold)---
 fews_process <- function(as_of, format) {
@@ -653,7 +664,7 @@ fews_process <- function(as_of, format) {
   return(fews_dataset)
 }
 
-fews_dataset <- fews_process(as_of = as_of, format = format)
+fews_dataset <- try_log(fews_process(as_of = as_of, format = format))
 
 #------------------------—WBG FOOD PRICE MONITOR------------------------------------
 fpi_process <- function(as_of, format) {
@@ -708,7 +719,7 @@ fpi_process <- function(as_of, format) {
     )
   return(ag_ob)
 }
-ag_ob <- fpi_process(as_of = as_of, format = format)
+ag_ob <- try_log(fpi_process(as_of = as_of, format = format))
 
 
 #-------------------------—FAO/WFP HOTSPOTS----------------------------
@@ -851,7 +862,7 @@ eiu_process <- function(as_of, format) {
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score_12m, 0.90), quantile(eiu_joint$M_EIU_Score_12m, 0.10), "M_EIU_Score_12m")
   return(eiu_joint)
 }
-eiu_joint <- eiu_process(as_of = as_of, format = format)
+eiu_joint <- try_log(eiu_process(as_of = as_of, format = format))
 
 collate_macro <- function() {
   #-----------------------------—Create Combined Macro sheet-----------------------------------------
@@ -936,13 +947,13 @@ income_support_process <- function(as_of, format) {
       ))
   return(socio_forward)
 }
-socio_forward <- income_support_process(as_of = as_of, format = format)
+socio_forward <- try_log(income_support_process(as_of = as_of, format = format))
 
 #--------------------------—MPO: Poverty projections----------------------------------------------------
 mpo_process <- function(as_of, format) {
   mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = format)
 }
-mpo <- mpo_process(as_of = as_of, format = format)
+mpo <- try_log(mpo_process(as_of = as_of, format = format))
 
 #-----------------------------—HOUSEHOLD HEATMAP FROM MACROFIN-------------------------------------
 macrofin_process <- function(as_of, format) {
@@ -978,13 +989,13 @@ macrofin_process <- function(as_of, format) {
            S_Household.risks_raw = M_Household.risks_raw)
   return(household_risk)
 }
-household_risk <- macrofin_process(as_of = as_of, format = format)
+household_risk <- try_log(macrofin_process(as_of = as_of, format = format))
 
 #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
 phone_process <- function(as_of, format) {
   wb_phone  <- loadInputs("wb_phone", group_by = c("Country"), as_of = as_of, format = format)
 }
-wb_phone <- phone_process(as_of = as_of, format = format)
+wb_phone <- try_log(phone_process(as_of = as_of, format = format))
 #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
 imf_process <- function(as_of, format) {
   imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"), as_of = as_of, format = format)
@@ -1027,7 +1038,7 @@ imf_process <- function(as_of, format) {
   return(imf_un)
 }
 # FIX WARNINGS
-imf_un <- imf_process(as_of = as_of, format = format)
+imf_un <- try_log(imf_process(as_of = as_of, format = format))
 
 collate_socioeconomic <- function() {
   #--------------------------—Create Socioeconomic sheet -------------------------------------------
@@ -1120,7 +1131,7 @@ gdacs_process <- function(as_of, format) {
     drop_na(Country)
   return(gdac)
 }
-gdac <- gdacs_process(as_of = as_of, format = format)
+gdac <- try_log(gdacs_process(as_of = as_of, format = format))
 
 #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
 inform_nathaz_process <- function(as_of, format) {
@@ -1135,21 +1146,21 @@ inform_nathaz_process <- function(as_of, format) {
   informnathaz <- normfuncpos(informnathaz, 7, 1, "NH_Hazard_Score")
   return(informnathaz)
 }
-informnathaz <- inform_nathaz_process(as_of = as_of, format = format)
+informnathaz <- try_log(inform_nathaz_process(as_of = as_of, format = format))
 
 #---------------------------------- —IRI Seasonal Forecast ------------------------------------------
 iri_process <- function(as_of, format) {
   iri_forecast <- loadInputs("iri_forecast", group_by = c("Country"), as_of = as_of, format = format)
   return(iri_forecast)
 }
-seasonl_risk <- iri_process(as_of = as_of, format = format) # Go through and actually name iri_forecast
+seasonl_risk <- try_log(iri_process(as_of = as_of, format = format) # Go through and actually name iri_forecast)
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
 locust_process <- function(as_of, format) {
   fao_locust <- loadInputs("fao_locust", group_by = c("Country"), as_of = as_of, format = format)
   return(fao_locust)
 }
-locust_risk <- locust_process(as_of = as_of, format = format)
+locust_risk <- try_log(locust_process(as_of = as_of, format = format))
 
 #---------------------------------—Natural Hazard ACAPS---------------------------------
 acaps_nh <- acapssheet[,c("Country", "NH_natural_acaps")]
@@ -1197,7 +1208,7 @@ fcs_process <- function(as_of, format) {
   fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = format)
   return(fcs)
 }
-fcv <- fcs_process(as_of = as_of, format = format)
+fcv <- try_log(fcs_process(as_of = as_of, format = format))
 
 #-----------------------------—IDPs--------------------------------------------------------
 un_idp_process <- function(as_of, format) {
@@ -1259,7 +1270,7 @@ un_idp_process <- function(as_of, format) {
     dplyr::select(-`Country of origin (ISO)`)
   return(idp)
 }
-idp <- un_idp_process(as_of = as_of, format = format)
+idp <- try_log(un_idp_process(as_of = as_of, format = format))
 
 #-------------------------—ACLED data---------------------------------------------
 acled_process <- function(as_of, format) {
@@ -1315,7 +1326,7 @@ acled_process <- function(as_of, format) {
     dplyr::select(-iso3)
   return(acled)
 }
-acled <- acled_process(as_of = as_of, format = format)
+acled <- try_log(acled_process(as_of = as_of, format = format))
 
 #--------------------------—REIGN--------------------------------------------
 # Note that the file-loaded data set is one fewer than the downloaded dataset because Maia Sandu is duplicated.
@@ -1363,7 +1374,7 @@ reign_process <- function(as_of, format) {
     dplyr::select(-FCV_normalised)
   return(reign)
 }
-reign <- reign_process(as_of = as_of, format = format)
+reign <- try_log(reign_process(as_of = as_of, format = format))
 
 collate_conflict <- function() {
   #-----------------—Join all dataset-----------------------------------
