@@ -82,7 +82,7 @@ try_log <- function(expr) {
   tryCatch({
     expr
   }, error = function(e) {
-    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "input-errors.log", append = T)
+    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "errors.log", append = T)
   })
 }
 
