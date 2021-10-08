@@ -2,6 +2,7 @@
 setwd("../../../dbfs/mnt/CompoundRiskMonitor")
 source("libraries.R")
 source("indicators.R")
+source("alt-sheets.R")
 
 # COMMAND ----------
 
@@ -18,7 +19,7 @@ acapssheet <- acaps_process(as_of = as_of, format = format)
 # HEALTH
 collate_sheets(
   "health",
-#   acapssheet[,c("Country", "H_health_acaps")],
+  #   acapssheet[,c("Country", "H_health_acaps")],
   ghsi_process(as_of = as_of, format = format),
   oxford_openness_process(as_of = as_of, format = format),
   owid_covid_process(as_of = as_of, format = format),
@@ -68,7 +69,7 @@ collate_sheets(
   inform_nathaz_process(as_of = as_of, format = format),
   iri_process(as_of = as_of, format = format), # Go through and actually name iri_forecast)
   locust_process(as_of = as_of, format = format),
-#   acapssheet[,c("Country", "NH_natural_acaps")],
+  #   acapssheet[,c("Country", "NH_natural_acaps")],
   format = format)
 
 # COMMAND ----------
@@ -84,15 +85,15 @@ fragility_sheet <- collate_sheets(
   acled_process(as_of = as_of, format = format),
   reign_process(as_of = as_of, format = format),
   format = "return"
-  )
+)
 fragility_sheet <- fragility_sheet %>% 
   rename_with(
-  .fn = ~ paste0("Fr_", .), 
-  .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname") ]
-)
+    .fn = ~ paste0("Fr_", .), 
+    .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname") ]
+  )
 write_sheet <- function(dim, sheet, format)   {
   if(format == "csv" | format == "both") {
-    write.csv(sheet, paste0("risk-sheets/", dim, "-sheet.csv"))
+    write.csv(sheet, paste0("output/risk-sheets/", dim, "-sheet.csv"))
     # print(paste0("risk-sheets/", dim, "-sheet.csv"))
   }
   if(format == "tbl" | format == "both") {
@@ -106,3 +107,4 @@ write_sheet <- function(dim, sheet, format)   {
 }
 write_sheet("fragility", fragility_sheet, format = format)
 
+write_minimal_dim_sheets()

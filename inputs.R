@@ -10,7 +10,7 @@
 
 ## Direct Github location (data folder)
 #---------------------------------
-github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
+# github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 #---------------------------------
 
 ## FUNCTION TO ARCHIVE ALL INPUT DATA `archiveInputs()` 
@@ -21,7 +21,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 
 #---------------------------------
 archiveInputs <- function(data,
-                          path = paste0("inputs-archive/", deparse(substitute(data)), ".csv"), 
+                          path = paste0("output/inputs-archive/", deparse(substitute(data)), ".csv"), 
                           newFile = F,
                           # group_by defines the groups for which most recent data should be taken
                           group_by = "CountryCode",
@@ -73,7 +73,7 @@ try_log <- function(expr) {
   tryCatch({
     expr
   }, error = function(e) {
-    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "errors.log", append = T)
+    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
   })
 }
 
@@ -245,8 +245,8 @@ proteus_collect <- function() {
 
 #Load database
 fews_collect <- function() {
-  fewswb <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
-  archiveInputs(fewswb, path = "inputs-archive/fewsnet.csv", group_by = c("country", "year_month"))
+  fewsnet <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
+  archiveInputs(fewsnet, group_by = c("country", "year_month"))
 }
 #---------------------------------
 
@@ -453,11 +453,11 @@ gdacs_collect <- function() {
   
   # Add all currently online events to gdacs file unless most recent access_date and
   # current data are fully identical
-  gdacs_prev <- suppressMessages(read_csv("inputs-archive/gdacs.csv"))
+  gdacs_prev <- suppressMessages(read_csv("output/inputs-archive/gdacs.csv"))
   gdacs_prev_recent <- filter(gdacs_prev, access_date == max(access_date)) %>% distinct()
   if(!identical(select(gdacs_prev_recent, -access_date), select(gdacs, -access_date))) {
     gdacs <- rbind(gdacs_prev, gdacs) %>% distinct()
-    write.csv(gdacs, "inputs-archive/gdacs.csv", row.names = F)
+    write.csv(gdacs, "output/inputs-archive/gdacs.csv", row.names = F)
   }
   # # There may be a more efficient approach that gives all currently online events a TRUE `current` variable, and
   # # when an event is no longer current, it receives a FALSE for its next entry.

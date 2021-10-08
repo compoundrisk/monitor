@@ -1,8 +1,8 @@
 #  CODE USED TO TO PRODUCE INDIVIDUAL INDICATOR DATASETS AND RISK COMPONENT SHEETS
 
-countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-countrylist <- countrylist %>%
-  dplyr::select(-X)
+# countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+# countrylist <- countrylist %>%
+#   dplyr::select(-X)
 
 #--------------------FUNCTION TO CALCULATE NORMALISED SCORES-----------------
 # Function to normalise with upper and lower bounds (when low score = high vulnerability)
@@ -61,7 +61,7 @@ try_log <- function(expr) {
   tryCatch({
     expr
   }, error = function(e) {
-    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "errors.log", append = T)
+    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
   })
 }
 
@@ -80,7 +80,7 @@ collate_sheets <- function(dim, ..., format = "csv") {
     distinct(Country, .keep_all = TRUE) %>%
     drop_na(Country)
   if(format == "csv" | format == "both") {
-    write.csv(sheet, paste0("risk-sheets/", dim, "-sheet.csv"))
+    write.csv(sheet, paste0("output/risk-sheets/", dim, "-sheet.csv"))
     # print(paste0("risk-sheets/", dim, "-sheet.csv"))
   }
   if(format == "tbl" | format == "both") {
@@ -504,30 +504,30 @@ who_process <- function(as_of, format) {
 # acaps_health <- acapssheet[,c("Country", "H_health_acaps")]
 
 #----------------------------------—Create combined Health Sheet-------------------------------------------
-collate_health <- function(format) {
-  countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-  countrylist <- countrylist %>%
-    dplyr::select(-X)
-  
-  health_sheet <- left_join(countrylist, HIS, by = "Country") %>%
-    left_join(., OXrollback, by = "Country") %>%
-    left_join(., covidgrowth, by = "Country") %>%
-    left_join(., covidcurrent, by = "Country") %>%
-    left_join(., Ox_cov_resp, by = "Country") %>%
-    # left_join(., cov_forcast_alt, by = "Country") %>% # not current
-    left_join(., inform_covid_warning, by = "Country", "Countryname") %>%
-    left_join(., wmo_don, by = "Country") %>%
-    left_join(., acaps_health, by = "Country") %>%
-    arrange(Country)
-  
-  if(format == "csv" | format == "both") {
-    write.csv(health_sheet, "Risk_sheets/healthsheet.csv")
-  }
-  if(format == "tbl" | format == "both") {
-    # Write Spark DataFrame
-  }
-  
-}
+# collate_health <- function(format) {
+#   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+#   countrylist <- countrylist %>%
+#     dplyr::select(-X)
+
+#   health_sheet <- left_join(countrylist, HIS, by = "Country") %>%
+#     left_join(., OXrollback, by = "Country") %>%
+#     left_join(., covidgrowth, by = "Country") %>%
+#     left_join(., covidcurrent, by = "Country") %>%
+#     left_join(., Ox_cov_resp, by = "Country") %>%
+#     # left_join(., cov_forcast_alt, by = "Country") %>% # not current
+#     left_join(., inform_covid_warning, by = "Country", "Countryname") %>%
+#     left_join(., wmo_don, by = "Country") %>%
+#     left_join(., acaps_health, by = "Country") %>%
+#     arrange(Country)
+
+#   if(format == "csv" | format == "both") {
+#     write.csv(health_sheet, "Risk_sheets/healthsheet.csv")
+#   }
+#   if(format == "tbl" | format == "both") {
+#     # Write Spark DataFrame
+#   }
+
+# }
 
 #
 ##
@@ -718,28 +718,28 @@ fao_wfp_process <- function(as_of, format) {
   fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"), as_of = as_of, format = format)
 }
 
-collate_food <- function() {
-  #------------------------—Create combined Food Security sheet--------------------
-  countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-  countrylist <- countrylist %>%
-    dplyr::select(-X)
-  
-  food_sheet <- left_join(countrylist, proteus, by = "Country") %>%
-    left_join(., fews_dataset, by = "Country") %>%
-    # left_join(., fpv, by = "Country") %>%  # Reintroduce if FAO price site comes back online
-    # left_join(., fpv_alt, by = "Country") %>% # not current
-    # left_join(., artemis, by = "Country") %>% # not current
-    left_join(., ag_ob, by = "Country") %>%
-    left_join(., fao_wfp, by = "Country") %>%
-    arrange(Country)
-  
-  if(format == "csv" | format == "both") {
-    write.csv(food_sheet, "Risk_sheets/foodsecuritysheet.csv")
-  }
-  if(format == "tbl" | format == "both") {
-    # Write Spark DataFrame
-  }
-}
+# collate_food <- function() {
+#   #------------------------—Create combined Food Security sheet--------------------
+#   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+#   countrylist <- countrylist %>%
+#     dplyr::select(-X)
+
+#   food_sheet <- left_join(countrylist, proteus, by = "Country") %>%
+#     left_join(., fews_dataset, by = "Country") %>%
+#     # left_join(., fpv, by = "Country") %>%  # Reintroduce if FAO price site comes back online
+#     # left_join(., fpv_alt, by = "Country") %>% # not current
+#     # left_join(., artemis, by = "Country") %>% # not current
+#     left_join(., ag_ob, by = "Country") %>%
+#     left_join(., fao_wfp, by = "Country") %>%
+#     arrange(Country)
+
+#   if(format == "csv" | format == "both") {
+#     write.csv(food_sheet, "Risk_sheets/foodsecuritysheet.csv")
+#   }
+#   if(format == "tbl" | format == "both") {
+#     # Write Spark DataFrame
+#   }
+# }
 
 #
 ##
@@ -848,26 +848,26 @@ eiu_process <- function(as_of, format) {
   return(eiu_joint)
 }
 
-collate_macro <- function() {
-  #-----------------------------—Create Combined Macro sheet-----------------------------------------
-  countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-  countrylist <- countrylist %>%
-    dplyr::select(-X)
-  
-  macro_sheet <- #left_join(countrylist, macro, by = "Country") %>% # not current
-    # left_join(., gdp, by = "Country") %>% # not current
-    # left_join(., macrofin, by = "Country") %>% # not current
-    left_join(countrylist, eiu_joint, by = "Country") %>%
-    # left_join(., cvi, by = "Country") %>% # not current
-    arrange(Country) 
-  
-  if(format == "csv" | format == "both") {
-    write.csv(macro_sheet, "Risk_sheets/macrosheet.csv")
-  }
-  if(format == "tbl" | format == "both") {
-    # Write Spark DataFrame
-  }
-}
+# collate_macro <- function() {
+#   #-----------------------------—Create Combined Macro sheet-----------------------------------------
+#   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+#   countrylist <- countrylist %>%
+#     dplyr::select(-X)
+
+#   macro_sheet <- #left_join(countrylist, macro, by = "Country") %>% # not current
+#     # left_join(., gdp, by = "Country") %>% # not current
+#     # left_join(., macrofin, by = "Country") %>% # not current
+#     left_join(countrylist, eiu_joint, by = "Country") %>%
+#     # left_join(., cvi, by = "Country") %>% # not current
+#     arrange(Country) 
+
+#   if(format == "csv" | format == "both") {
+#     write.csv(macro_sheet, "Risk_sheets/macrosheet.csv")
+#   }
+#   if(format == "tbl" | format == "both") {
+#     # Write Spark DataFrame
+#   }
+# }
 
 #
 ##
@@ -1013,25 +1013,25 @@ imf_process <- function(as_of, format) {
   return(imf_un)
 }
 
-collate_socioeconomic <- function() {
-  #--------------------------—Create Socioeconomic sheet -------------------------------------------
-  socioeconomic_sheet <- #left_join(countrylist, ocha, by = "Country") %>% # not current
-    #dplyr::select(-Countryname) %>%
-    left_join(countrylist, inform_data, by = "Country") %>%
-    left_join(., socio_forward, by = "Country") %>%
-    left_join(., mpo, by = "Country") %>%
-    left_join(., imf_un, by = "Country") %>%
-    left_join(., household_risk, by = "Country") %>%
-    left_join(., wb_phone, by = "Country") %>%
-    arrange(Country)
-  
-  if(format == "csv" | format == "both") {
-    write.csv(socioeconomic_sheet, "Risk_sheets/Socioeconomic_sheet.csv")
-  }
-  if(format == "tbl" | format == "both") {
-    # Write Spark DataFrame
-  }
-}
+# collate_socioeconomic <- function() {
+#   #--------------------------—Create Socioeconomic sheet -------------------------------------------
+#   socioeconomic_sheet <- #left_join(countrylist, ocha, by = "Country") %>% # not current
+#     #dplyr::select(-Countryname) %>%
+#     left_join(countrylist, inform_data, by = "Country") %>%
+#     left_join(., socio_forward, by = "Country") %>%
+#     left_join(., mpo, by = "Country") %>%
+#     left_join(., imf_un, by = "Country") %>%
+#     left_join(., household_risk, by = "Country") %>%
+#     left_join(., wb_phone, by = "Country") %>%
+#     arrange(Country)
+
+#   if(format == "csv" | format == "both") {
+#     write.csv(socioeconomic_sheet, "Risk_sheets/Socioeconomic_sheet.csv")
+#   }
+#   if(format == "tbl" | format == "both") {
+#     # Write Spark DataFrame
+#   }
+# }
 
 #
 ##
@@ -1129,28 +1129,28 @@ locust_process <- function(as_of, format) {
 #---------------------------------—Natural Hazard ACAPS---------------------------------
 # acaps_nh <- acapssheet[,c("Country", "NH_natural_acaps")]
 
-collate_nathaz <- function() {
-  #-------------------------------------------—Create combined Natural Hazard sheet------------------------------
-  countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-  countrylist <- countrylist %>%
-    dplyr::select(-X)
-  
-  nathazard_sheet <- left_join(countrylist, gdac, by = "Country") %>%
-    left_join(., informnathaz, by = "Country") %>%
-    left_join(., seasonl_risk, by = "Country") %>%
-    left_join(., locust_risk, by = "Country") %>%
-    left_join(., acaps_nh, by = "Country") %>%
-    distinct(Country, .keep_all = TRUE) %>%
-    drop_na(Country) %>%
-    arrange(Country)
-  
-  if(format == "csv" | format == "both") {
-    write.csv(nathazard_sheet, "Risk_sheets/Naturalhazards.csv")
-  }
-  if(format == "tbl" | format == "both") {
-    # Write Spark DataFrame
-  }
-}
+# collate_nathaz <- function() {
+#   #-------------------------------------------—Create combined Natural Hazard sheet------------------------------
+#   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+#   countrylist <- countrylist %>%
+#     dplyr::select(-X)
+
+#   nathazard_sheet <- left_join(countrylist, gdac, by = "Country") %>%
+#     left_join(., informnathaz, by = "Country") %>%
+#     left_join(., seasonl_risk, by = "Country") %>%
+#     left_join(., locust_risk, by = "Country") %>%
+#     left_join(., acaps_nh, by = "Country") %>%
+#     distinct(Country, .keep_all = TRUE) %>%
+#     drop_na(Country) %>%
+#     arrange(Country)
+
+#   if(format == "csv" | format == "both") {
+#     write.csv(nathazard_sheet, "Risk_sheets/Naturalhazards.csv")
+#   }
+#   if(format == "tbl" | format == "both") {
+#     # Write Spark DataFrame
+#   }
+# }
 
 #
 ##
@@ -1334,52 +1334,52 @@ reign_process <- function(as_of, format) {
   return(reign)
 }
 
-collate_conflict <- function() {
-  #-----------------—Join all dataset-----------------------------------
-  conflict_dataset_raw <- left_join(fcv, reign, by = "Country") %>%
-    left_join(., idp, by = "Country") %>%
-    left_join(., acled, by = "Country") #%>%
-  #dplyr::select(Countryname, FCS_normalised, pol_trigger_norm, z_idps_norm, fatal_z_norm) 
-  
-  conflict_dataset <- conflict_dataset_raw # %>%
-    # mutate(
-    #   flag_count = as.numeric(unlist(row_count(
-    #     .,
-    #     pol_trigger_norm:fatal_z_norm,
-    #     count = 10,
-    #     append = F
-    #   ))),
-    #   fragile_1_flag = case_when(
-    #     flag_count >= 1 ~ 10,
-    #     TRUE ~ suppressWarnings(apply(conflict_dataset_raw %>% dplyr::select(pol_trigger_norm:fatal_z_norm), 
-    #                  1,
-  #                  FUN = max,
-  #                  na.rm = T)
-  #   )),
-  #   fragile_1_flag = case_when(
-  #     fragile_1_flag == -Inf ~ NA_real_,
-  #     TRUE ~ fragile_1_flag
-  #   )) %>%
-  # rename(BRD_Normalised = fatal_z_norm#,
-         # Number_of_High_Risk_Flags = flag_count, Overall_Conflict_Risk_Score = fragile_1_flag
-  #) 
-  
-  #-------------------------------------—Create Fragility sheet--------------------------------------
-  # Compile joint database
-  # countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-  
-  fragility_sheet <- left_join(countrylist, conflict_dataset, by = "Country") %>%
-    # dplyr::select(-X) %>%
-    # dplyr::select(-X, -Number_of_High_Risk_Flags) %>%
-    rename_with(
-      .fn = ~ paste0("Fr_", .), 
-      .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname") ]
-    )
-  
-  if(format == "csv" | format == "both") {
-    write.csv(fragility_sheet, "Risk_sheets/fragilitysheet.csv")
-  }
-  if(format == "tbl" | format == "both") {
-    # Write Spark DataFrame
-  }
-}
+# collate_conflict <- function() {
+#   #-----------------—Join all dataset-----------------------------------
+#   conflict_dataset_raw <- left_join(fcv, reign, by = "Country") %>%
+#     left_join(., idp, by = "Country") %>%
+#     left_join(., acled, by = "Country") #%>%
+#   #dplyr::select(Countryname, FCS_normalised, pol_trigger_norm, z_idps_norm, fatal_z_norm) 
+
+#   conflict_dataset <- conflict_dataset_raw # %>%
+#     # mutate(
+#     #   flag_count = as.numeric(unlist(row_count(
+#     #     .,
+#     #     pol_trigger_norm:fatal_z_norm,
+#     #     count = 10,
+#     #     append = F
+#     #   ))),
+#     #   fragile_1_flag = case_when(
+#     #     flag_count >= 1 ~ 10,
+#     #     TRUE ~ suppressWarnings(apply(conflict_dataset_raw %>% dplyr::select(pol_trigger_norm:fatal_z_norm), 
+#     #                  1,
+#   #                  FUN = max,
+#   #                  na.rm = T)
+#   #   )),
+#   #   fragile_1_flag = case_when(
+#   #     fragile_1_flag == -Inf ~ NA_real_,
+#   #     TRUE ~ fragile_1_flag
+#   #   )) %>%
+#   # rename(BRD_Normalised = fatal_z_norm#,
+#          # Number_of_High_Risk_Flags = flag_count, Overall_Conflict_Risk_Score = fragile_1_flag
+#   #) 
+
+#   #-------------------------------------—Create Fragility sheet--------------------------------------
+#   # Compile joint database
+#   # countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+
+#   fragility_sheet <- left_join(countrylist, conflict_dataset, by = "Country") %>%
+#     # dplyr::select(-X) %>%
+#     # dplyr::select(-X, -Number_of_High_Risk_Flags) %>%
+#     rename_with(
+#       .fn = ~ paste0("Fr_", .), 
+#       .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname") ]
+#     )
+
+#   if(format == "csv" | format == "both") {
+#     write.csv(fragility_sheet, "Risk_sheets/fragilitysheet.csv")
+#   }
+#   if(format == "tbl" | format == "both") {
+#     # Write Spark DataFrame
+#   }
+# }
