@@ -1,29 +1,8 @@
-# Set method and date variables ----
-as_of <- Sys.Date()
-format <- "csv" # or "tbl" or "both"
-
 #  CODE USED TO TO PRODUCE INDIVIDUAL INDICATOR DATASETS AND RISK COMPONENT SHEETS
-runtime <- Sys.time()
-#--------------------LOAD PACKAGES-----------------------------------------
-packages <- c("curl", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2", 
-              "jsonlite","lubridate", "matrixStats", "readr", "readxl", "rvest",   
-              "sjmisc", "stringr", "tidyr", "xml2", "zoo")
-invisible(lapply(packages, require, quietly = TRUE, character.only = TRUE))
 
-## Set up Spark
-sc <- spark_connect(master = "local") # This is only for when running locally
-# sc <- spark_connect(method = "databricks")
-DBI::dbSendQuery(sc,"CREATE DATABASE IF NOT EXISTS crm")
-sparklyr::tbl_change_db(sc, "crm")
-# setwd("../../../dbfs/mnt/CompoundRiskMonitor")
-# setwd("inputs-archive")
-setwd("output")
-#---------------------------------
-
-## Direct Github location (data folder)
-#---------------------------------
-github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
-#---------------------------------
+countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+countrylist <- countrylist %>%
+  dplyr::select(-X)
 
 #--------------------FUNCTION TO CALCULATE NORMALISED SCORES-----------------
 # Function to normalise with upper and lower bounds (when low score = high vulnerability)
@@ -86,9 +65,37 @@ try_log <- function(expr) {
   })
 }
 
-lap <- Sys.time() - runtime
-print(paste("Setup:", lap, units(lap)))
-lapStart <- Sys.time()
+# Function for gathering all of a dimension's sources together
+collate_sheets <- function(dim, ..., format = "csv") {
+  sources <- list(...)
+  sheet <- countrylist
+  for(s in sources) {
+    sheet <- left_join(sheet, s, by = "Country")
+  }
+  # sheet <- lapply(sources, function(s) {
+  #   sheet <- left_join(sheet, s, by = "Country")
+  #   return(sheet)
+  # })
+  sheet <- arrange(sheet, Country) %>%
+    distinct(Country, .keep_all = TRUE) %>%
+    drop_na(Country)
+  if(format == "csv" | format == "both") {
+    write.csv(sheet, paste0("risk-sheets/", dim, "-sheet.csv"))
+    # print(paste0("risk-sheets/", dim, "-sheet.csv"))
+  }
+  if(format == "tbl" | format == "both") {
+    # Write Spark DataFrame
+  }
+  if(format == "return") {
+    # write.csv(sheet, paste0("risk-sheets/", dim, "-sheet.csv"))
+    # print(paste0("risk-sheets/", dim, "-sheet.csv"))
+    return(sheet)
+  }
+}
+
+
+
+
 #
 ##
 ### ********************************************************************************************
@@ -101,7 +108,11 @@ lapStart <- Sys.time()
 acaps_process <- function(as_of, format) {
   # SPLIT UP INTO INPUTS SECTION
   # Load website
-  acaps <- read_html("https://www.acaps.org/countries")
+  h <- new_handle()
+  handle_setopt(h, ssl_verifyhost = 0, ssl_verifypeer=0)
+  curl_download(url="https://www.acaps.org/countries", "acaps.html", handle = h)
+  acaps <- read_html("acaps.html")
+  unlink("acaps.html")
   
   # Select relevant columns from the site all merged into a single string
   country <- acaps %>%
@@ -191,10 +202,10 @@ acaps_process <- function(as_of, format) {
   healthnams <- unique(healthnams)
   
   # Load countries in the CRM
-  countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+  # countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
   
   acapssheet <- countrylist %>%
-    dplyr::select(-X) %>%
+    # dplyr::select(-X) %>%
     mutate(
       Fr_conflict_acaps = case_when(
         Country %in% unlist(as.list(conflictnams)) ~ 10,
@@ -216,12 +227,6 @@ acaps_process <- function(as_of, format) {
   
   return(acapssheet)
 }
-
-acapssheet <- try_log(acaps_process(as_of = as_of, format = format))
-
-lap <- Sys.time() - lapStart
-print(paste("ACAPS sheet written", lap, units(lap)))
-lapStart <- Sys.time()
 #
 ##
 ### ********************************************************************************************
@@ -236,14 +241,13 @@ ghsi_process <- function(as_of, format) {
   # OR instead of splitting, I could wrap everything above this (read.csv to archive) 
   # in an if statement, so you can run the script without this section if you're
   # trying to recreate data
-  ghsi <- loadInputs("ghsi", group_by = "Country", as_of = as_of, format = format, as_of = as_of, format = format)
+  ghsi <- loadInputs("ghsi", group_by = "Country", as_of = as_of, format = format)
   
   # Normalise scores
   # Rename HIS to ghsi *everywhere*
   HIS <- normfuncneg(ghsi, 20, 70, "H_HIS_Score")
   return(HIS)
 }
-HIS <- try_log(ghsi_process(as_of = as_of, format = format))
 
 #-----------------------—Oxford rollback Score-----------------
 # RENAME Oxrollback to oxford_openness_risk
@@ -278,14 +282,13 @@ oxford_openness_process <- function(as_of, format) {
   OXrollback <- normfuncpos(OXrollback, upperrisk, lowerrisk, "H_Oxrollback_score")
   return(OXrollback)
 }
-OXrollback <- try_log(oxford_openness_process(as_of = as_of, format = format))
 
 #------------------------—COVID deaths and cases--------------------------
 owid_covid_process <- function(as_of, format) {
   # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
   # See warning
   covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
-                       col_types = "cccDdddddddddddddddccccccddddddddcdddcdddddcdddddddddddddddddd")
+                       col_types = "cccD-------dd-dd-------------------------------------------------")
   
   # Super slow to find changed data in this 30MB file. For now, not important because
   # it includes its own historical data
@@ -434,15 +437,14 @@ owid_covid_process <- function(as_of, format) {
   # 
   # # Normalise
   # cov_forcast_alt <- normfuncpos(cov_forcast_alt, 100, 0, "H_add_death_prec_current")
-  return(list(
-    covidcurrent,
-    covidgrowth
-  ))
+  owid <- left_join(covidcurrent, covidgrowth)
+  return(owid)
+  # return(list(
+  #   covidcurrent,
+  #   covidgrowth
+  # ))
 }
 
-owid_covid <- try_log(owid_covid_process(as_of = as_of, format = format))
-covidcurrent <- owid_covid[1]
-covidgrowth <- owid_covid[2]
 
 #--------------------------—Oxford Response Tracker----------------------------
 Oxres_process <- function(as_of, format) {
@@ -473,7 +475,6 @@ Oxres_process <- function(as_of, format) {
   Ox_cov_resp <- normfuncneg(Ox_cov_resp, 0, 100, "H_EconomicSupportIndexForDisplay")
   return(Ox_cov_resp)
 }
-Ox_cov_resp <- try_log(Oxres_process(as_of = as_of, format = format))
 
 #------------------------------—INFORM COVID------------------------------------------------------
 inform_covid_process <- function(as_of, format) {
@@ -481,16 +482,15 @@ inform_covid_process <- function(as_of, format) {
   inform_covid_warning <- normfuncpos(inform_covid_warning, 6, 2, "H_INFORM_rating.Value")
   return(inform_covid_warning)
 }
-inform_covid_warning <- try_log(inform_covid_process(as_of = as_of, format = format))
 
 #----------------------------------—WHO DONS--------------------------------------------------------------
 # REPLACE all WMO with WHO
 who_process <- function(as_of, format) {
   wmo_don_full <- loadInputs("who_don", group_by = NULL, as_of = as_of, format = format)
   
-  countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+  # countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
   wmo_don <- countrylist %>%
-    dplyr::select(-X) %>%
+    # dplyr::select(-X) %>%
     # Should we specify which dates we care about?
     # Also a problem where *end* of outbreaks are also reported
     mutate(wmo_don_alert = case_when(Country %in% wmo_don_full$wmo_country_alert ~ 10,
@@ -499,10 +499,9 @@ who_process <- function(as_of, format) {
     dplyr::select(-Countryname)
   return(wmo_don)
 }
-wmo_don <- try_log(who_process(as_of = as_of, format = format))
 
 #---------------------------------—Health ACAPS---------------------------------
-acaps_health <- acapssheet[,c("Country", "H_health_acaps")]
+# acaps_health <- acapssheet[,c("Country", "H_health_acaps")]
 
 #----------------------------------—Create combined Health Sheet-------------------------------------------
 collate_health <- function(format) {
@@ -530,11 +529,6 @@ collate_health <- function(format) {
   
 }
 
-collate_health(format)
-
-lap <- Sys.time() - lapStart
-print(paste("Health sheet written", lap, units(lap)))
-lapStart <- Sys.time()
 #
 ##
 ### ********************************************************************************************
@@ -554,7 +548,6 @@ proteus_process <- function(as_of, format) {
   proteus <- normfuncpos(proteus, upperrisk, lowerrisk, "F_Proteus_Score")
   return(proteus)
 }
-proteus <- try_log(proteus_process(as_of = as_of, format = format))
 
 #------------------—FEWSNET (with CRW threshold)---
 fews_process <- function(as_of, format) {
@@ -664,8 +657,6 @@ fews_process <- function(as_of, format) {
   return(fews_dataset)
 }
 
-fews_dataset <- try_log(fews_process(as_of = as_of, format = format))
-
 #------------------------—WBG FOOD PRICE MONITOR------------------------------------
 fpi_process <- function(as_of, format) {
   ag_ob_data <- read.csv(paste0(github, "Indicator_dataset/food-inflation.csv"))
@@ -719,7 +710,6 @@ fpi_process <- function(as_of, format) {
     )
   return(ag_ob)
 }
-ag_ob <- try_log(fpi_process(as_of = as_of, format = format))
 
 
 #-------------------------—FAO/WFP HOTSPOTS----------------------------
@@ -751,11 +741,6 @@ collate_food <- function() {
   }
 }
 
-collate_food(format)
-
-lap <- Sys.time() - lapStart
-print(paste("Food sheet written", lap, units(lap)))
-lapStart <- Sys.time()
 #
 ##
 ### ********************************************************************************************
@@ -862,7 +847,6 @@ eiu_process <- function(as_of, format) {
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score_12m, 0.90), quantile(eiu_joint$M_EIU_Score_12m, 0.10), "M_EIU_Score_12m")
   return(eiu_joint)
 }
-eiu_joint <- try_log(eiu_process(as_of = as_of, format = format))
 
 collate_macro <- function() {
   #-----------------------------—Create Combined Macro sheet-----------------------------------------
@@ -885,11 +869,6 @@ collate_macro <- function() {
   }
 }
 
-collate_macro(format)
-
-lap <- Sys.time() - lapStart
-print(paste("Macro sheet written", lap, units(lap)))
-lapStart <- Sys.time()
 #
 ##
 ### ********************************************************************************************
@@ -947,13 +926,11 @@ income_support_process <- function(as_of, format) {
       ))
   return(socio_forward)
 }
-socio_forward <- try_log(income_support_process(as_of = as_of, format = format))
 
 #--------------------------—MPO: Poverty projections----------------------------------------------------
 mpo_process <- function(as_of, format) {
   mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = format)
 }
-mpo <- try_log(mpo_process(as_of = as_of, format = format))
 
 #-----------------------------—HOUSEHOLD HEATMAP FROM MACROFIN-------------------------------------
 macrofin_process <- function(as_of, format) {
@@ -989,13 +966,11 @@ macrofin_process <- function(as_of, format) {
            S_Household.risks_raw = M_Household.risks_raw)
   return(household_risk)
 }
-household_risk <- try_log(macrofin_process(as_of = as_of, format = format))
 
 #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
 phone_process <- function(as_of, format) {
   wb_phone  <- loadInputs("wb_phone", group_by = c("Country"), as_of = as_of, format = format)
 }
-wb_phone <- try_log(phone_process(as_of = as_of, format = format))
 #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
 imf_process <- function(as_of, format) {
   imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"), as_of = as_of, format = format)
@@ -1037,8 +1012,6 @@ imf_process <- function(as_of, format) {
   
   return(imf_un)
 }
-# FIX WARNINGS
-imf_un <- try_log(imf_process(as_of = as_of, format = format))
 
 collate_socioeconomic <- function() {
   #--------------------------—Create Socioeconomic sheet -------------------------------------------
@@ -1060,11 +1033,6 @@ collate_socioeconomic <- function() {
   }
 }
 
-collate_socioeconomic(format)
-
-lap <- Sys.time() - lapStart
-print(paste("Socioeconomic sheet written", lap, units(lap)))
-lapStart <- Sys.time()
 #
 ##
 ### ********************************************************************************************
@@ -1131,7 +1099,6 @@ gdacs_process <- function(as_of, format) {
     drop_na(Country)
   return(gdac)
 }
-gdac <- try_log(gdacs_process(as_of = as_of, format = format))
 
 #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
 inform_nathaz_process <- function(as_of, format) {
@@ -1146,24 +1113,21 @@ inform_nathaz_process <- function(as_of, format) {
   informnathaz <- normfuncpos(informnathaz, 7, 1, "NH_Hazard_Score")
   return(informnathaz)
 }
-informnathaz <- try_log(inform_nathaz_process(as_of = as_of, format = format))
 
 #---------------------------------- —IRI Seasonal Forecast ------------------------------------------
 iri_process <- function(as_of, format) {
   iri_forecast <- loadInputs("iri_forecast", group_by = c("Country"), as_of = as_of, format = format)
   return(iri_forecast)
 }
-seasonl_risk <- try_log(iri_process(as_of = as_of, format = format) # Go through and actually name iri_forecast)
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
 locust_process <- function(as_of, format) {
   fao_locust <- loadInputs("fao_locust", group_by = c("Country"), as_of = as_of, format = format)
   return(fao_locust)
 }
-locust_risk <- try_log(locust_process(as_of = as_of, format = format))
 
 #---------------------------------—Natural Hazard ACAPS---------------------------------
-acaps_nh <- acapssheet[,c("Country", "NH_natural_acaps")]
+# acaps_nh <- acapssheet[,c("Country", "NH_natural_acaps")]
 
 collate_nathaz <- function() {
   #-------------------------------------------—Create combined Natural Hazard sheet------------------------------
@@ -1188,11 +1152,6 @@ collate_nathaz <- function() {
   }
 }
 
-collate_nathaz(format)
-
-lap <- Sys.time() - lapStart
-print(paste("Natural hazard sheet written", lap, units(lap)))
-lapStart <- Sys.time()
 #
 ##
 ### ********************************************************************************************
@@ -1208,7 +1167,6 @@ fcs_process <- function(as_of, format) {
   fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = format)
   return(fcs)
 }
-fcv <- try_log(fcs_process(as_of = as_of, format = format))
 
 #-----------------------------—IDPs--------------------------------------------------------
 un_idp_process <- function(as_of, format) {
@@ -1267,10 +1225,10 @@ un_idp_process <- function(as_of, format) {
                             nomatch = NULL
       )
     ) %>%
-    dplyr::select(-`Country of origin (ISO)`)
+    dplyr::select(-`Country of origin (ISO)`) %>% 
+    rename(Displaced_UNHCR_Normalised = z_idps_norm)
   return(idp)
 }
-idp <- try_log(un_idp_process(as_of = as_of, format = format))
 
 #-------------------------—ACLED data---------------------------------------------
 acled_process <- function(as_of, format) {
@@ -1323,10 +1281,10 @@ acled_process <- function(as_of, format) {
       )
     ) %>%
     ungroup() %>%
-    dplyr::select(-iso3)
+    dplyr::select(-iso3) %>% 
+    rename(BRD_Normalised = fatal_z_norm)
   return(acled)
 }
-acled <- try_log(acled_process(as_of = as_of, format = format))
 
 #--------------------------—REIGN--------------------------------------------
 # Note that the file-loaded data set is one fewer than the downloaded dataset because Maia Sandu is duplicated.
@@ -1348,42 +1306,42 @@ reign_process <- function(as_of, format) {
     rename(Country = country)
   
   # Add FSI/BRD threshold (BRD is battle-related deaths)
-  reign <- left_join(reign_start, fcv %>% dplyr::select(Country, FCV_normalised), by = "Country") %>%
+  reign <- left_join(reign_start, fcs %>% dplyr::select(Country, FCS_normalised), by = "Country") %>%
     mutate(
       irreg_lead_ant = case_when(
-        FCV_normalised == 10 ~ irreg_lead_ant,
+        FCS_normalised == 10 ~ irreg_lead_ant,
         TRUE ~ 0
       ),
       delayed_adj = case_when(
-        FCV_normalised == 10 ~ delayed,
+        FCS_normalised == 10 ~ delayed,
         TRUE ~ 0
       ),
       anticipation_adj = case_when(
-        FCV_normalised == 10 ~ anticipation,
+        FCS_normalised == 10 ~ anticipation,
         TRUE ~ 0
       ),
       pol_trigger = case_when(
         pt_suc + pt_attempt + delayed_adj + irreg_lead_ant + anticipation_adj >= 1 ~ "Fragile",
         TRUE ~ "Not Fragile"
       ),
-      pol_trigger_norm = case_when(
+      # pol_trigger_norm = case_when(
+      REIGN_Normalised = case_when(
         pt_suc + pt_attempt + delayed_adj + irreg_lead_ant + anticipation_adj >= 1 ~ 10,
         TRUE ~ 0
       )
     ) %>%
-    dplyr::select(-FCV_normalised)
+    dplyr::select(-FCS_normalised)
   return(reign)
 }
-reign <- try_log(reign_process(as_of = as_of, format = format))
 
 collate_conflict <- function() {
   #-----------------—Join all dataset-----------------------------------
   conflict_dataset_raw <- left_join(fcv, reign, by = "Country") %>%
     left_join(., idp, by = "Country") %>%
     left_join(., acled, by = "Country") #%>%
-  #dplyr::select(Countryname, FCV_normalised, pol_trigger_norm, z_idps_norm, fatal_z_norm) 
+  #dplyr::select(Countryname, FCS_normalised, pol_trigger_norm, z_idps_norm, fatal_z_norm) 
   
-  conflict_dataset <- conflict_dataset_raw %>%
+  conflict_dataset <- conflict_dataset_raw # %>%
     # mutate(
     #   flag_count = as.numeric(unlist(row_count(
     #     .,
@@ -1402,17 +1360,16 @@ collate_conflict <- function() {
   #     fragile_1_flag == -Inf ~ NA_real_,
   #     TRUE ~ fragile_1_flag
   #   )) %>%
-  rename(FCS_Normalised = FCV_normalised, REIGN_Normalised = pol_trigger_norm,
-         Displaced_UNHCR_Normalised = z_idps_norm, BRD_Normalised = fatal_z_norm#,
+  # rename(BRD_Normalised = fatal_z_norm#,
          # Number_of_High_Risk_Flags = flag_count, Overall_Conflict_Risk_Score = fragile_1_flag
-  ) 
+  #) 
   
   #-------------------------------------—Create Fragility sheet--------------------------------------
   # Compile joint database
-  countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
+  # countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
   
   fragility_sheet <- left_join(countrylist, conflict_dataset, by = "Country") %>%
-    dplyr::select(-X) %>%
+    # dplyr::select(-X) %>%
     # dplyr::select(-X, -Number_of_High_Risk_Flags) %>%
     rename_with(
       .fn = ~ paste0("Fr_", .), 
@@ -1426,10 +1383,3 @@ collate_conflict <- function() {
     # Write Spark DataFrame
   }
 }
-
-collate_conflict(format = format)
-
-lap <- Sys.time() - lapStart
-print(paste("Fragility sheet written", lap, units(lap)))
-total_time <- Sys.time() - runtime
-print(paste("Total time", total_time, units(total_time)))

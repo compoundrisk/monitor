@@ -523,7 +523,7 @@ fcs_collect <- function() {
     dplyr::select(-X1, Countryname, -`IDA-status`) %>%
     mutate(FCV_status = tolower(FCV_status)) %>%
     mutate(
-      FCV_normalised = case_when(
+      FCS_normalised = case_when(
         FCV_status == tolower("High-Intensity conflict") ~ 10,
         FCV_status == tolower("Medium-Intensity conflict") ~ 10,
         FCV_status == tolower("High-Institutional and Social Fragility") ~ 10,
