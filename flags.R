@@ -6,11 +6,8 @@
 ######################################################################################################
 
 # LOAD PACKAGES ----
-packages <- c("curl", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2", 
-              "jsonlite","lubridate", "matrixStats", "readr", "readxl",   
-              "rmarkdown", "rvest", "sjmisc", "stringr", "tidyr", "xml2", "zoo")
-invisible(lapply(packages, require, character.only = TRUE))
-{
+# source("libraries.R")
+
 #
 ##
 ### ********************************************************************************************
@@ -19,43 +16,30 @@ invisible(lapply(packages, require, character.only = TRUE))
 ##
 #
 
-# Load risk sheets
-# healthsheet <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/healthsheet.csv") %>% dplyr::select(-X)
-# foodsecurity <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/foodsecuritysheet.csv") %>% dplyr::select(-X)
-# #debtsheet <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/debtsheet.csv") %>% dplyr::select(-X)
-# fragilitysheet <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/fragilitysheet.csv") %>% dplyr::select(-X)
-# macrosheet <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/macrosheet.csv") %>% dplyr::select(-X)
-# Naturalhazardsheet <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/Naturalhazards.csv") %>% dplyr::select(-X)
-# Socioeconomic_sheet <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/Socioeconomic_sheet.csv") %>% dplyr::select(-X)
-# #acapssheet <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Risk_sheets/acapssheet.csv") %>% dplyr::select(-X)
-# countrylist <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Indicator_dataset/countrylist.csv") %>% dplyr::select(-X)
-
+join_risk_sheets <- function() {
+# Ideally we'd calculate dimension values for each sheet individually
 # # Load risk sheets
-healthsheet <- read.csv("Risk_sheets/healthsheet.csv")[,-1] # drops first column, X, which is row number
-foodsecurity <- read.csv("Risk_sheets/foodsecuritysheet.csv")[,-1]
-fragilitysheet <- read.csv("Risk_sheets/fragilitysheet.csv")[,-1]
-macrosheet <- read.csv("Risk_sheets/macrosheet.csv")[,-1]
-Naturalhazardsheet <- read.csv("Risk_sheets/Naturalhazards.csv")[,-1]
-Socioeconomic_sheet <- read.csv("Risk_sheets/Socioeconomic_sheet.csv")[,-1]
+# Do these need to be saved, or can they be held in memory?
+healthsheet <- read.csv("risk-sheets/health-sheet.csv")[,-1] # drops first column, X, which is row number
+foodsecurity <- read.csv("risk-sheets/food-sheet.csv")[,-1]
+fragilitysheet <- read.csv("risk-sheets/fragility-sheet.csv")[,-1]
+macrosheet <- read.csv("risk-sheets/macro-sheet.csv")[,-1]
+Naturalhazardsheet <- read.csv("risk-sheets/natural_hazards-sheet.csv")[,-1]
+Socioeconomic_sheet <- read.csv("risk-sheets/socio-sheet.csv")[,-1]
 countrylist <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Indicator_dataset/countrylist.csv")[,-1]
 
 # Join datasets
-# — `globalrisk` ----
 globalrisk <- left_join(countrylist, healthsheet, by = c("Countryname", "Country")) %>%
   left_join(., foodsecurity, by = c("Country")) %>%
-  # left_join(., debtsheet, by = c("Countryname", "Country")) %>%
   left_join(., fragilitysheet, by = c("Country")) %>%
   left_join(., macrosheet, by = c("Countryname", "Country")) %>%
   left_join(., Naturalhazardsheet, by = c("Countryname", "Country")) %>%
   left_join(., Socioeconomic_sheet, by = c("Countryname", "Country")) %>%
-  # left_join(., acapssheet, by = c("Country", "Countryname")) %>%
-  #dplyr::select(-X.x, -X.y, -X.x.x, -X.y.y, -X.x.x.x, -X) %>%
   distinct(Country, .keep_all = TRUE) %>%
   drop_na(Country)
 
-
-# Write as csv
-write.csv(globalrisk, "Risk_sheets/Global_compound_risk_database.csv")
+return(globalrisk)
+}
 
 #
 ##
@@ -67,92 +51,104 @@ write.csv(globalrisk, "Risk_sheets/Global_compound_risk_database.csv")
 
 # Add underlying and emerging risk scores
 #—`riskflags` ----
-riskflags <- globalrisk %>%
-  mutate(
-    UNDERLYING_RISK_HEALTH = pmax(
-      H_HIS_Score_norm,
-      H_INFORM_rating.Value_norm
-    ),
-    UNDERLYING_RISK_FOOD_SECURITY = F_Proteus_Score_norm,
-    UNDERLYING_RISK_MACRO_FISCAL = M_EIU_Score_12m_norm,
-    UNDERLYING_RISK_SOCIOECONOMIC_VULNERABILITY = S_INFORM_vul_norm,
-    UNDERLYING_RISK_NATURAL_HAZARDS = pmax(
-      NH_Hazard_Score_norm,
-      na.rm=T
-    ),
-    UNDERLYING_RISK_FRAGILITY_INSTITUTIONS = Fr_FCS_Normalised,
-    EMERGING_RISK_HEALTH = pmax(
-      H_Oxrollback_score_norm,
-      H_Covidgrowth_casesnorm,
-      H_Covidgrowth_deathsnorm,
-      H_new_cases_smoothed_per_million_norm,
-      H_new_deaths_smoothed_per_million_norm,
-      H_GovernmentResponseIndexForDisplay_norm,
-      H_health_acaps,
-      H_wmo_don_alert,
-      na.rm = T
-    ),
-    EMERGING_RISK_FOOD_SECURITY = case_when(
-      (!is.na(F_fews_crm_norm) | !is.na(F_fao_wfp_warning)) ~ as.numeric(pmax(
-        F_fews_crm_norm,
-        F_fao_wfp_warning,
+calculate_dims <- function(x) {
+  # This should be applied to each risk sheet individually, so I don't need
+  # to specify all the indicators; function would be *generic*
+  riskflags <- x %>%
+    mutate(
+      UNDERLYING_RISK_HEALTH = pmax(
+        H_HIS_Score_norm,
+        H_INFORM_rating.Value_norm
+      ),
+      UNDERLYING_RISK_FOOD_SECURITY = F_Proteus_Score_norm,
+      UNDERLYING_RISK_MACRO_FISCAL = M_EIU_Score_12m_norm,
+      UNDERLYING_RISK_SOCIOECONOMIC_VULNERABILITY = S_INFORM_vul_norm,
+      UNDERLYING_RISK_NATURAL_HAZARDS = pmax(
+        NH_Hazard_Score_norm,
+        na.rm=T
+      ),
+      UNDERLYING_RISK_FRAGILITY_INSTITUTIONS = Fr_FCS_Normalised,
+      EMERGING_RISK_HEALTH = pmax(
+        H_Oxrollback_score_norm,
+        H_Covidgrowth_casesnorm,
+        H_Covidgrowth_deathsnorm,
+        H_new_cases_smoothed_per_million_norm,
+        H_new_deaths_smoothed_per_million_norm,
+        H_GovernmentResponseIndexForDisplay_norm,
+        H_health_acaps,
+        H_wmo_don_alert,
+        na.rm = T
+      ),
+      EMERGING_RISK_FOOD_SECURITY = case_when(
+        (!is.na(F_fews_crm_norm) | !is.na(F_fao_wfp_warning)) ~ as.numeric(pmax(
+          F_fews_crm_norm,
+          F_fao_wfp_warning,
+          na.rm = T
+        )),
+        ((is.na(F_fews_crm_norm) | is.na(F_fao_wfp_warning)) & !is.na(F_fpv_rating)) ~  as.numeric(F_fpv_rating),
+        TRUE ~ NA_real_
+      ),
+      EMERGING_RISK_MACRO_FISCAL = M_EIU_12m_change_norm,
+      EMERGING_RISK_SOCIOECONOMIC_VULNERABILITY = pmax(
+        S_pov_comb_norm,
+        S_change_unemp_norm,
+        S_income_support.Rating_crm_norm,
+        S_Household.risks,
+        S_phone_average_index_norm,
+        na.rm = T
+      ),
+      EMERGING_RISK_NATURAL_HAZARDS = as.numeric(pmax(
+        NH_GDAC_Hazard_Score_Norm,
+        NH_natural_acaps,
+        NH_seasonal_risk_norm,
+        NH_locust_norm,
         na.rm = T
       )),
-      ((is.na(F_fews_crm_norm) | is.na(F_fao_wfp_warning)) & !is.na(F_fpv_rating)) ~  as.numeric(F_fpv_rating),
-      TRUE ~ NA_real_
-    ),
-    EMERGING_RISK_MACRO_FISCAL = M_EIU_12m_change_norm,
-    EMERGING_RISK_SOCIOECONOMIC_VULNERABILITY = pmax(
-      S_pov_comb_norm,
-      S_change_unemp_norm,
-      S_income_support.Rating_crm_norm,
-      S_Household.risks,
-      S_phone_average_index_norm,
-      na.rm = T
-    ),
-    EMERGING_RISK_NATURAL_HAZARDS = as.numeric(pmax(
-      NH_GDAC_Hazard_Score_Norm,
-      NH_natural_acaps,
-      NH_seasonal_risk_norm,
-      NH_locust_norm,
-      na.rm = T
-    )),
-    EMERGING_RISK_FRAGILITY_INSTITUTIONS =pmax(
-      Fr_REIGN_Normalised,
-      Fr_Displaced_UNHCR_Normalised,
-      Fr_BRD_Normalised,
-      na.rm = T
+      EMERGING_RISK_FRAGILITY_INSTITUTIONS =pmax(
+        Fr_REIGN_Normalised,
+        Fr_Displaced_UNHCR_Normalised,
+        Fr_BRD_Normalised,
+        na.rm = T
+      )
+    ) %>%
+    dplyr::select(
+      Countryname, Country, UNDERLYING_RISK_HEALTH, UNDERLYING_RISK_FOOD_SECURITY,
+      UNDERLYING_RISK_MACRO_FISCAL, UNDERLYING_RISK_SOCIOECONOMIC_VULNERABILITY,
+      UNDERLYING_RISK_NATURAL_HAZARDS, UNDERLYING_RISK_FRAGILITY_INSTITUTIONS,
+      EMERGING_RISK_HEALTH, EMERGING_RISK_FOOD_SECURITY, EMERGING_RISK_SOCIOECONOMIC_VULNERABILITY, EMERGING_RISK_MACRO_FISCAL,
+      EMERGING_RISK_NATURAL_HAZARDS, EMERGING_RISK_FRAGILITY_INSTITUTIONS #, F_fews_crm_norm
     )
-  ) %>%
-  dplyr::select(
-    Countryname, Country, UNDERLYING_RISK_HEALTH, UNDERLYING_RISK_FOOD_SECURITY,
-    UNDERLYING_RISK_MACRO_FISCAL, UNDERLYING_RISK_SOCIOECONOMIC_VULNERABILITY,
-    UNDERLYING_RISK_NATURAL_HAZARDS, UNDERLYING_RISK_FRAGILITY_INSTITUTIONS,
-    EMERGING_RISK_HEALTH, EMERGING_RISK_FOOD_SECURITY, EMERGING_RISK_SOCIOECONOMIC_VULNERABILITY, EMERGING_RISK_MACRO_FISCAL,
-    EMERGING_RISK_NATURAL_HAZARDS, EMERGING_RISK_FRAGILITY_INSTITUTIONS #, F_fews_crm_norm
-  )
+  
+  return(riskflags)
+}
+riskflags <- calculate_dims(globalrisk)
 
 # —Create ternary risk flags----
-vars <- c(
-  "UNDERLYING_RISK_HEALTH", "UNDERLYING_RISK_FOOD_SECURITY",
-  "UNDERLYING_RISK_MACRO_FISCAL", "UNDERLYING_RISK_SOCIOECONOMIC_VULNERABILITY",
-  "UNDERLYING_RISK_NATURAL_HAZARDS", "UNDERLYING_RISK_FRAGILITY_INSTITUTIONS",
-  "EMERGING_RISK_HEALTH", "EMERGING_RISK_FOOD_SECURITY",
-  "EMERGING_RISK_SOCIOECONOMIC_VULNERABILITY",
-  "EMERGING_RISK_MACRO_FISCAL",
-  "EMERGING_RISK_NATURAL_HAZARDS", "EMERGING_RISK_FRAGILITY_INSTITUTIONS"
-)
-
-riskflags[paste0(vars, "_RISKLEVEL")] <- lapply(riskflags[vars], function(tt) {
-  ifelse(tt >= 0 & tt < 7, "Low risk",
-         ifelse(tt >= 7 & tt < 10, "Medium risk",
-                ifelse(tt == 10, "High risk", NA
-                )
-         )
+assign_dim_levels <- function(x) {
+  vars <- c(
+    "UNDERLYING_RISK_HEALTH", "UNDERLYING_RISK_FOOD_SECURITY",
+    "UNDERLYING_RISK_MACRO_FISCAL", "UNDERLYING_RISK_SOCIOECONOMIC_VULNERABILITY",
+    "UNDERLYING_RISK_NATURAL_HAZARDS", "UNDERLYING_RISK_FRAGILITY_INSTITUTIONS",
+    "EMERGING_RISK_HEALTH", "EMERGING_RISK_FOOD_SECURITY",
+    "EMERGING_RISK_SOCIOECONOMIC_VULNERABILITY",
+    "EMERGING_RISK_MACRO_FISCAL",
+    "EMERGING_RISK_NATURAL_HAZARDS", "EMERGING_RISK_FRAGILITY_INSTITUTIONS"
   )
-})
+  
+  x[paste0(vars, "_RISKLEVEL")] <- lapply(x[vars], function(tt) {
+    ifelse(tt >= 0 & tt < 7, "Low risk",
+           ifelse(tt >= 7 & tt < 10, "Medium risk",
+                  ifelse(tt == 10, "High risk", NA
+                  )
+           )
+    )
+  })
+  return(x)
+}
+riskflags <- assign_dim_levels(riskflags)
 
 # —Calculate total compound risk scores ----
+count_flags <- function(riskflags) {
 riskflags$UNDERLYING_FLAGS <- as.numeric(unlist(row_count(
   riskflags,
   UNDERLYING_RISK_HEALTH:UNDERLYING_RISK_FRAGILITY_INSTITUTIONS,
@@ -190,153 +186,156 @@ riskflags <- riskflags %>%
   distinct(Country, .keep_all = TRUE) %>%
   drop_na(Country)
 
-#
-##
-### ********************************************************************************************
-####    CREATE DATABASE OF ALTERNATIVE RISK SCORES ----
-### ********************************************************************************************
-##
-#
+return(riskflags)
+}
+# #
+# ##
+# ### ********************************************************************************************
+# ####    CREATE DATABASE OF ALTERNATIVE RISK SCORES ----
+# ### ********************************************************************************************
+# ##
+# #
 
-# —Alternative combined risk scores ----
-names <- c(
-  "EMERGING_RISK_FRAGILITY_INSTITUTIONS", 
-  "EMERGING_RISK_MACRO_FISCAL", "UNDERLYING_RISK_FRAGILITY_INSTITUTIONS"
-)
+# # —Alternative combined risk scores ----
+# names <- c(
+#   "EMERGING_RISK_FRAGILITY_INSTITUTIONS", 
+#   "EMERGING_RISK_MACRO_FISCAL", "UNDERLYING_RISK_FRAGILITY_INSTITUTIONS"
+# )
 
-riskflags[paste0(names, "_plus1")] <- lapply(riskflags[names], function(xx) {
-  ifelse(xx == 0, xx + 1, xx)
-})
+# riskflags[paste0(names, "_plus1")] <- lapply(riskflags[names], function(xx) {
+#   ifelse(xx == 0, xx + 1, xx)
+# })
 
-# Geometric means
-riskflags <- riskflags %>%
-  rowwise() %>%
-  mutate(
-    EMERGING_RISK_FRAGILITY_INSTITUTIONS_MULTIDIMENSIONAL = geoMean(c(
-      EMERGING_RISK_FRAGILITY_INSTITUTIONS_plus1,
-      EMERGING_RISK_MACRO_FISCAL_plus1),
-      na.rm = T
-    ),
-    EMERGING_RISK_FRAGILITY_INSTITUTIONS_MULTIDIMENSIONAL_SQ = geoMean(c(
-      UNDERLYING_RISK_FRAGILITY_INSTITUTIONS_plus1,
-      EMERGING_RISK_FRAGILITY_INSTITUTIONS_MULTIDIMENSIONAL),
-      na.rm = T
-    )
-  )
+# # Geometric means
+# riskflags <- riskflags %>%
+#   rowwise() %>%
+#   mutate(
+#     EMERGING_RISK_FRAGILITY_INSTITUTIONS_MULTIDIMENSIONAL = geoMean(c(
+#       EMERGING_RISK_FRAGILITY_INSTITUTIONS_plus1,
+#       EMERGING_RISK_MACRO_FISCAL_plus1),
+#       na.rm = T
+#     ),
+#     EMERGING_RISK_FRAGILITY_INSTITUTIONS_MULTIDIMENSIONAL_SQ = geoMean(c(
+#       UNDERLYING_RISK_FRAGILITY_INSTITUTIONS_plus1,
+#       EMERGING_RISK_FRAGILITY_INSTITUTIONS_MULTIDIMENSIONAL),
+#       na.rm = T
+#     )
+#   )
 
-# remove unnecessary variables
-riskflags <- riskflags %>%
-  dplyr::select(-contains("_plus1"))
+# # remove unnecessary variables
+# riskflags <- riskflags %>%
+#   dplyr::select(-contains("_plus1"))
 
-# Alternative combined total scores
-altflag <- globalrisk
-names <- c(
-  "S_INFORM_vul_norm", "H_Oxrollback_score_norm", "H_wmo_don_alert",
-  "H_Covidgrowth_casesnorm", "H_Covidgrowth_deathsnorm", "H_HIS_Score_norm", "H_INFORM_rating.Value_norm",
-  "H_new_cases_smoothed_per_million_norm", "H_new_deaths_smoothed_per_million_norm",
-  "F_Proteus_Score_norm", "F_fews_crm_norm", "F_fao_wfp_warning", "F_fpv_rating", #"D_WB_external_debt_distress_norm",
-  "M_EIU_12m_change_norm", "M_EIU_Score_12m_norm",
-  "NH_GDAC_Hazard_Score_Norm",  "H_GovernmentResponseIndexForDisplay_norm",  "H_GovernmentResponseIndexForDisplay_norm", 
-  "S_Household.risks", "S_phone_average_index_norm",  "NH_seasonal_risk_norm","NH_locust_norm", "NH_natural_acaps","Fr_FCS_Normalised", 
-  "Fr_REIGN_Normalised", "Fr_Displaced_UNHCR_Normalised", "Fr_BRD_Normalised"
-)
+# # Alternative combined total scores
+# altflag <- globalrisk
+# names <- c(
+#   "S_INFORM_vul_norm", "H_Oxrollback_score_norm", "H_wmo_don_alert",
+#   "H_Covidgrowth_casesnorm", "H_Covidgrowth_deathsnorm", "H_HIS_Score_norm", "H_INFORM_rating.Value_norm",
+#   "H_new_cases_smoothed_per_million_norm", "H_new_deaths_smoothed_per_million_norm",
+#   "F_Proteus_Score_norm", "F_fews_crm_norm", "F_fao_wfp_warning", "F_fpv_rating", #"D_WB_external_debt_distress_norm",
+#   "M_EIU_12m_change_norm", "M_EIU_Score_12m_norm",
+#   "NH_GDAC_Hazard_Score_Norm",  "H_GovernmentResponseIndexForDisplay_norm",  "H_GovernmentResponseIndexForDisplay_norm", 
+#   "S_Household.risks", "S_phone_average_index_norm",  "NH_seasonal_risk_norm","NH_locust_norm", "NH_natural_acaps","Fr_FCS_Normalised", 
+#   "Fr_REIGN_Normalised", "Fr_Displaced_UNHCR_Normalised", "Fr_BRD_Normalised"
+# )
 
-altflag[paste0(names, "_plus1")] <- lapply(altflag[names], function(xx) {
-  ifelse(xx == 0, xx + 1, xx)
-})
+# altflag[paste0(names, "_plus1")] <- lapply(altflag[names], function(xx) {
+#   ifelse(xx == 0, xx + 1, xx)
+# })
 
-# Calculate alternative variables
-altflag <- altflag %>%
-  rowwise() %>%
-  mutate(
-    EMERGING_RISK_HEALTH_AV = geoMean(c(
-      H_Oxrollback_score_norm_plus1,
-      H_Covidgrowth_casesnorm_plus1,
-      H_Covidgrowth_deathsnorm_plus1,
-      H_new_cases_smoothed_per_million_norm_plus1,
-      H_new_deaths_smoothed_per_million_norm_plus1,
-      H_GovernmentResponseIndexForDisplay_norm_plus1,
-      H_wmo_don_alert_plus1,
-      na.rm = T
-    )),
-    EMERGING_RISK_MACRO_FISCAL_AV = M_EIU_12m_change_norm,
-    EMERGING_RISK_FRAGILITY_INSTITUTIONS_AV = geoMean(c(
-      Fr_REIGN_Normalised,
-      Fr_Displaced_UNHCR_Normalised,
-      Fr_BRD_Normalised,
-      na.rm = T
-    ))
-    ,
-    EMERGING_RISK_HEALTH_SQ_ALT = geoMean(c(
-      H_Oxrollback_score_norm_plus1,
-      max(altflag$H_Covidgrowth_casesnorm,
-          altflag$H_Covidgrowth_deathsnorm,
-          altflag$H_new_cases_smoothed_per_million_norm,
-          altflag$H_new_deaths_smoothed_per_million_norm,
-          altflag$H_add_death_prec_current,
-          altflag$H_health_acaps,
-          altflag$H_wmo_don_alert,
-          na.rm = T
-      )
-    ),
-    na.rm = T
-    )
-  )
+# # Calculate alternative variables
+# altflag <- altflag %>%
+#   rowwise() %>%
+#   mutate(
+#     EMERGING_RISK_HEALTH_AV = geoMean(c(
+#       H_Oxrollback_score_norm_plus1,
+#       H_Covidgrowth_casesnorm_plus1,
+#       H_Covidgrowth_deathsnorm_plus1,
+#       H_new_cases_smoothed_per_million_norm_plus1,
+#       H_new_deaths_smoothed_per_million_norm_plus1,
+#       H_GovernmentResponseIndexForDisplay_norm_plus1,
+#       H_wmo_don_alert_plus1,
+#       na.rm = T
+#     )),
+#     EMERGING_RISK_MACRO_FISCAL_AV = M_EIU_12m_change_norm,
+#     EMERGING_RISK_FRAGILITY_INSTITUTIONS_AV = geoMean(c(
+#       Fr_REIGN_Normalised,
+#       Fr_Displaced_UNHCR_Normalised,
+#       Fr_BRD_Normalised,
+#       na.rm = T
+#     ))
+#     ,
+#     EMERGING_RISK_HEALTH_SQ_ALT = geoMean(c(
+#       H_Oxrollback_score_norm_plus1,
+#       max(altflag$H_Covidgrowth_casesnorm,
+#           altflag$H_Covidgrowth_deathsnorm,
+#           altflag$H_new_cases_smoothed_per_million_norm,
+#           altflag$H_new_deaths_smoothed_per_million_norm,
+#           altflag$H_add_death_prec_current,
+#           altflag$H_health_acaps,
+#           altflag$H_wmo_don_alert,
+#           na.rm = T
+#       )
+#     ),
+#     na.rm = T
+#     )
+#   )
 
-#--------------------------------—Calculate Coefficient of Variation----------------------------------------------------------------
-altflag <- altflag %>%
-  rowwise() %>%
-  mutate(
-    H_coefvar = cv(c( # Should these match the selected indicators?
-      H_Oxrollback_score_norm,
-      H_Covidgrowth_casesnorm,
-      H_Covidgrowth_deathsnorm,
-      H_new_cases_smoothed_per_million_norm,
-      H_new_deaths_smoothed_per_million_norm,
-      # H_add_death_prec_current,
-      H_wmo_don_alert),
-      na.rm = T
-    ),
-    M_coefvar = cv(c(M_EIU_12m_change_norm),
-                   na.rm = T
-    ),
-    Fr_coefvar = cv(c(
-      Fr_REIGN_Normalised,
-      Fr_Displaced_UNHCR_Normalised,
-      Fr_BRD_Normalised),
-      na.rm = T
-    ),
-    NH_coefvar = cv(c(
-      NH_GDAC_Hazard_Score_Norm,
-      NH_natural_acaps,
-      NH_seasonal_risk_norm),
-      na.rm = T
-    ),
-    F_coefvar = cv(c(
-      F_fews_crm_norm,
-      F_fao_wfp_warning,
-      F_fpv_rating),
-      na.rm = T
-    ),
-    S_coefvar = cv(c(
-      S_pov_comb_norm,
-      S_change_unemp_20_norm,
-      S_income_support.Rating_crm_norm,
-      na.rm = T
-    ))
-  )
+# #--------------------------------—Calculate Coefficient of Variation----------------------------------------------------------------
+# altflag <- altflag %>%
+#   rowwise() %>%
+#   mutate(
+#     H_coefvar = cv(c( # Should these match the selected indicators?
+#       H_Oxrollback_score_norm,
+#       H_Covidgrowth_casesnorm,
+#       H_Covidgrowth_deathsnorm,
+#       H_new_cases_smoothed_per_million_norm,
+#       H_new_deaths_smoothed_per_million_norm,
+#       # H_add_death_prec_current,
+#       H_wmo_don_alert),
+#       na.rm = T
+#     ),
+#     M_coefvar = cv(c(M_EIU_12m_change_norm),
+#                    na.rm = T
+#     ),
+#     Fr_coefvar = cv(c(
+#       Fr_REIGN_Normalised,
+#       Fr_Displaced_UNHCR_Normalised,
+#       Fr_BRD_Normalised),
+#       na.rm = T
+#     ),
+#     NH_coefvar = cv(c(
+#       NH_GDAC_Hazard_Score_Norm,
+#       NH_natural_acaps,
+#       NH_seasonal_risk_norm),
+#       na.rm = T
+#     ),
+#     F_coefvar = cv(c(
+#       F_fews_crm_norm,
+#       F_fao_wfp_warning,
+#       F_fpv_rating),
+#       na.rm = T
+#     ),
+#     S_coefvar = cv(c(
+#       S_pov_comb_norm,
+#       S_change_unemp_20_norm,
+#       S_income_support.Rating_crm_norm,
+#       na.rm = T
+#     ))
+#   )
 
-# Merge datasets to include alt variables
-riskflags <- inner_join(riskflags,
-                        altflag,
-                        by = c("Country", "Countryname"),
-                        keep = F
-)
+# # Merge datasets to include alt variables
+# riskflags <- inner_join(riskflags,
+#                         altflag,
+#                         by = c("Country", "Countryname"),
+#                         keep = F
+# )
 
 #-----------------------------—Calculate Overall Alert w/ Geometric Mean ----------------------------------------------
 # Geometric mean of underlying and emerging (and emerging when underlying is NA)
 # This is how we are now calculating overall alert, though here it's called emerging risk sq
 
+calculate_overall_dims <- function(riskflags) {
 riskflags <- riskflags %>%
   mutate(
     OVERALL_HEALTH_GEO = case_when(
@@ -568,7 +567,8 @@ riskflags$OVERALL_FLAGS_FILTER_7_5 <- rowSums(riskflags[filter75nam] >= 7, na.rm
 
 # Emerging risk score as high + med
 riskflags$OVERALL_FLAGS_FILTER_7_5_MED <-  rowSums(riskflags[filter75nam] >= 7, na.rm = T) + (rowSums(riskflags[filter75nam] < 7 & riskflags[filter75nam] >= 5, na.rm = T) / 2)
-
+return(riskflags)
+}
 #
 ##
 ### ********************************************************************************************
@@ -577,6 +577,7 @@ riskflags$OVERALL_FLAGS_FILTER_7_5_MED <-  rowSums(riskflags[filter75nam] >= 7, 
 ##
 #
 
+write_reliability <- function(globalrisk) {
 # Calculate the number of missing values in each of the source indicators for the various risk components (as a proportion)
 reliabilitysheet <- globalrisk %>%
   mutate(
@@ -673,41 +674,40 @@ reliabilitysheet <- reliabilitysheet %>%
     RELIABILITY_EMERGING_NATURAL_HAZARDS, RELIABILITY_EMERGING_FRAGILITY_INSTITUTIONS
   ) %>%
   arrange(Country)
-
+write.csv(reliabilitysheet, "risk-sheets/reliability-sheet.csv")
+}
 # Write as a csv file for the reliability sheet
-write.csv(reliabilitysheet, "Risk_sheets/reliabilitysheet.csv")
-write.csv(reliabilitysheet, "output/risk-sheets/reliabilitysheet.csv")
-write.csv(reliabilitysheet, paste0("output/risk-sheets/archive/", Sys.Date(), "-reliabilitysheet.csv"))
+# write.csv(reliabilitysheet, "risk-sheets/reliability-sheet.csv")
 
 #------------------------------—Combine the reliability sheet with the global database------------------------------------
-reliable <- reliabilitysheet %>%
-  dplyr::select(Countryname, Country, RELIABILITY_SCORE_UNDERLYING_RISK, RELIABILITY_SCORE_EMERGING_RISK)
+# reliable <- reliabilitysheet %>%
+#   dplyr::select(Countryname, Country, RELIABILITY_SCORE_UNDERLYING_RISK, RELIABILITY_SCORE_EMERGING_RISK)
 
-globalrisk <- left_join(globalrisk, reliable, by = c("Countryname", "Country"))
+# globalrisk <- left_join(globalrisk, reliable, by = c("Countryname", "Country"))
 
-# Save database of all risk indicators (+ reliability scores)
-write.csv(globalrisk, "Risk_sheets/Global_compound_risk_database.csv")
-write.csv(globalrisk, "output/risk-sheets/Global_compound_risk_database.csv")
-write.csv(globalrisk, paste0("output/risk-sheets/archive/", Sys.Date(),"-Global_compound_risk_database.csv"))
+# # Save database of all risk indicators (+ reliability scores)
+# write.csv(globalrisk, "Risk_sheets/Global_compound_risk_database.csv")
+# write.csv(globalrisk, "output/risk-sheets/Global_compound_risk_database.csv")
+# write.csv(globalrisk, paste0("output/risk-sheets/archive/", Sys.Date(),"-Global_compound_risk_database.csv"))
 
-#------------------------------—Combine the reliability sheet with the summary risk flag sheet-----------------------------
-reliable <- reliabilitysheet %>%
-  dplyr::select(Countryname, Country, RELIABILITY_SCORE_UNDERLYING_RISK, RELIABILITY_SCORE_EMERGING_RISK)
+# #------------------------------—Combine the reliability sheet with the summary risk flag sheet-----------------------------
+# reliable <- reliabilitysheet %>%
+#   dplyr::select(Countryname, Country, RELIABILITY_SCORE_UNDERLYING_RISK, RELIABILITY_SCORE_EMERGING_RISK)
 
-riskflags <- left_join(riskflags %>%
-                         dplyr::select(
-                           "Countryname", "Country",
-                           contains(c("_AV", "_SQ", "_ALT", "_FILTER", "_GEO", "UNDERLYING_", "EMERGING_", "coefvar"))
-                         ),
-                       reliable, 
-                       by = c("Countryname", "Country")) %>% 
-  dplyr::select(-contains("S_phone"))
+# riskflags <- left_join(riskflags %>%
+#                          dplyr::select(
+#                            "Countryname", "Country",
+#                            contains(c("_AV", "_SQ", "_ALT", "_FILTER", "_GEO", "UNDERLYING_", "EMERGING_", "coefvar"))
+#                          ),
+#                        reliable, 
+#                        by = c("Countryname", "Country")) %>% 
+#   dplyr::select(-contains("S_phone"))
 
-# Write csv file of all risk flags (+reliability scores)
+# # Write csv file of all risk flags (+reliability scores)
 
-write.csv(riskflags, "Risk_sheets/Compound_Risk_Flag_Sheets.csv")
-write.csv(riskflags, "output/risk-sheets/Compound_Risk_Flag_Sheets.csv")
-write.csv(riskflags, paste0("output/risk-sheets/archive/", Sys.Date(), "-Compound_Risk_Flag_Sheets.csv"))
+# write.csv(riskflags, "Risk_sheets/Compound_Risk_Flag_Sheets.csv")
+# write.csv(riskflags, "output/risk-sheets/Compound_Risk_Flag_Sheets.csv")
+# write.csv(riskflags, paste0("output/risk-sheets/archive/", Sys.Date(), "-Compound_Risk_Flag_Sheets.csv"))
 
 #
 ##
@@ -718,13 +718,15 @@ write.csv(riskflags, paste0("output/risk-sheets/archive/", Sys.Date(), "-Compoun
 #
 
 # —Only use the relevant aggregated metrics; renamed for dashboard ----
+select_aggregates <- function(riskflags) {
 names <- read_csv("riskflags-dashboard-names.csv")
 riskflags_select <- riskflags[,c("Country", "Countryname", names$old_name)]
 names(riskflags_select) <- c("Country", "Countryname", names$new_name)
-write_csv(riskflags_select, "Risk_sheets/crm-aggregated.csv")
+return(riskflags_select)
 }
 
 # —Lengthen data ----
+lengthen_flags <- function(riskflags_select) {
 flags_long <- pivot_longer(riskflags_select, !c("Country", "Countryname"), values_to = "Value") %>%
   separate(name, into = c("Outlook", "Key"), sep = "_" ) %>%
   mutate(
@@ -739,14 +741,20 @@ flags_long <- pivot_longer(riskflags_select, !c("Country", "Countryname"), value
       TRUE ~ "Dimension Value"
     ),
     `Display Status` = "Main"
-    )
+  )
+return(flags_long)
+}
 
-indicators_select <- read_csv("crm-indicators.csv") # written in `indicators.R` 
-
+lengthen_inds <- function(indicators_select) {
 indicators_long <- pivot_longer(indicators_select, !c("Country", "Countryname"), values_to = "Value") %>% 
   separate(name, into = c("Outlook", "Dimension", "Key"), sep = "_" ) %>%
   mutate(`Data Level` = "Indicator",
          `Display Status` = "Secondary")
+return(indicators_long)
+}
+
+join_inds_flags <- function(indicators_long, flags_long) {
+# indicators_select <- read_csv("crm-indicators.csv") # written in `alt-sheets.R` 
 
 long <- rbind(indicators_long, flags_long) %>%
   mutate(
@@ -772,7 +780,7 @@ long <- rbind(indicators_long, flags_long) %>%
       `Data Level` == "Flag Count" ~ as.character(Value),
       TRUE ~ as.character(floor(Value))
     )
-    ) %>% mutate(
+  ) %>% mutate(
     Outlook = factor(Outlook, levels = c("Overall", "Underlying", "Emerging")),
     Dimension = factor(Dimension, c("Flag", "Food Security", "Conflict and Fragility", "Health", "Macro Fiscal",  "Natural Hazard", "Socioeconomic Vulnerability")),
     Country = factor(Country, levels = sort(unique(Country))),
@@ -785,44 +793,23 @@ long <- rbind(indicators_long, flags_long) %>%
   arrange(Country, Outlook, Dimension, `Data Level`) %>%
   subset(Key != "Indicator Reliability") %>%
   mutate(Index = row_number(), .before = 1)
+  return(long)
+}
 
-
-
-
-# Compare to previous version (updates-log.csv) ----
-# Problem with this is that some countries will stay the same even the file updates.
-# We want to see which indicators have updated, not how many countries
-# previous <- read_csv("Risk_sheets/dashboard-inputs/crm-long.csv")
-
-# length(which(subset(long, `Data Level` == "Indicator")[, 'Value'] != subset(prev, `Data Level` == "Indicator")[, 'Value']))
-# 
-# long[which(subset(long)[, 'Value'] != subset(prev)[, 'Value']),]
-# prev[which(subset(long)[, 'Value'] != subset(prev)[, 'Value']),]
-# 
-# subset(long, Country == "AFG" & Dimension == "Health" & Outlook == "Emerging")
-# subset(prev, Country == "AFG" & Dimension == "Health" & Outlook == "Emerging")
-# 
-# summary(subset(long, `Data Level` == "Indicator")[,"Value"])
-# summary(subset(prev, `Data Level` == "Indicator")[,"Value"])
-# 
-# summary(previous$Value)
-# 
-# long %>% group_by(`Data Level`) %>% summary()
-# 
-# View(previous)
-# Sys.Date()
-# 
-# subset(long, Key == "FEWS NET Score")
-# 
-# sum(c(F, F, F))
-
-# Compare, attempt 2
+# Could replace with source updates, using input archives
+track_indicator_updates <- function(long) {
+  # prev should be more robustly defined – like filtering crm-output-all.csv
+  # for most recent before current/as_of date
 prev <- read_csv("output/crm-output-latest.csv")
 
-indicatorChanges <- function(indicator) {
+indicators <- as.data.frame(read.csv("indicators-list.csv"))
+
+updateLog <- data.frame(
+  Indicator = indicators$Indicator,
+  Changed_Countries = sapply(indicators$Indicator, function(indicator)  {
   long_ind <- subset(long, Key == indicator)
   prev_ind <- subset(prev, Key == indicator)
-  
+
   # Make sure Countries line up in the two columns
   wrong_rows <- which(subset(long_ind)[, 'Country'] != subset(prev_ind)[, 'Country'])
   if (sum(wrong_rows) > 0) {
@@ -832,26 +819,24 @@ indicatorChanges <- function(indicator) {
   changes <- which(subset(long_ind)[, 'Value'] != subset(prev_ind)[, 'Value'])
   
   return(length(changes))
-}
-
-indicators <- as.data.frame(read.csv("indicators-list.csv"))
-
-updateLog <- data.frame(Indicator = indicators$Indicator, Changed_Countries = sapply(indicators$Indicator, indicatorChanges)) %>%
+}))) %>%
   mutate(
     Update_Date = case_when(
       Changed_Countries > 0 ~ Sys.Date()
-      ))
+    ))
 
 updateLog <- updateLog %>% .[!is.na(.$Update_Date),]    
 updateLogPrevious <- read_csv("output/updates-log.csv")
 updateLogCombined <- rbind(updateLog, updateLogPrevious) %>%
   .[!is.na(.$Update_Date),]
-write_csv(updateLogCombined, "output/updates-log.csv")
+  return(updateLogCombined)
+}
 
 # Write long output file (crm-output-latest.csv) ----
 # outputPrevious <- read_csv("output/crm-output-latest.csv")
-write_csv(long, "output/crm-output-latest.csv")
+# write_csv(long, "output/crm-output-latest.csv")
 
+append_output_all <- function(long) {
 outputAll <- read_csv("output/crm-output-all.csv")
 # colnames(outputAll) <- colnames(outputAll) %>% gsub("\\.", " ", .)
 
@@ -861,13 +846,12 @@ long <- long %>%
     Record_ID = if(!is.null(outputAll$Record_ID)) {
       max(outputAll$Record_ID) + long$Index
     } else {Index}
-    ) %>%
+  ) %>%
   relocate(Record_ID, .before = 1)
 
 outputAll <- rbind(outputAll, long)
-
 write_csv(outputAll, "output/crm-output-all.csv")
-
+}
 # Country changes ----
 # List countries that changed 
 # flagChanges  <- merge(subset(long, Dimension == "Flag")[,c("Index", "Countryname", "Country", "Outlook", "Value")],
@@ -881,7 +865,7 @@ write_csv(outputAll, "output/crm-output-all.csv")
 #          # `Risk Change` = as.numeric(Risk) - as.numeric(`Previous Risk`)
 #          )
 
- countFlagChanges <- function(data, early = Sys.Date() -1 , late = Sys.Date()) {
+countFlagChanges <- function(data, early = Sys.Date() -1 , late = Sys.Date()) {
   data <- data %>%
     select(Record_ID, Index, Countryname, Country, Outlook, Value, Date, `Data Level`) %>%
     subset(`Data Level` == 'Flag Count') %>%
@@ -905,11 +889,12 @@ write_csv(outputAll, "output/crm-output-all.csv")
     relocate(`Count`, .after = Date) %>%
     relocate(`Prior Date`, .after = Date)
   return(combined)
-}        
-
-flagChanges <- countFlagChanges(outputAll)
-
-# rmarkdown::render('output-report.Rmd', output_format = c("html_document", "pdf_document"), output_file = paste0("reports/", Sys.Date(), "-report") %>% rep(2))
-write.csv(flagChanges, "output/reports/flag-changes.csv")
-
-rmarkdown::render('output-report.Rmd', output_format = "html_document", output_file = paste0("output/reports/", Sys.Date(), "-report"))
+  
+  
+  # flagChanges <- countFlagChanges(outputAll)
+  
+  # rmarkdown::render('output-report.Rmd', output_format = c("html_document", "pdf_document"), output_file = paste0("reports/", Sys.Date(), "-report") %>% rep(2))
+  # write.csv(flagChanges, "output/reports/flag-changes.csv")
+  
+  # rmarkdown::render('output-report.Rmd', output_format = "html_document", output_file = paste0("output/reports/", Sys.Date(), "-report"))
+  
