@@ -1,7 +1,22 @@
 packages <- c("curl", "DBI", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2", 
               "jsonlite","lubridate", "maps", "matrixStats", "readr", "readxl", "rmarkdown",
               "rvest", "sjmisc", "sparklyr", "stringr", "tidyr", "xml2", "zoo")
-invisible(lapply(packages, require, quietly = TRUE, character.only = TRUE))
+
+lapply(packages, function(p) {
+  if (!require(p, character.only = T, quietly = T)) {
+    install.packages(p, destdir = "libs")
+  }
+  library(p, character.only = T, quietly = T)
+})
+
+## Direct Github location (data folder)
+#---------------------------------
+github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
+#---------------------------------
+
+countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv")) %>%
+  dplyr::select(-X) %>%
+  arrange(Country)
 
 ## Set up Spark
 # sc <- spark_connect(master = "local") # This is only for when running locally
@@ -9,8 +24,3 @@ invisible(lapply(packages, require, quietly = TRUE, character.only = TRUE))
 # DBI::dbSendQuery(sc,"CREATE DATABASE IF NOT EXISTS crm")
 # sparklyr::tbl_change_db(sc, "crm")
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
-
-## Direct Github location (data folder)
-#---------------------------------
-github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
-#---------------------------------

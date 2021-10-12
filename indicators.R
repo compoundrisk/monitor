@@ -30,19 +30,19 @@ loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), f
   # The as_of argument let's you run the function from a given historical date. Update indicators.R
   # to use this feature -- turning indicators.R into a function? with desired date as an argument
   
-  if(format == "csv") {
+  if (format == "csv") {
     # Read in CSV
-    data <- suppressMessages(read_csv(paste0("inputs-archive/", filename, ".csv")))
+    data <- suppressMessages(read_csv(paste0("output/inputs-archive/", filename, ".csv")))
   }
-  if(format == "tbl") {
+  if (format == "tbl") {
     # Read from Spark DataFrame
   }
   # Select only data from before the as_of date, for reconstructing historical indicators
-  if(as_of < Sys.Date()) {
+  if (as_of < Sys.Date()) {
     data <- filter(data, access_date <= as_of)
   }
   # Select the most recent access_date for each group, unless group_by = F
-  if(is.null(group_by)) {
+  if (is.null(group_by)) {
     most_recent <- data
   } else {
     most_recent <- data %>%
@@ -51,7 +51,7 @@ loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), f
       slice_max(order_by = access_date) %>%
       ungroup()
   }
-  if(!full) return(most_recent)
+  if (!full) return(most_recent)
   return(data)
 }
 
@@ -66,7 +66,7 @@ try_log <- function(expr) {
 }
 
 # Function for gathering all of a dimension's sources together
-collate_sheets <- function(dim, ..., format = "csv") {
+collate_sheets <- function(dim, ..., format = "csv", return = F) {
   sources <- list(...)
   sheet <- countrylist
   for(s in sources) {
@@ -79,14 +79,17 @@ collate_sheets <- function(dim, ..., format = "csv") {
   sheet <- arrange(sheet, Country) %>%
     distinct(Country, .keep_all = TRUE) %>%
     drop_na(Country)
-  if(format == "csv" | format == "both") {
+  if ('Countryname' %in% names(sheet)) {
+    sheet <- select(sheet, -Countryname)
+  }
+  if (format == "csv" | format == "both") {
     write.csv(sheet, paste0("output/risk-sheets/", dim, "-sheet.csv"))
     # print(paste0("risk-sheets/", dim, "-sheet.csv"))
   }
-  if(format == "tbl" | format == "both") {
+  if (format == "tbl" | format == "both") {
     # Write Spark DataFrame
   }
-  if(format == "return") {
+  if (return == T) {
     # write.csv(sheet, paste0("risk-sheets/", dim, "-sheet.csv"))
     # print(paste0("risk-sheets/", dim, "-sheet.csv"))
     return(sheet)
@@ -520,10 +523,10 @@ who_process <- function(as_of, format) {
 #     left_join(., acaps_health, by = "Country") %>%
 #     arrange(Country)
 
-#   if(format == "csv" | format == "both") {
+#   if (format == "csv" | format == "both") {
 #     write.csv(health_sheet, "Risk_sheets/healthsheet.csv")
 #   }
-#   if(format == "tbl" | format == "both") {
+#   if (format == "tbl" | format == "both") {
 #     # Write Spark DataFrame
 #   }
 
@@ -733,10 +736,10 @@ fao_wfp_process <- function(as_of, format) {
 #     left_join(., fao_wfp, by = "Country") %>%
 #     arrange(Country)
 
-#   if(format == "csv" | format == "both") {
+#   if (format == "csv" | format == "both") {
 #     write.csv(food_sheet, "Risk_sheets/foodsecuritysheet.csv")
 #   }
-#   if(format == "tbl" | format == "both") {
+#   if (format == "tbl" | format == "both") {
 #     # Write Spark DataFrame
 #   }
 # }
@@ -861,10 +864,10 @@ eiu_process <- function(as_of, format) {
 #     # left_join(., cvi, by = "Country") %>% # not current
 #     arrange(Country) 
 
-#   if(format == "csv" | format == "both") {
+#   if (format == "csv" | format == "both") {
 #     write.csv(macro_sheet, "Risk_sheets/macrosheet.csv")
 #   }
-#   if(format == "tbl" | format == "both") {
+#   if (format == "tbl" | format == "both") {
 #     # Write Spark DataFrame
 #   }
 # }
@@ -878,23 +881,17 @@ eiu_process <- function(as_of, format) {
 #
 
 #---------------------------—Alternative socio-economic data (based on INFORM) - INFORM Income Support
-# CAN I DELETE THIS? APPARENTLY NOT USED
-# inform_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_Risk.csv"), col_types = cols()))
+inform_socio_process <- function(as_of, format = format) {
+  inform_risk <- loadInputs("inform_risk", group_by = c("Country"), as_of = as_of, format = format)
 
-# # # DELETE for first time only
-# # inform_risk <- mutate(inform_risk, access_date = Sys.Date())
-# # write.csv(inform_risk, "output/inputs-archive/inform_risk.csv", row.names = F)
+  inform_data <- inform_risk %>%
+    dplyr::select(Country, "Socio-Economic Vulnerability") %>%
+    rename(S_INFORM_vul = "Socio-Economic Vulnerability")
 
-# archiveInputs(inform_risk, group_by = c("Country"))
-# # SPLIT: move above to inputs.R
-# inform_risk <- loadInputs("inform_risk", group_by = c("Country"), as_of = as_of, format = format)
-
-# inform_data <- inform_risk %>%
-#   dplyr::select(Country, "Socio-Economic Vulnerability") %>%
-#   rename(S_INFORM_vul = "Socio-Economic Vulnerability")
-
-# inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
-# inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
+  inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
+  inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
+  return(inform_data)
+}
 
 income_support_process <- function(as_of, format) {
   #------------------------—Forward-looking socio-economic variables from INFORM---------------------------
@@ -1025,10 +1022,10 @@ imf_process <- function(as_of, format) {
 #     left_join(., wb_phone, by = "Country") %>%
 #     arrange(Country)
 
-#   if(format == "csv" | format == "both") {
+#   if (format == "csv" | format == "both") {
 #     write.csv(socioeconomic_sheet, "Risk_sheets/Socioeconomic_sheet.csv")
 #   }
-#   if(format == "tbl" | format == "both") {
+#   if (format == "tbl" | format == "both") {
 #     # Write Spark DataFrame
 #   }
 # }
@@ -1046,14 +1043,14 @@ imf_process <- function(as_of, format) {
 #------------------------------—Load GDACS database--------------------------------------------------
 # SPLIT
 gdacs_process <- function(as_of, format) {
-  if(format == "csv") {
+  if (format == "csv") {
     # Read in CSV
-    gdacs <- suppressMessages(read_csv("inputs-archive/gdacs.csv")) %>%
+    gdacs <- suppressMessages(read_csv("output/inputs-archive/gdacs.csv")) %>%
       mutate(access_date = as.Date(access_date)) %>%
       filter(access_date <= as_of) %>%
       filter(access_date == max(access_date))
   }
-  if(format == "tbl") {
+  if (format == "tbl") {
     # Read from Spark DataFrame
   }
   
@@ -1144,10 +1141,10 @@ locust_process <- function(as_of, format) {
 #     drop_na(Country) %>%
 #     arrange(Country)
 
-#   if(format == "csv" | format == "both") {
+#   if (format == "csv" | format == "both") {
 #     write.csv(nathazard_sheet, "Risk_sheets/Naturalhazards.csv")
 #   }
-#   if(format == "tbl" | format == "both") {
+#   if (format == "tbl" | format == "both") {
 #     # Write Spark DataFrame
 #   }
 # }
@@ -1376,10 +1373,10 @@ reign_process <- function(as_of, format) {
 #       .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname") ]
 #     )
 
-#   if(format == "csv" | format == "both") {
+#   if (format == "csv" | format == "both") {
 #     write.csv(fragility_sheet, "Risk_sheets/fragilitysheet.csv")
 #   }
-#   if(format == "tbl" | format == "both") {
+#   if (format == "tbl" | format == "both") {
 #     # Write Spark DataFrame
 #   }
 # }
