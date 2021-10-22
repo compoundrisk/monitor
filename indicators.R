@@ -1256,7 +1256,7 @@ acled_process <- function(as_of, format) {
     filter(month_yr == paste(month.abb[month(format(Sys.Date() - 45))], year(format(Sys.Date() - 45)))) 
   
   # Normalise scores
-  acled <- normfuncpos(acled, 1, -1, "fatal_z")
+  acled <- normfuncpos(acled, 1, 0, "fatal_z")
   
   # Correct for countries with 0
   acled <- acled %>%
