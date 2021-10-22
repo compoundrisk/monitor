@@ -1,5 +1,5 @@
 Timeframe,Dimension,Indicator,Description,Source,Updates,Underlying,Upcoming,indicator_slug,indicator_raw_slug,dataframe
-Underlying,Conflict and Fragility,FCS,,WB,Annual,1,,Fr_FCS_Normalised,Fr_FCV_status,fcv
+Underlying,Conflict and Fragility,FCS,,WB,Annual,1,,Fr_FCS_normalised,Fr_FCV_status,fcv
 Underlying,Food Security,Proteus Composite Index,,World Food Programme,Ad hoc,1,,F_Proteus_Score_norm,F_Proteus_Score,proteus
 Underlying,Health,Global Health Security Index,,Johns Hopkins/Economist Intelligence Unit,Annual,1,,H_HIS_Score_norm,H_HIS_Score,HIS
 Underlying,Health,INFORM Rating,,INFORM,Annual,1,,H_INFORM_rating.Value_norm,H_INFORM_rating.Value,inform_covid_warning
