@@ -674,6 +674,11 @@ fpi_process <- function(as_of, format) {
   ag_ob <- ag_ob_data %>%
     filter(X == "Food Change Yoy") %>%
     dplyr::select(-Income.Level, -Color.Bin, -X) %>%
+    mutate(Country = countrycode(Country,
+                          origin = "country.name",
+                          destination = "iso3c",
+                          nomatch = NULL
+    ) %>%
     group_by(Country) %>%
     summarise(
       Sep = Sep.20[which(!is.na(Sep.20))[1]],
@@ -701,11 +706,6 @@ fpi_process <- function(as_of, format) {
       fpv > 0.05 & fpv <= 0.30 ~ 5,
       fpv >= 0.30 ~ 7,
       TRUE ~ NA_real_
-    ),
-    Country = countrycode(Country,
-                          origin = "country.name",
-                          destination = "iso3c",
-                          nomatch = NULL
     )) %>%
     rename_with(   
       .fn = ~ paste0("F_", .),
