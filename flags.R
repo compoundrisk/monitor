@@ -828,7 +828,7 @@ track_indicator_updates <- function(long) {
     ))
 
 updateLog <- updateLog %>% .[!is.na(.$Update_Date),]    
-updateLogPrevious <- read_csv("external/updates-log.csv")
+updateLogPrevious <- read_csv("output/updates-log.csv")
 updateLogCombined <- rbind(updateLog, updateLogPrevious) %>%
   .[!is.na(.$Update_Date),]
 return(updateLogCombined)
