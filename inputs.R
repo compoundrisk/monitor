@@ -321,7 +321,7 @@ mfr_collect <- function() {
 #Incorporate phone.R
 #---------------------------------
 phone_collect <- function() {
-  wb_phone <- read.csv(paste0(github, "Indicator_dataset/phone.csv"))
+  wb_phone <- read_csv(paste0(github, "Indicator_dataset/phone.csv"))[,-1]
   archiveInputs(wb_phone , group_by = c("Country"))
 }
 

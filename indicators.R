@@ -678,7 +678,7 @@ fpi_process <- function(as_of, format) {
                           origin = "country.name",
                           destination = "iso3c",
                           nomatch = NULL
-    ) %>%
+    )) %>%
     group_by(Country) %>%
     summarise(
       Sep = Sep.20[which(!is.na(Sep.20))[1]],

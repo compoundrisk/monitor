@@ -1,6 +1,6 @@
 # Databricks notebook source
 # Set working directory, load libraries and read-in functions
-setwd("../../../dbfs/mnt/CompoundRiskMonitor")
+# setwd("../../../dbfs/mnt/CompoundRiskMonitor")
 source("libraries.R")
 source("inputs.R")
 
