@@ -2,7 +2,7 @@
 # Set working directory, load libraries and read-in functions
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
 source("libraries.R")
-source("inputs.R")
+source("indicators.R")
 
 # COMMAND ----------
 
