@@ -1,8 +1,13 @@
+# Collecting data from external sources, and appending new data to inputs
+# archive. Some sources require cleaning in order to be appended. The next
+# notebook (02-process-indicators) reads from these archives to generate
+# indicator values.
+
 # Databricks notebook source
 # Set working directory, load libraries and read-in functions
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
-source("libraries.R")
-source("indicators.R")
+source("fns/libraries.R")
+source("fns/indicators.R")
 
 # COMMAND ----------
 
@@ -22,13 +27,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 
 # COMMAND ----------
 
-# # HEALTH
-# # Add in OWID
-# # Add in Oxford Response Tracker
-# try_log(ghsi_collect())
-# try_log(oxford_openness_collect())
-# try_log(inform_covid_collect())
-# try_log(dons_collect())
+# Each *_collect() function gathers data from a foreign source (including
+# from the bennotkin fork of the CRM Github repo), and archives the new data 
+# into inputs-archive/<indicator-name>.csv
 
 # COMMAND ----------
 

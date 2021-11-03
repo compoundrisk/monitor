@@ -33,11 +33,6 @@ normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
   return(df)
 }
 
-## Direct Github location (data folder)
-#---------------------------------
-# github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
-#---------------------------------
-
 ## FUNCTION TO ARCHIVE AND LOAD ALL INPUT DATA `archiveInputs()` 
 # _Edit this to use Spark_
 # - Should I store input archives as a separate CSV file for each date? E.g. `who_dons_20211001` which includes all of the *new* data from October 10?
@@ -52,7 +47,8 @@ archiveInputs <- function(data,
                           group_by = "CountryCode",
                           today = Sys.Date(),
                           return = F,
-                          large = F) {
+                          # large = F) 
+                          {
   # Read in the existing file for the input, which will be appended with new data
   prev <- suppressMessages(read_csv(path)) %>%
     mutate(access_date = as.Date(access_date))
@@ -74,18 +70,18 @@ archiveInputs <- function(data,
   # Could quicken a bit by only looking at columns that matter (ie. don't compare
   # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
   # new dates. Those automatically get added. 
-  if(!large) {
+  # if(!large) {
     bound <- rbind(most_recent, data)
     data_fresh <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
       filter(access_date == today) %>% 
       distinct()
-  } else {
-    # (Other way) Paste all columns together in order to compare via %in%, and then select the
-    # data rows that aren't in 
-    # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
-    data_paste <- do.call(paste0, select(data, -access_date))
-    most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
-    data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
+  # } else {
+  #   # (Other way) Paste all columns together in order to compare via %in%, and then select the
+  #   # data rows that aren't in 
+  #   # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
+  #   data_paste <- do.call(paste0, select(data, -access_date))
+  #   most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
+  #   data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
   }
   # Append new data to CSV
   combined <- rbind(prev, data_fresh) %>% distinct()
@@ -134,7 +130,7 @@ try_log <- function(expr) {
 }
 
 # Function for gathering all of a dimension's sources together
-collate_sheets <- function(dim, ..., format = "csv", return = F) {
+collate_sheets <- function(dim, ..., directory, format = "csv", return = F) {
   sources <- list(...)
   sheet <- countrylist
   for(s in sources) {
@@ -151,7 +147,7 @@ collate_sheets <- function(dim, ..., format = "csv", return = F) {
     sheet <- select(sheet, -Countryname)
   }
   if (format == "csv" | format == "both") {
-    write.csv(sheet, paste0("output/risk-sheets/", dim, "-sheet.csv"))
+    write.csv(sheet, paste0(directory, "/", dim, "-sheet.csv"))
     # print(paste0("risk-sheets/", dim, "-sheet.csv"))
   }
   if (format == "tbl" | format == "both") {
@@ -164,8 +160,10 @@ collate_sheets <- function(dim, ..., format = "csv", return = F) {
   }
 }
 
-## Add in ACAPS
-#--------------------—LOAD ACAPS realtime database-------------------------------------------
+#--------------------—INDICATOR SPECIFIC FUNCTIONS-----------------------------
+
+#--------------------—LOAD ACAPS realtime database-----------------------------
+## Add in *_collect() function for ACAPS
 acaps_process <- function(as_of, format) {
   # SPLIT UP INTO INPUTS SECTION
   # Load website
@@ -357,7 +355,7 @@ oxford_openness_process <- function(as_of, format) {
 
 #------------------------—OWID COVID deaths and cases--------------------------
 
-# _Add in_
+# _Add in *_collect() function_
 owid_covid_process <- function(as_of, format) {
   # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
   # See warning
@@ -520,7 +518,7 @@ owid_covid_process <- function(as_of, format) {
 }
 
 #--------------------------—Oxford Response Tracker----------------------------
-# _Add in_
+# _Add in *_collect() function_
 Oxres_process <- function(as_of, format) {
   # SLOW: 10 seconds with w/ `read.csv`, 5 with `read_csv`
   # see warning
@@ -853,7 +851,7 @@ fews_process <- function(as_of, format) {
 }
 
 #------------------------—WBG FOOD PRICE MONITOR------------------------------------
-# _Add in_
+# _Add in *_collect() function_
 fpi_process <- function(as_of, format) {
   ag_ob_data <- read.csv(paste0(github, "Indicator_dataset/food-inflation.csv"))
   # FIX: Not yet recording historical data because data is structured messily, with 

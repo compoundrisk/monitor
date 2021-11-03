@@ -1,6 +1,7 @@
 # Databricks notebook source
 as_of <- Sys.Date()
 format <- "csv" # or "tbl" or "both"
+directory <- "output/risk-sheets"
 
 # COMMAND ----------
 
@@ -9,9 +10,9 @@ getwd()
 # COMMAND ----------
 
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
-source("libraries.R")
-source("indicators.R")
-source("alt-sheets.R")
+source("fns/libraries.R")
+source("fns/indicators.R")
+source("fns/aggregation.R")
 
 # COMMAND ----------
 
@@ -21,6 +22,7 @@ acapssheet <- acaps_process(as_of = as_of, format = format)
 # COMMAND ----------
 
 # HEALTH
+# Writes sheet of health variables to output/risk-sheets/health-sheet.csv
 collate_sheets(
   "health",
   acapssheet[, c("Country", "H_health_acaps")],
@@ -30,31 +32,37 @@ collate_sheets(
   Oxres_process(as_of = as_of, format = format),
   inform_covid_process(as_of = as_of, format = format),
   who_process(as_of = as_of, format = format),
-  format = "csv")
+  format = format,
+  directory = directory)
 
 # COMMAND ----------
 
 # FOOD
+# Writes sheet of food variables to output/risk-sheets/food-sheet.csv
 collate_sheets(
   "food",
   proteus_process(as_of = as_of, format = format),
   fews_process(as_of = as_of, format = format),
   fpi_process(as_of = as_of, format = format),
   fao_wfp_process(as_of = as_of, format = format),
-  format = format)
+  format = format,
+  directory = directory)
 
 # COMMAND ----------
 
 # MACRO FISCAL
+# Writes sheet of macro fiscal variables to output/risk-sheets/macro-sheet.csv
 collate_sheets(
   "macro",
   eiu_process(as_of = as_of, format = format),
-  format = format
+  format = format,
+  directory = directory
 )
 
 # COMMAND ----------
 
 # SOCIO-ECONOMIC
+# Writes sheet of socio-economic variables to output/risk-sheets/socio-sheet.csv
 collate_sheets(
   "socio",
   inform_socio_process(as_of = as_of, format = format),
@@ -64,11 +72,13 @@ collate_sheets(
   phone_process(as_of = as_of, format = format),
   # Fix warnings
   imf_process(as_of = as_of, format = format),
-  format = format)
+  format = format,
+  directory = directory)
 
 # COMMAND ----------
 
 # NATURAL HAZARDS
+# Writes sheet of natural hazard variables to output/risk-sheets/natural_hazards-sheet.csv
 collate_sheets(
   "natural_hazards",
   gdacs_process(as_of = as_of, format = format),
@@ -76,11 +86,13 @@ collate_sheets(
   iri_process(as_of = as_of, format = format), # Rename iri_forecast)
   locust_process(as_of = as_of, format = format),
   acapssheet[, c("Country", "NH_natural_acaps")],
-  format = format)
+  format = format,
+  directory = directory)
 
 # COMMAND ----------
 
 # CONFLICT AND FRAGILITY
+# Writes sheet of conflict and fragility variables to output/risk-sheets/fragility-sheet.csv
 # REIGN uses fcs, so run it first to make it available
 fcs <- fcs_process(as_of = as_of, format = "csv")
 
@@ -98,17 +110,18 @@ fragility_sheet <- fragility_sheet %>%
     .fn = ~ paste0("Fr_", .),
     .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname")]
   )
-write_sheet <- function(dim, sheet, format)   {
-  if (format == "csv" | format == "both") {
-    write.csv(sheet, paste0("output/risk-sheets/", dim, "-sheet.csv"))
-  }
-  if (format == "tbl" | format == "both") {
-    # Write Spark DataFrame
-  }
-  if (format == "return") {
-    return(sheet)
-  }
-}
-write_sheet("fragility", fragility_sheet, format = format)
 
-write_minimal_dim_sheets()
+write.csv(fragility_sheet, paste0(directory, "/fragility-sheet.csv")
+
+# write_sheet <- function(dim, sheet, format)   {
+#   if (format == "csv" | format == "both") {
+#     write.csv(sheet, paste0("output/risk-sheets/", dim, "-sheet.csv"))
+#   }
+#   if (format == "tbl" | format == "both") {
+#     # Write Spark DataFrame
+#   }
+#   if (format == "return") {
+#     return(sheet)
+#   }
+# }
+# write_sheet("fragility", fragility_sheet, format = format)

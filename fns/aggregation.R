@@ -1,14 +1,7 @@
-
-######################################################################################################
-#
-#  FUNCTIONS USED TO CREATE THE GLOBAL DATABASET ON COMPOUND DISASTER RISK
-#  AND DIMENSION SHEETS FOR EXCEL
-#  (to be run after risk component sheets have been generated)
-#
-######################################################################################################
-
-# LOAD PACKAGES ----
-# source("libraries.R")
+## Direct Github location (data folder)
+#---------------------------------
+# github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
+#---------------------------------
 
 #
 ##
@@ -150,6 +143,15 @@ write_minimal_dim_sheets <- function() {
   Map(writeSourceCSV, 1:length(sheetList))
   write_csv(used_indicators, "output/crm-indicators.csv")
 }
+######################################################################################################
+#
+#  CODE USED TO CREATE THE GLOBAL DATABASET ON COMPOUND DISASTER RISK
+#  (to be run after risk component sheets have been generated)
+#
+######################################################################################################
+
+# LOAD PACKAGES ----
+# source("libraries.R")
 
 #
 ##
