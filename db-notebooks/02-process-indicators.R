@@ -27,11 +27,15 @@ source("fns/aggregation.R")
 # this table.
 
 # COMMAND ----------
+ensure_directory_exists(output_directory)
+ensure_directory_exists(output_directory, "archive")
+archive_directory <- ensure_directory_exists(output_directory, "archive", Sys.Date(),
+                                             new = T, suffix = "run_", return = T)
 dim_path <- ensure_directory_exists(output_directory, "dimensions", return = T)
-ensure_directory_exists(output_directory, "dimensions/archive")
-dim_archive_path <- ensure_directory_exists(output_directory, "dimensions/archive/", Sys.Date(), new = T, suffix = "run_", return = T)
-ensure_directory_exists(output_directory, "aggregated-archive")
-aggregated_archive_path <- ensure_directory_exists(output_directory, "aggregated-archive", Sys.Date(), new = T, suffix = "run_", return = T)
+# ensure_directory_exists(output_directory, "dimensions/archive")
+dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions")
+# ensure_directory_exists(output_directory, "aggregated-archive")
+# aggregated_archive_path <- ensure_directory_exists(output_directory, "aggregated-archive", Sys.Date(), new = T, suffix = "run_", return = T)
 
 # COMMAND ----------
 
@@ -174,7 +178,7 @@ all_dimensions <- list(
     .after = Country)
 
 write.csv(all_dimensions, paste0(output_directory, "crm-wide.csv"))
-multi_write.csv(all_dimensions, "crm-wide.csv", c(output_directory, aggregated_archive_path))
+multi_write.csv(all_dimensions, "crm-wide.csv", c(output_directory, archive_directory))
 
 # Rename with pretty names
 
@@ -192,7 +196,7 @@ long <- pretty_col_names(all_dimensions) %>%
 dashboard_data <- subset(long, `Data Level` != "Reliability" & `Data Level` != "Raw Indicator Data") # %>%
 #  mutate(Index = row_number()) # Don't include because indices should match between long and dashboard
 # write.csv(dashboard_data, paste0(output_directory, "/crm-dashboard-data.csv"))
-multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, aggregated_archive_path))
+multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, archive_directory))
 # write.csv(dashboard_data, paste0(output_directory, "/crm-runs/", Sys.Date(), "-crm-run.csv"))
 
 # track_indicator_updates()
@@ -205,12 +209,10 @@ multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, ag
 # to just use the combined output file, and  compare against the previous date 
 # (the way `countFlagChanges()` does? can I just abstract `flagChanges()`?)
 
-
-
 all_runs <- append_if_exists(long, paste0(output_directory, "crm-all-runs.csv"))
 # Task: what if I run the monitor multiple times in a day? 
-write_csv(all_runs, paste0(output_directory, "crm-all-runs.csv"))
-multi_write.csv(all_runs, "crm-all-runs.csv", c(output_directory, aggregated_archive_path))
+# write_csv(all_runs, paste0(output_directory, "crm-all-runs.csv"))
+multi_write.csv(all_runs, "crm-all-runs.csv", c(output_directory, archive_directory))
 
 # test <- all_dimensions %>%
 #   pivot_longer(., cols = -contains("country") & -contains("_labels") & -contains("_raw"), names_to = "Name", values_to = "Value") %>%
