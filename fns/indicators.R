@@ -355,13 +355,13 @@ owid_covid_process <- function(as_of, format) {
   
   covid <- covidweb %>%
     mutate(date = as.Date(date)) %>%
-    filter(date > Sys.Date() - 28)
+    filter(date > as_of - 28)
   
   # bi-weekly growth rate for covid deaths and cases
   covidgrowth <- covid %>%
     mutate(
       previous2week = case_when(
-        date >= Sys.Date() - 13 ~ "twoweek",
+        date >= as_of - 13 ~ "twoweek",
         TRUE ~ "lasttwoweek"
       )) %>%
     group_by(iso_code, previous2week) %>%
@@ -1684,7 +1684,7 @@ acled_process <- function(as_of, format) {
     ) %>%
     # Remove dates for the latest month (or month that falls under the prior 6 weeks)
     # Is there a way to still acknowledge countries with high fatalities in past 6 weeks?
-    filter(as.Date(as.yearmon(date)) <= as.Date(as.yearmon(Sys.Date() - 45))) %>% 
+    filter(as.Date(as.yearmon(date)) <= as.Date(as.yearmon(as_of - 45))) %>% 
     group_by(iso3, month_yr) %>%
     summarise(fatal_month = sum(fatalities, na.rm = T),
               fatal_month_log = log(fatal_month + 1)) %>%
@@ -1697,7 +1697,7 @@ acled_process <- function(as_of, format) {
       mean = mean(fatal_3_month_log, na.rm = T)
     ) %>%
     #Calculate month year based on present month (minus 6 weeks)
-    filter(month_yr == paste(month.abb[month(format(Sys.Date() - 45))], year(format(Sys.Date() - 45)))) 
+    filter(month_yr == paste(month.abb[month(format(as_of - 45))], year(format(as_of - 45)))) 
   
   # Normalise scores
   acled <- normfuncpos(acled, 1, 0, "fatal_z")
