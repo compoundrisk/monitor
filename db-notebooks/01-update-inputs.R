@@ -37,7 +37,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 # Add in OWID
 # Add in Oxford Response Tracker
 ghsi_collect()
-oxford_openness_collect()
+# oxford_openness_collect()
 inform_covid_collect()
 dons_collect()
 
@@ -77,26 +77,3 @@ fcs_collect()
 idp_collect()
 # acled_collect()
 # reign_collect()
-
-# COMMAND ----------
-
-# crm_test <- data.frame(a = 1:4, b = rep(2))
-
-# COMMAND ----------
-
-# crm_test <- copy_to(
-#   sc,
-#   crm_test,
-#   overwrite = TRUE
-# )
-
-# COMMAND ----------
-
-# spark_write_table(
-#   crm_test,
-#   "crm_test_tbl"
-# )
-
-# COMMAND ----------
-
-# dbGetQuery(sc, "SELECT count(*) FROM crm_test2")

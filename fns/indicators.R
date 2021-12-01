@@ -46,9 +46,9 @@ archiveInputs <- function(data,
                           # group_by defines the groups for which most recent data should be taken
                           group_by = "CountryCode",
                           today = Sys.Date(),
-                          return = F,
+                          return = F
                           # large = F) 
-                          {
+                          ){
   # Read in the existing file for the input, which will be appended with new data
   prev <- suppressMessages(read_csv(path)) %>%
     mutate(access_date = as.Date(access_date))
@@ -82,7 +82,7 @@ archiveInputs <- function(data,
   #   data_paste <- do.call(paste0, select(data, -access_date))
   #   most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
   #   data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
-  }
+  # }
   # Append new data to CSV
   combined <- rbind(prev, data_fresh) %>% distinct()
   write.csv(combined, path, row.names = F)
@@ -98,7 +98,7 @@ loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), f
     # Read in CSV
     data <- suppressMessages(read_csv(paste0("output/inputs-archive/", filename, ".csv")))
   }
-  if (format == "tbl") {
+  if (format == "spark") {
     # Read from Spark DataFrame
   }
   # Select only data from before the as_of date, for reconstructing historical indicators
@@ -127,37 +127,6 @@ try_log <- function(expr) {
   }, error = function(e) {
     write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
   })
-}
-
-# Function for gathering all of a dimension's sources together
-collate_sheets <- function(dim, ..., directory, format = "csv", return = F) {
-  sources <- list(...)
-  sheet <- countrylist
-  for(s in sources) {
-    sheet <- left_join(sheet, s, by = "Country")
-  }
-  # sheet <- lapply(sources, function(s) {
-  #   sheet <- left_join(sheet, s, by = "Country")
-  #   return(sheet)
-  # })
-  sheet <- arrange(sheet, Country) %>%
-    distinct(Country, .keep_all = TRUE) %>%
-    drop_na(Country)
-  if ('Countryname' %in% names(sheet)) {
-    sheet <- select(sheet, -Countryname)
-  }
-  if (format == "csv" | format == "both") {
-    write.csv(sheet, paste0(directory, "/", dim, "-sheet.csv"))
-    # print(paste0("risk-sheets/", dim, "-sheet.csv"))
-  }
-  if (format == "tbl" | format == "both") {
-    # Write Spark DataFrame
-  }
-  if (return == T) {
-    # write.csv(sheet, paste0("risk-sheets/", dim, "-sheet.csv"))
-    # print(paste0("risk-sheets/", dim, "-sheet.csv"))
-    return(sheet)
-  }
 }
 
 #--------------------—INDICATOR SPECIFIC FUNCTIONS-----------------------------
@@ -359,8 +328,20 @@ oxford_openness_process <- function(as_of, format) {
 owid_covid_process <- function(as_of, format) {
   # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
   # See warning
+  # covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
+  #                      col_types = "cccD-------dd-dd-------------------------------------------------")
+  
   covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
-                       col_types = "cccD-------dd-dd-------------------------------------------------")
+                       col_types = cols_only(
+                         iso_code = 'c',
+                         continent = 'c',
+                         location = 'c',
+                         date = 'D',
+                          new_cases_per_million = 'd',
+                          new_cases_smoothed_per_million = 'd',
+                          new_deaths_per_million = 'd',
+                          new_deaths_smoothed_per_million = 'd'
+                       ))
   
   # Super slow to find changed data in this 30MB file. For now, not important because
   # it includes its own historical data
@@ -701,7 +682,7 @@ who_process <- function(as_of, format) {
 #   if (format == "csv" | format == "both") {
 #     write.csv(health_sheet, "Risk_sheets/healthsheet.csv")
 #   }
-#   if (format == "tbl" | format == "both") {
+#   if (format == "spark" | format == "both") {
 #     # Write Spark DataFrame
 #   }
 
@@ -921,7 +902,7 @@ fao_wfp_collect <- function() {
   # fao_wfp$F_fao_wfp_warning <- 10
   
   fao_all <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv")) %>%
-    mutate(F_fao_wfp_warning = 0) %>%
+    mutate(F_fao_wfp_warning = NA) %>%
     dplyr::select(-X)
   
   # fao_all <- subset(countrylist, Country %in% fao_wfp$Country) %>%
@@ -936,7 +917,9 @@ fao_wfp_collect <- function() {
 
 fao_wfp_process <- function(as_of, format) {
   # Kind of unnecessary
-  fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"), as_of = as_of, format = format)
+  fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"), as_of = as_of, format = format) %>%
+    select(-X1, -Countryname)
+  return(fao_wfp)
 }
 
 
@@ -1437,6 +1420,8 @@ gdacs_collect <- function() {
   #   filter(access_date != today)
   # gdacs_changed <- gdacs_changed %>% mutate(current = FALSE, access_date = Sys.Date())
   # gdacs <- rbind(gdacs, gdacs_changed, gdacs_prev) %>% distinct()
+}
+
 gdacs_process <- function(as_of, format) {
   if (format == "csv") {
     # Read in CSV
@@ -1445,7 +1430,7 @@ gdacs_process <- function(as_of, format) {
       filter(access_date <= as_of) %>%
       filter(access_date == max(access_date))
   }
-  if (format == "tbl") {
+  if (format == "spark") {
     # Read from Spark DataFrame
   }
   

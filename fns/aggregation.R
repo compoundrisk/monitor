@@ -1,7 +1,14 @@
-## Direct Github location (data folder)
-#---------------------------------
-# github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
-#---------------------------------
+
+######################################################################################################
+#
+#  FUNCTIONS USED TO CREATE THE GLOBAL DATABASET ON COMPOUND DISASTER RISK
+#  AND DIMENSION SHEETS FOR EXCEL
+#  (to be run after risk component sheets have been generated)
+#
+######################################################################################################
+
+# LOAD PACKAGES ----
+# source("libraries.R")
 
 #
 ##
@@ -36,6 +43,537 @@ externalize_risk_sheets <- function() {
             paste0("output/risk-sheets/", list.files("Risk_sheets")),
             overwrite = TRUE)
 }
+
+# Function for gathering all of a dimension's sources together
+merge_indicators <- function(...) {
+  sources <- list(...)
+  sheet <- countrylist
+  for(s in sources) {
+    sheet <- left_join(sheet, s, by = "Country")
+  }
+  # sheet <- lapply(sources, function(s) {
+  #   sheet <- left_join(sheet, s, by = "Country")
+  #   return(sheet)
+  # })
+  sheet <- arrange(sheet, Country) %>%
+    distinct(Country, .keep_all = TRUE) %>%
+    drop_na(Country)
+  if ('Countryname' %in% names(sheet)) {
+    sheet <- select(sheet, -Countryname)
+  }
+  # if (format == "csv" | format == "both") {
+  #   write.csv(sheet, paste0(directory, "/", dim, "-sheet.csv"))
+  #   # print(paste0("risk-sheets/", dim, "-sheet.csv"))
+  # }
+  # if (format == "tbl" | format == "both") {
+  #   # Write Spark DataFrame
+  # }
+  # if (return == T) {
+  #   # write.csv(sheet, paste0("risk-sheets/", dim, "-sheet.csv"))
+  #   # print(paste0("risk-sheets/", dim, "-sheet.csv"))
+  return(sheet)
+}
+
+assign_ternary_labels <- function(x, high, medium, low) {
+  label <- ifelse(x >= low & x < medium, "Low",
+                  ifelse(x >= medium & x < high, "Medium",
+                         ifelse(x == high, "High", NA
+                         )
+                  )
+  )
+  return(label)
+}
+
+aggregate_dimension <- function(dim, ..., prefix = "") {
+  
+  if(!dim %in% indicators_list$Dimension) {
+    stop(cat("Dimension name", dim, "not in indicators-list.csv"))
+  }
+  
+  # # At some point this should be broken up into
+  # make_dimension_sheet <- function(dim, ...) {
+  #     specify_used_variables(dim)
+  #     sheet <- merge_indicators() %>%
+  #         select_used_variables() %>%
+  #         calculate_dimension_values("underlying") %>%
+  #         calculate_dimension_values("emerging") %>%
+  #         calculate_dimension_values("overall") %>%
+  #         rename_dimension_columns(dim)
+  #     return(sheet)
+  # }
+  
+  sheet <- merge_indicators(...)
+  
+  # Make sure variables have the prefix that will be used for selection (should always be there
+  # except in case of Fragility); should probably happen here and not in indicators.R, but that 
+  # it's already there
+  if(dim == "Conflict and Fragility") {
+    sheet <- sheet %>% rename_with(
+      .fn = ~ paste0("Fr_", .),
+      .cols = -contains("Country") & !starts_with(paste0("Fr_"))
+    )
+  }
+  
+  # Specify which variables to keep
+  
+  # specify_used_variables <- function(dim) {
+  #     dimension_indicators <- filter(indicators_list, Dimension == dim)
+  #     underlying_indicators <- filter(dimension_indicators, Timeframe == "Underlying")
+  #     emerging_indicators <- filter(dimension_indicators, Timeframe == "Emerging")
+  #     list()
+  # }
+  
+  dimension_indicators <- filter(indicators_list, Dimension == dim)
+  underlying_indicators <- filter(dimension_indicators, Timeframe == "Underlying")
+  emerging_indicators <- filter(dimension_indicators, Timeframe == "Emerging")
+  
+  # Select only used variables (raw and normalised) and calculate dimension values
+  raw_vars <- sheet %>%
+    select(Country,
+           # Select the raw variables 
+           any_of(unlist(strsplit(underlying_indicators$indicator_raw_slug, ", "))), 
+           any_of(unlist(strsplit(emerging_indicators$indicator_raw_slug, ", ")))) %>%
+    # Add a 'raw' suffix to raw variables. Should this happen earlier, in input processing?
+    rename_with(
+      .fn = ~ paste0(., "_raw"),
+      .cols = -contains("Country"))
+  
+  sheet <- sheet %>% 
+    # Select only the normalised variables that are actually used in the monitor (as defined in `indicators-list.csv`)
+    select(Country,
+           any_of(underlying_indicators$indicator_slug),
+           any_of(emerging_indicators$indicator_slug)) %>%
+    left_join(., raw_vars, by = "Country")
+  # Calculate underlying dimension value by taking max value of primary underlying indicators
+  sheet <- sheet %>% mutate(
+    underlying = rowMaxs(as.matrix(select(.,
+                                          any_of(underlying_indicators$indicator_slug[which(underlying_indicators$secondary == F)]))), na.rm = T) %>% {
+                                            case_when(
+                                              is.infinite(.) ~ NA_real_,
+                                              TRUE ~ .
+                                            )
+                                          },
+  ) %>%
+    # In case all primary variables are NA, take max of secondary indicators (currently only used for emerging food)
+    mutate(
+      underlying = if(length(which(underlying_indicators$secondary == T)) > 0) {
+        case_when(
+          is.na(underlying) ~ rowMaxs(as.matrix(select(.,
+                                                       any_of(underlying_indicators$indicator_slug[which(underlying_indicators$secondary == T)])))),
+          TRUE ~ underlying)
+      } else { underlying },
+      underlying_labels = assign_ternary_labels(underlying, high = 10, medium = 7, low = 0) %>% as.factor()
+    ) %>%
+    # Calculate emerging dimension value by taking max value of primary emerging indicators
+    mutate(
+      emerging = rowMaxs(as.matrix(select(.,
+                                          any_of(emerging_indicators$indicator_slug[which(emerging_indicators$secondary == F)]))), na.rm = T) %>% {
+                                            case_when(
+                                              is.infinite(.) ~ NA_real_,
+                                              TRUE ~ .
+                                            )
+                                          }) %>%
+    # In case all primary variables are NA, take max of secondary indicators (only used for emerging food)
+    mutate(
+      emerging = if(length(which(emerging_indicators$secondary == T)) > 0) {
+        case_when(
+          is.na(emerging) ~ rowMaxs(as.matrix(select(.,
+                                                     any_of(emerging_indicators$indicator_slug[which(emerging_indicators$secondary == T)])))),
+          TRUE ~ emerging)
+      } else { emerging },
+      emerging_labels = assign_ternary_labels(emerging, high = 10, medium = 7, low = 0) %>% as.factor()
+    ) %>%
+    # Calculate overall dimension value by taking geometric mean of underlying and emerging
+    mutate(
+      overall = case_when(
+        !is.na(underlying) ~ sqrt(underlying * emerging),
+        TRUE ~ emerging),
+      overall_labels = assign_ternary_labels(overall, high = 7, medium = 5, low = 0)  %>% as.factor()
+    ) %>%
+    # Calculate reliablity (this should maybe be distributed among the underlying and emerging functions above)
+    mutate(
+      underlying_reliability = rowSums(is.na(select(., any_of(underlying_indicators$indicator_slug))), na.rm = T) / nrow(underlying_indicators),
+      emerging_reliability = rowSums(is.na(select(., any_of(emerging_indicators$indicator_slug))), na.rm = T) / nrow(emerging_indicators)
+    ) %>%
+    # We could assign dimension levels (high, medium, low) here, but don't think we need to
+    # Rename underlying and emerging columns with dimension-specific names
+    # !! and :0 are used to name variables programmatically, tells R to evaluate LHS
+    rename(
+      !!paste0("Underlying_", dim) := underlying,
+      !!paste0("Emerging_", dim) := emerging,
+      !!paste0("Overall_", dim) := overall,
+      !!paste0("Underlying_", dim, "_Labels") := underlying_labels,
+      !!paste0("Emerging_", dim, "_Labels") := emerging_labels,
+      !!paste0("Overall_", dim, "_Labels") := overall_labels,
+      !!paste0("Underlying_", dim, "_Reliability") := underlying_reliability,
+      !!paste0("Emerging_", dim, "_Reliability") := emerging_reliability, 
+    )
+  
+  # Check to see we have correct number of colummns
+  raw_count <- unlist(strsplit(dimension_indicators$indicator_raw_slug, ", ")) %>% length()
+  norm_count <- dimension_indicators$indicator_slug %>% length()  
+  column_count <- raw_count + norm_count + 9 # 1 country cols, 3 aggregate cols, 3 label cols, 2 reliability cols
+  
+  if(ncol(sheet) != column_count) {
+    warning(paste("Wrong number of columns in", dim, "aggregation:", ncol(sheet), "instead of", column_count))
+  }
+  
+  # Check if any sheets have empty columns
+  empties <- empty_cols(sheet) %>% names()
+  if (length(empties) > 0) {
+    warning(paste(dimension, " is empty on ", empties)) 
+    # } else {
+    #   print(paste(dimension, " is filled")) 
+  }
+
+  return(sheet)
+}
+
+
+
+count_flags <- function(df, outlook, high, medium) {
+  select_columns <- select(df, contains(outlook) & -contains("reliability") & -contains("labels"))
+  df <- mutate(df, flags = rowSums(select_columns >= high, na.rm = T) + 
+  rowSums(select_columns >= medium & select_columns < high, na.rm = T)/2)
+
+df <- rename(
+  df,
+  !!paste0(tools::toTitleCase(outlook),"_Flag_Number of Flags") := flags,
+)
+
+  # if(tolower(outlook) == "emerging") {
+  #   df <- rename(df, `Emerging_Number of Emerging Threat Flags` = flags)
+  # }
+  # if(tolower(outlook) == "underlying") {
+  #   df <- rename(df, `Underlying_Number of Underlying Vulnerability Flags` = flags)
+  # }
+  # if(tolower(outlook) == "overall") {
+  #   df <- rename(df, `Overall_Number of Overall Alert Flags` = flags)
+  # }
+
+  return(df)
+}
+
+
+
+
+write_excel_source_file <- function(sheet, filename, directory_path, archive_path = NULL) {
+  sheet <- select(sheet,
+                  -starts_with("Underlying_"),
+                  -starts_with("Emerging"),
+                  -starts_with("Overall_"))
+  write_csv(sheet, paste_path(directory_path, filename))
+  if(!is.null(archive_path)) {
+    write_csv(sheet, paste_path(archive_path, filename))
+  }
+}
+
+write_excel_source_files <- function(
+  all_dimensions,
+  health_sheet,
+  food_sheet,
+  macro_sheet,
+  socio_sheet,
+  natural_hazards_sheet,
+  fragility_sheet,
+  # reliability_sheet,
+  directory_path,
+  filepaths = F, # are the sheet arguments filepaths to CSVs (T) or are they dataframes (F)
+  archive = F # Set T to also save output in the crm-excel/archive/ folder
+) {
+  
+  ensure_directory_exists(directory_path)
+  if(archive) {
+    ensure_directory_exists(directory_path, "archive")
+    archive_path <- ensure_directory_exists(directory_path, "archive", Sys.Date(), new = T, return = T, suffix = "run_")
+  } else {
+    archive_path <- NULL
+  }
+
+  if(filepaths) {
+    health_sheet <- read.csv(health_sheet)
+    food_sheet <- read.csv(food_sheet)
+    macro_sheet <- read.csv(macro_sheet)
+    socio_sheet <- read.csv(socio_sheet)
+    natural_hazards_sheet <- read.csv(natural_hazards_sheet)
+    fragility_sheet <- read.csv(fragility_sheet)
+    # reliability_sheet <- read.csv(reliability_sheet)
+  }
+  
+  write_excel_source_file(health_sheet, "health.csv", directory_path = directory_path, archive_path = archive_path)
+  write_excel_source_file(food_sheet, "food-security.csv", directory_path = directory_path, archive_path = archive_path)
+  write_excel_source_file(macro_sheet, "macro-fiscal.csv", directory_path = directory_path, archive_path = archive_path)
+  write_excel_source_file(socio_sheet, "socioeconomic-vulnerability.csv", directory_path = directory_path, archive_path = archive_path)
+  write_excel_source_file(natural_hazards_sheet, "natural-hazard.csv", directory_path = directory_path, archive_path = archive_path)
+  write_excel_source_file(fragility_sheet, "conflict-and-fragility.csv", directory_path = directory_path, archive_path = archive_path)
+  # write_excel_source_file(reliability_sheet, "reliability-sheet.csv", directory_path = directory_path, archive_path = archive_path)
+
+  # Write reliability sheet
+  # This is necessary for the Excel dashboard, so maybe should be lumped with `write_excel_source_files()`
+  reliability <- select(all_dimensions, contains("Reliability")) %>%
+    mutate(Underlying_Reliability = rowMeans(select(., starts_with("Underlying"))),
+          Emerging_Reliability = rowMeans(select(., starts_with("Emerging"))))
+  # Previously I was rounding this to one decimal (`round(rowMeans(...), 1)`) but I'm not sure this is helpful
+  multi_write.csv(reliability, "reliability-sheet.csv", c(directory_path, archive_path))
+}
+
+pretty_col_names <- function(data) {
+  pretty <- data %>%
+    rename_with(
+      .fn = function(x) {
+        i <- match(x, indicators_list$indicator_slug)
+        names <- paste(indicators_list$Timeframe[i], indicators_list$Dimension[i], indicators_list$Indicator[i], sep = "_")
+        # print(paste(x[i], "-", names[i]))
+        return(names)
+      },
+      .cols = any_of(indicators_list$indicator_slug)) %>%
+    rename_with(
+      .cols = any_of(paste0(unlist(strsplit(indicators_list$indicator_raw_slug[c(1:5,28:6)], ", ")), "_raw")),
+      .fn = function(x) {
+        # Unnest multi-value cells (for indicators that use multiple raw variables)
+        df <- indicators_list %>% 
+          separate_rows(indicator_raw_slug, sep = ",") %>%
+          mutate(indicator_raw_slug = trimws(indicator_raw_slug))
+        # Create 
+        df <- mutate(df, new_names = paste(
+          Timeframe,
+          Dimension,
+          Indicator,
+          sep = "_"))
+        dups <- df$new_names %>%
+          { c(which(duplicated(., fromLast = T)), which(duplicated(.))) } %>%
+          unique() %>% sort()
+        df[dups,"new_names"] <- paste0(df$new_names[dups], " (", df$indicator_raw_slug[dups], ")")
+        df <- mutate(df,
+          new_names = paste(new_names, "Raw"),
+          old_names = paste0(indicator_raw_slug, "_raw"))
+        i <- match(x, df$old_names)
+        return(df$new_names[i])
+      }
+    )
+  return(pretty)
+}
+
+
+
+# # This was an attempt to rename columns without unnesting the multi-value cells;
+# # it worked until I needed to differentiate raw indicators with the same Indicator
+# # Name (e.g. S_pov_prop_22_21 and S_pov_prop_21_20) 
+#   pretty3 <- rename_with(
+#     pretty[,31:1],
+#     .fn = function(x) {
+#       x <- sub("(.*)_raw$", "\\1", x)
+#       i <- sapply(x, grep, indicators_list$indicator_raw_slug)
+#       print(i)
+#       names <- paste(indicators_list$Timeframe[i], indicators_list$Dimension[i], indicators_list$Indicator[i], "Raw", sep = "_")
+#       df <- data.frame(raw_slug = x, name = names)
+#       print(df)
+#       print(paste(x, "-->", names))
+#       # print(paste(indicators_list$indicator_raw_slug[i]))
+#       return(names)
+#     },
+#     .cols = any_of(paste0(unlist(strsplit(indicators_list$indicator_raw_slug, ", ")), "_raw"))
+#     )
+
+# Move this basic function elsewhere, somewhere more basic
+is_string_number <- function(x, index = F) {
+  if(index) {
+    out <- grep("[^[:digit:][:punct:]]", x)
+  } else {
+    out <- grepl("[^[:digit:][:punct:]]", x)
+    }
+    return(out)
+}
+
+# Move this basic function elsewhere, somewhere more basic
+paste_path <- function(...) {
+  path <- paste(..., sep = "/") %>%
+    { gsub("/+", "/", .) }
+  return(path)
+}
+
+# Move this basic function elsewhere, somewhere more basic
+multi_write.csv <- function(data, filename, paths) {
+  for(i in 1:length(paths)) {
+    write.csv(data, paste_path(paths[i], filename))
+  }
+}
+
+# Move this basic function elsewhere, somewhere more basic
+ensure_directory_exists <- function(..., return = F, new = F, suffix = "") {
+  path <- paste_path(...)
+  if(!dir.exists(path)) {
+    already_exists <- F
+    dir.create(path)
+    message(paste("Directory at", path, "did not exist but was created"))
+  } else {
+    already_exists <- T
+  }
+  if(already_exists & new) {
+    count <- 1
+    while(already_exists) {
+      count <- count + 1
+      suffixed_path <- paste0(path, "-", suffix, leading_zeros(count, 2))
+      if(!dir.exists(suffixed_path)) {
+        already_exists <- F
+        dir.create(suffixed_path)
+        path <- suffixed_path
+      }
+    }
+  }
+  if(return) return(path)
+}
+
+lengthen_data <- function(data) {
+  long <- data %>% 
+    select(-contains("_labels")) %>% # Drop labels because labels are not another observation, but describe other observations
+    mutate(across(everything(), as.character)) %>%
+    pivot_longer(., cols = -contains("country"), names_to = "Name", values_to = "Value_Char") %>%
+    separate(Name, into = c("Outlook", "Dimension", "Key"), sep = "_", extra = "merge", fill = "right") %>%
+    mutate(
+    Value = as.numeric(case_when(
+      !is_string_number(Value_Char) ~ Value_Char,
+      TRUE ~ NA_character_)), .before = Value_Char)
+  return(long)
+}
+
+add_secondary_columns <- function(data) {
+  output <- data %>%
+  # Fill in other columns (`add_data_level_column()`? `add_secondary_columns()`?) 
+  mutate(
+    `Data Level` = case_when(
+      is.na(Key) ~ "Dimension Value",
+      grepl("Flag", Dimension) ~ "Flag Count",
+      grepl(" Raw$", Key) ~ "Raw Indicator Data",
+      Key == "Reliability" ~ "Reliability",
+      Key %in% indicators_list$Indicator ~ "Indicator",
+      TRUE ~ NA_character_),
+    # When Data Level is Dimension Value, set dimension as Key
+    Key = case_when(
+      `Data Level` == "Dimension Value" & is.na(Key) ~ Dimension,
+      TRUE ~ Key),
+    # Display Status tells the dashboard how prominent the data should be
+    # I believe this is for whether it shows up in the table before expansion 
+    `Display Status` = case_when(
+      `Data Level` == "Dimension Value" ~ "Main",
+      `Data Level` == "Flag Count" ~ "Main",
+      `Data Level` == "Indicator" ~ "Secondary",
+      grepl("Raw", `Data Level`) ~ "Tertiary",
+      TRUE ~ NA_character_),
+    # Does a data point contribute to the Overall outlook? / should it be 
+    # shown when Overall is selected on the dashboard?
+    `Overall Contribution` = case_when(
+      Outlook == "Overall" ~ T,
+      `Data Level` == "Indicator" ~ T,
+      `Data Level` == "Raw Indicator Data" ~ T,
+      TRUE ~ F),
+    # Re-assign risk labels; for flag counts and indicators, risk label is
+    # just the number, rounded down, as a character
+    `Risk Label` = case_when(
+      `Data Level` == "Dimension Value" & (Outlook == 'Emerging' | Outlook == 'Underlying') ~ assign_ternary_labels(Value, 10, 7, 0),
+      `Data Level` == "Dimension Value" & Outlook == 'Overall' ~ assign_ternary_labels(Value, 7, 5, 0),
+      `Data Level` == "Flag Count" ~ as.character(floor(Value)),
+      `Data Level` == "Indicator" ~ as.character(floor(Value)),
+      TRUE ~ NA_character_),
+    # Add column for values in character form
+    Value_Char = case_when(
+      is.na(Value) ~ Value_Char,
+      `Data Level` == "Flag Count" ~ as.character(Value),
+      `Data Level` == "Dimension Value" ~ as.character(floor(Value)),
+      # TRUE ~ as.character(floor(Value))
+      TRUE ~ as.character(round(Value, 1))),
+    Date = Sys.Date()) # Should the date column so system date, or should it show the access date (this would be a good bit harder to do)
+  return(output)
+}
+round_value_col <- function(data) {
+  output <- data %>% 
+    mutate(
+      # Round value column (maybe separate into new function?)
+      Value = case_when(
+        `Data Level` == "Flag Count" ~ Value,
+        grepl(" Raw$", Key) ~ round(Value, 3),
+        TRUE ~ round(Value, 3)))
+  return(output)
+}
+
+factorize_columns <- function(data) {
+  data <- data %>%
+    mutate(
+        Outlook = ordered(Outlook, levels = c("Overall", "Underlying", "Emerging")),
+        Dimension = ordered(Dimension, c("Flag", "Food Security", "Conflict and Fragility", "Health", "Macro Fiscal",  "Natural Hazard", "Socioeconomic Vulnerability")),
+        Country = ordered(Country, levels = sort(unique(Country))),
+        Countryname = ordered(Countryname, levels = sort(unique(Countryname))),
+        `Data Level` = ordered(`Data Level`, c("Flag Count", "Dimension Value", "Indicator", "Raw Indicator Data", "Reliability")),  
+        `Display Status` = factor(`Display Status`))
+        Indicator = 
+  return(data)
+}
+
+order_columns_and_raws <- function(data) {
+  data <- data %>%
+    relocate(Value_Char, `Risk Label`, .after = Value) %>%
+    relocate(`Data Level`, .before = Outlook) %>%
+    arrange(Country, Outlook, Dimension, `Data Level`)
+  return(data)
+}
+
+# Move this basic function elsewhere, somewhere more basic
+leading_zeros <- function(data, length, filler = "0") {
+  strings <- sapply(data, function(x) {
+    if(is.na(x)) {
+      x <- 0
+      warning("NAs converted to 0. Likelihood of duplicate strings")
+    }
+    if(nchar(x) > length) {
+      stop(paste("String is longer than desired length of", length, ":", x, "in", deparse(substitute(data))))
+    }
+    string <- paste0(paste0(rep(filler, length - nchar(x)), collapse = ""), x)
+    return(string)
+  })
+  return(strings)
+}
+
+create_id <- function(data) {
+  data <- mutate(data,
+    Indicator_ID = case_when(
+        `Data Level` == "Indicator" ~ indicators_list$indicator_id[match(Key, indicators_list$Indicator)],
+        # TASK: / FIX: This results in multiple raw variables receiving the same 
+        `Data Level` == "Raw Indicator Data" ~
+          separate_rows(indicators_list, indicator_raw_slug, sep = ",")$indicator_id[match(sub("(.*) Raw", "\\1", Key), separate_rows(indicators_list, indicator_raw_slug, sep = ",")$Indicator)],
+          # [match(sub("(.*) Raw", "\\1", Key), separate_rows(indicators_list, indicator_raw_slug, sep = ",")[,"Indicator"]]),
+        TRUE ~ as.integer(0),
+      ),
+      Index = as.integer(paste0(
+        leading_zeros(as.numeric(Country), 3),
+        # Does it make more sense to order by Data Level before Dimension, Outlook, and even Country?
+        leading_zeros(as.numeric(Outlook), 1),
+        leading_zeros(as.numeric(Dimension), 1),
+        leading_zeros(as.numeric(`Data Level`), 1),
+        leading_zeros(Indicator_ID, 2))),
+      .before = 1) %>%
+      select(-Indicator_ID)
+  return(data)
+}
+
+append_if_exists <- function(data, path) {
+  if(file.exists(path)) {
+    exists <- T
+    existing <- read_csv(path)
+    data <- mutate(data, Run_ID = max(existing$Run_ID, .before = Index) + 1)
+  } else {
+    exists <- F
+    message(paste0("No file yet exists at ", path))
+    data <- mutate(data, Run_ID = 1, .before = Index)
+  }
+  data <- data %>%
+    mutate(
+      Record_ID = as.integer(paste0(Run_ID, leading_zeros(Index, 8))),
+      .before = 1)
+  if(!exists) existing <- data[0,]
+  combined <- rbind(existing, data)
+  return(combined)
+}
+
 
 #
 ##
@@ -82,16 +620,6 @@ write_minimal_dim_sheets <- function() {
   # —Write function to apply to each sheet ----
   used_indicators <- countrylist
   
-  slugify <- function(x, alphanum_replace="", space_replace="-", tolower=TRUE) {
-    x <- gsub("[^[:alnum:] ]", alphanum_replace, x)
-    x <- gsub(" ", space_replace, x)
-    if (tolower) {
-      x <- tolower(x)
-    }
-    
-    return(x)
-  }
-  
   writeSourceCSV <- function(i) {
     # headerOffset <- 2 # current output has two header rows # VARIABLE
     
@@ -107,8 +635,8 @@ write_minimal_dim_sheets <- function() {
     sheet <- left_join(sheet_norm, sheet_raw, by = c("Country" = "Country_raw"), suffix = c("", "_raw"))
     
     # write_csv(sheet_norm, paste0("Risk_sheets/indicators-normalised/", dimension, ".csv"))
-    write_csv(sheet, paste0("output/crm-excel/", slugify(dimension), ".csv"))
-    write_csv(sheet, paste0("output/crm-excel/archive/", Sys.Date(), "-", slugify(dimension), ".csv"))
+    write_csv(sheet, paste0("output/crm-excel/", slugify(dimension, space_replace = "-"), ".csv"))
+    write_csv(sheet, paste0("output/crm-excel/archive/", Sys.Date(), "-", slugify(dimension, space_replace = "-"), ".csv"))
     
     # Write csvs with readable variable names
     ## Order sheet columns to match indicators.csv
@@ -143,15 +671,6 @@ write_minimal_dim_sheets <- function() {
   Map(writeSourceCSV, 1:length(sheetList))
   write_csv(used_indicators, "output/crm-indicators.csv")
 }
-######################################################################################################
-#
-#  CODE USED TO CREATE THE GLOBAL DATABASET ON COMPOUND DISASTER RISK
-#  (to be run after risk component sheets have been generated)
-#
-######################################################################################################
-
-# LOAD PACKAGES ----
-# source("libraries.R")
 
 #
 ##
@@ -174,7 +693,7 @@ join_risk_sheets <- function() {
   # countrylist <- read.csv("https://raw.githubusercontent.com/ljonestz/compoundriskdata/master/Indicator_dataset/countrylist.csv")[,-1]
   
   # Join datasets
-  globalrisk <- left_join(countrylist, healthsheet, by = c("Country")) %>%
+  df <- left_join(countrylist, healthsheet, by = c("Country")) %>%
     left_join(., foodsecurity, by = c("Country")) %>%
     left_join(., fragilitysheet, by = c("Country")) %>%
     left_join(., macrosheet, by = c("Country")) %>%
@@ -183,7 +702,7 @@ join_risk_sheets <- function() {
     distinct(Country, .keep_all = TRUE) %>%
     drop_na(Country)
   
-  return(globalrisk)
+  return(df)
 }
 
 #
@@ -292,46 +811,46 @@ assign_dim_levels <- function(x) {
 }
 
 # —Calculate total compound risk scores ----
-count_flags <- function(riskflags) {
-  riskflags$UNDERLYING_FLAGS <- as.numeric(unlist(row_count(
-    riskflags,
-    UNDERLYING_RISK_HEALTH:UNDERLYING_RISK_FRAGILITY_INSTITUTIONS,
-    count = 10,
-    append = F
-  )))
+# count_flags <- function(riskflags) {
+#   riskflags$UNDERLYING_FLAGS <- as.numeric(unlist(row_count(
+#     riskflags,
+#     UNDERLYING_RISK_HEALTH:UNDERLYING_RISK_FRAGILITY_INSTITUTIONS,
+#     count = 10,
+#     append = F
+#   )))
   
-  riskflags$EMERGING_FLAGS <- as.numeric(unlist(row_count(
-    riskflags, 
-    EMERGING_RISK_HEALTH:EMERGING_RISK_FRAGILITY_INSTITUTIONS,
-    count = 10,
-    append = F
-  )))
+#   riskflags$EMERGING_FLAGS <- as.numeric(unlist(row_count(
+#     riskflags, 
+#     EMERGING_RISK_HEALTH:EMERGING_RISK_FRAGILITY_INSTITUTIONS,
+#     count = 10,
+#     append = F
+#   )))
   
-  riskflags$medium_risk_underlying <- as.numeric(unlist(row_count(riskflags,
-                                                                  UNDERLYING_RISK_HEALTH_RISKLEVEL:UNDERLYING_RISK_FRAGILITY_INSTITUTIONS_RISKLEVEL,
-                                                                  count = "Medium risk",
-                                                                  append = F
-  )))
+#   riskflags$medium_risk_underlying <- as.numeric(unlist(row_count(riskflags,
+#                                                                   UNDERLYING_RISK_HEALTH_RISKLEVEL:UNDERLYING_RISK_FRAGILITY_INSTITUTIONS_RISKLEVEL,
+#                                                                   count = "Medium risk",
+#                                                                   append = F
+#   )))
   
-  riskflags$medium_risk_emerging <- as.numeric(unlist(row_count(riskflags,
-                                                                EMERGING_RISK_HEALTH_RISKLEVEL:EMERGING_RISK_FRAGILITY_INSTITUTIONS_RISKLEVEL,
-                                                                count = "Medium risk",
-                                                                append = F
-  )))
+#   riskflags$medium_risk_emerging <- as.numeric(unlist(row_count(riskflags,
+#                                                                 EMERGING_RISK_HEALTH_RISKLEVEL:EMERGING_RISK_FRAGILITY_INSTITUTIONS_RISKLEVEL,
+#                                                                 count = "Medium risk",
+#                                                                 append = F
+#   )))
   
-  riskflags$UNDERLYING_FLAGS_MED <- as.numeric(unlist(riskflags$UNDERLYING_FLAGS + (riskflags$medium_risk_underlying / 2)))
-  riskflags$EMERGING_FLAGS_MED <- as.numeric(unlist(riskflags$EMERGING_FLAGS + (riskflags$medium_risk_emerging / 2)))
+#   riskflags$UNDERLYING_FLAGS_MED <- as.numeric(unlist(riskflags$UNDERLYING_FLAGS + (riskflags$medium_risk_underlying / 2)))
+#   riskflags$EMERGING_FLAGS_MED <- as.numeric(unlist(riskflags$EMERGING_FLAGS + (riskflags$medium_risk_emerging / 2)))
   
-  # Drop ternary rates (may want to reinstate in the future)
-  riskflags <- riskflags %>%
-    dplyr::select(
-      -medium_risk_emerging, -medium_risk_underlying, -all_of(paste0(vars, "_RISKLEVEL"))
-    ) %>%
-    distinct(Country, .keep_all = TRUE) %>%
-    drop_na(Country)
+#   # Drop ternary rates (may want to reinstate in the future)
+#   riskflags <- riskflags %>%
+#     dplyr::select(
+#       -medium_risk_emerging, -medium_risk_underlying, -all_of(paste0(vars, "_RISKLEVEL"))
+#     ) %>%
+#     distinct(Country, .keep_all = TRUE) %>%
+#     drop_na(Country)
   
-  return(riskflags)
-}
+#   return(riskflags)
+# }
 # #
 # ##
 # ### ********************************************************************************************
@@ -886,7 +1405,7 @@ lengthen_flags <- function(riskflags_select) {
       `Data Level` = case_when(
         Dimension == "Flag" ~ "Flag Count",
         TRUE ~ "Dimension Value"
-      ),
+),
       `Display Status` = "Main"
     )
   return(flags_long)
@@ -967,16 +1486,16 @@ track_indicator_updates <- function(long) {
       
       return(length(changes))
     })) %>%
-  mutate(
-    Update_Date = case_when(
-      Changed_Countries > 0 ~ Sys.Date()
-    ))
-
-updateLog <- updateLog %>% .[!is.na(.$Update_Date),]    
-updateLogPrevious <- read_csv("output/updates-log.csv")
-updateLogCombined <- rbind(updateLog, updateLogPrevious) %>%
-  .[!is.na(.$Update_Date),]
-return(updateLogCombined)
+    mutate(
+      Update_Date = case_when(
+        Changed_Countries > 0 ~ Sys.Date()
+      ))
+  
+  updateLog <- updateLog %>% .[!is.na(.$Update_Date),]    
+  updateLogPrevious <- read_csv("output/updates-log.csv")
+  updateLogCombined <- rbind(updateLog, updateLogPrevious) %>%
+    .[!is.na(.$Update_Date),]
+  return(updateLogCombined)
 }
 
 # Write long output file (crm-output-latest.csv) ----
@@ -1012,7 +1531,7 @@ append_output_all <- function(long) {
 #          # `Risk Change` = as.numeric(Risk) - as.numeric(`Previous Risk`)
 #          )
 
-countFlagChanges <- function(data, early = Sys.Date() -1 , late = Sys.Date()) {
+countFlagChanges <- function(data, early = Sys.Date() - 1 , late = Sys.Date()) {
   data <- data %>%
     select(Record_ID, Index, Countryname, Country, Outlook, Value, Date, `Data Level`) %>%
     subset(`Data Level` == 'Flag Count') %>%
@@ -1037,10 +1556,10 @@ countFlagChanges <- function(data, early = Sys.Date() -1 , late = Sys.Date()) {
     relocate(`Prior Date`, .after = Date)
   return(combined)
 }
-  
-  # flagChanges <- countFlagChanges(outputAll)
-  
-  # rmarkdown::render('output-report.Rmd', output_format = c("html_document", "pdf_document"), output_file = paste0("reports/", Sys.Date(), "-report") %>% rep(2))
-  # write.csv(flagChanges, "output/reports/flag-changes.csv")
-  
-  # rmarkdown::render('output-report.Rmd', output_format = "html_document", output_file = paste0("output/reports/", Sys.Date(), "-report"))
+
+# flagChanges <- countFlagChanges(outputAll)
+
+# rmarkdown::render('output-report.Rmd', output_format = c("html_document", "pdf_document"), output_file = paste0("reports/", Sys.Date(), "-report") %>% rep(2))
+# write.csv(flagChanges, "output/reports/flag-changes.csv")
+
+# rmarkdown::render('output-report.Rmd', output_format = "html_document", output_file = paste0("output/reports/", Sys.Date(), "-report"))
