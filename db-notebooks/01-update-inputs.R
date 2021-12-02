@@ -23,7 +23,7 @@ source("fns/indicators.R")
 # COMMAND ----------
 
 ## Direct Github location (data folder)
-github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
+# github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 
 # COMMAND ----------
 
@@ -34,7 +34,9 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 # COMMAND ----------
 
 # HEALTH
+acaps_collect()
 # Add in OWID
+owid_collect()
 # Add in Oxford Response Tracker
 ghsi_collect()
 # oxford_openness_collect()

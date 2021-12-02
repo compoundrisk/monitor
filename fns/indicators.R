@@ -132,6 +132,16 @@ try_log <- function(expr) {
 #--------------------—INDICATOR SPECIFIC FUNCTIONS-----------------------------
 
 #--------------------—LOAD ACAPS realtime database-----------------------------
+acaps_collect <- function() {
+  h <- new_handle()
+  handle_setopt(h, ssl_verifyhost = 0, ssl_verifypeer = 0)
+  curl_download(url = "https://www.acaps.org/countries",
+                "output/inputs-archive/acaps.html",
+                handle = h)
+  # acaps <- read_html("acaps.html")
+  # unlink("acaps.html")
+}
+
 ## Add in *_collect() function for ACAPS
 acaps_process <- function(as_of, format) {
   # SPLIT UP INTO INPUTS SECTION
@@ -325,6 +335,24 @@ oxford_openness_process <- function(as_of, format) {
 #------------------------—OWID COVID deaths and cases--------------------------
 
 # _Add in *_collect() function_
+owid_collect <- function() {
+  covidweb <-
+    read_csv(
+      "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
+      col_types = cols_only(
+        iso_code = 'c',
+        continent = 'c',
+        location = 'c',
+        date = 'D',
+        new_cases_per_million = 'd',
+        new_cases_smoothed_per_million = 'd',
+        new_deaths_per_million = 'd',
+        new_deaths_smoothed_per_million = 'd'
+      )
+    )
+  write.csv(covidweb, "output/inputs-archive/owid_covid.csv")
+}
+
 owid_covid_process <- function(as_of, format) {
   # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
   # See warning
