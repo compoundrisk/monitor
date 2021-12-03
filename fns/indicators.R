@@ -347,10 +347,8 @@ owid_collect <- function() {
         new_cases_per_million = 'd',
         new_cases_smoothed_per_million = 'd',
         new_deaths_per_million = 'd',
-        new_deaths_smoothed_per_million = 'd'
-      )
-    )
-  write.csv(covidweb, "output/inputs-archive/owid_covid.csv")
+        new_deaths_smoothed_per_million = 'd'))
+  write.csv(covidweb, "output/inputs-archive/owid_covid.csv", row.names = F)
 }
 
 owid_covid_process <- function(as_of, format) {
@@ -359,17 +357,16 @@ owid_covid_process <- function(as_of, format) {
   # covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
   #                      col_types = "cccD-------dd-dd-------------------------------------------------")
   
-  covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
+  covidweb <- read_csv("output/inputs-archive/owid_covid.csv",
                        col_types = cols_only(
                          iso_code = 'c',
                          continent = 'c',
                          location = 'c',
                          date = 'D',
-                          new_cases_per_million = 'd',
-                          new_cases_smoothed_per_million = 'd',
-                          new_deaths_per_million = 'd',
-                          new_deaths_smoothed_per_million = 'd'
-                       ))
+                         new_cases_per_million = 'd',
+                         new_cases_smoothed_per_million = 'd',
+                         new_deaths_per_million = 'd',
+                         new_deaths_smoothed_per_million = 'd'))
   
   # Super slow to find changed data in this 30MB file. For now, not important because
   # it includes its own historical data
@@ -519,6 +516,7 @@ owid_covid_process <- function(as_of, format) {
   # # Normalise
   # cov_forcast_alt <- normfuncpos(cov_forcast_alt, 100, 0, "H_add_death_prec_current")
   owid <- left_join(covidcurrent, covidgrowth)
+  owid <- subset(owid, Country %in% countrylist$Country)
   return(owid)
   # return(list(
   #   covidcurrent,
@@ -1063,8 +1061,6 @@ eiu_process <- function(as_of, format) {
   return(eiu_joint)
 }
 
-
-
 #### SOCIO-ECONOMIC
 #---------------------------—Alternative socio-economic data (based on INFORM) - INFORM Income Support
 inform_socio_process <- function(as_of, format = format) {
@@ -1112,9 +1108,89 @@ income_support_process <- function(as_of, format) {
 
 #--------------------------—MPO: Poverty projections----------------------------------------------------
 mpo_collect <- function() {
-  mpo <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/mpo.csv")))
+  # mpo <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/mpo.csv")))
+  # archiveInputs(mpo, group_by = c("Country"))
+
+
+  # FIX: Ideally most of this would be in the mpo_process() function, rather than the collect
+  # function, but doing so would conflict with the current mpo archive structure
+  mpo <- read_xlsx("restricted-data/mpo_global_AM21.xlsx")
+
+  # Add population
+  pop <- wpp.by.year(wpp.indicator("tpop"), 2020)
+
+  pop$charcode <- suppressWarnings(countrycode(pop$charcode,
+                                              origin = "iso2c",
+                                              destination = "iso3c"
+                                              )
+                                  )
+
+  colnames(pop) <- c("Country", "Population")
+
+  mpo_data <- mpo %>%
+    rename(Country = Code) %>%
+    left_join(., pop, by= "Country")  %>%
+    mutate_at(
+      vars(contains("y20")),
+      ~ as.numeric(as.character(.))
+    ) %>%
+    mutate(
+      pov_prop_23_22 = y2023 - y2022,
+      pov_prop_22_21 = y2022 - y2021,
+      # pov_prop_21_20 = y2021 - y2020,
+      # pov_prop_20_19 = y2020 - y2019,
+      ) %>%
+    filter(Label == "International poverty rate ($1.9 in 2011 PPP)") %>%
+    rename_with(
+      .fn = ~ paste0("S_", .),
+      .cols = colnames(.)[!colnames(.) %in% c("Country")]
+    ) 
+
+  # Normalise based on percentiles
+  mpo_data <- normfuncpos(mpo_data,
+                          quantile(mpo_data$S_pov_prop_23_22, 0.95,  na.rm = T),
+                          quantile(mpo_data$S_pov_prop_23_22, 0.05,  na.rm = T),
+                          "S_pov_prop_23_22")
+  mpo_data <- normfuncpos(mpo_data,
+                          quantile(mpo_data$S_pov_prop_22_21, 0.95,  na.rm = T),
+                          quantile(mpo_data$S_pov_prop_22_21, 0.05,  na.rm = T),
+                          "S_pov_prop_22_21")
+  # mpo_data <- normfuncpos(mpo_data,
+  #                         quantile(mpo_data$S_pov_prop_21_20, 0.95,  na.rm = T),
+  #                         quantile(mpo_data$S_pov_prop_21_20, 0.05,  na.rm = T),
+  #                         "S_pov_prop_21_20")
+
+  mpo_data <- mpo_data %>%
+    mutate(
+      S_pov_comb_norm = rowMaxs(as.matrix(dplyr::select(.,
+                                                        S_pov_prop_23_22_norm,
+                                                        S_pov_prop_22_21_norm
+                                                        # S_pov_prop_21_20_norm
+                                                        )),
+                                na.rm = T)) %>%
+          dplyr::select(Country,
+                        S_pov_comb_norm, 
+                        S_pov_prop_23_22_norm,
+                        S_pov_prop_22_21_norm,
+                        # S_pov_prop_21_20_norm, 
+                        S_pov_prop_23_22,
+                        S_pov_prop_22_21
+                        # S_pov_prop_21_20
+                        )
+
+  # write_csv(mpo_data, "Indicator_dataset/mpo.csv")
+  mpo <- mpo_data
   archiveInputs(mpo, group_by = c("Country"))
 }
+
+
+mpo_arch <- read_csv('output/inputs-archive/mpo.csv')
+names(mpo_arch)
+names(mpo_data)
+names(mpo_data)[which(names(mpo_data) %ni% names(mpo_arch))]
+names(mpo_arch)[which(names(mpo_arch) %ni% names(mpo_data))]
+
+
 mpo_process <- function(as_of, format) {
   mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = format)
 }
