@@ -1,6 +1,6 @@
 packages <- c("curl", "DBI", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2", 
               "jsonlite","lubridate", "maps", "matrixStats", "purrr", "readr", "readxl", "rmarkdown",
-              "rvest", "sjmisc", "sparklyr", "stringr", "tidyr", "xml2", "zoo")
+              "rvest", "sjmisc", "sparklyr", "stringr", "tidyr", "xml2", "wppExplorer", "zoo")
 
 lapply(packages, function(p) {
   if (!require(p, character.only = T, quietly = T)) {
@@ -8,6 +8,8 @@ lapply(packages, function(p) {
   }
   library(p, character.only = T, quietly = T)
 })
+
+source("fns/helpers.R")
 
 ## Direct Github location (data folder)
 #---------------------------------
@@ -27,17 +29,3 @@ indicators_list <- as.data.frame(read.csv("indicators-list.csv")) %>%
 # DBI::dbSendQuery(sc,"CREATE DATABASE IF NOT EXISTS crm")
 # sparklyr::tbl_change_db(sc, "crm")
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
-
-slugify <- function(x, non_alphanum_replace="", space_replace="_", tolower=TRUE, toupper = FALSE) {
-  x <- gsub("[^[:alnum:] ]", non_alphanum_replace, x)
-  x <- gsub(" ", space_replace, x)
-  if (tolower) {
-    x <- tolower(x)
-  }
-  if (toupper) {
-    x <- toupper(x)
-  }
-  return(x)
-}
-
-`%ni%` <- Negate(`%in%`)
