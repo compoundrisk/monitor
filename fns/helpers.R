@@ -69,3 +69,13 @@ multi_write.csv <- function(data, filename, paths) {
     write.csv(data, paste_path(paths[i], filename), row.names = F)
   }
 }
+
+column_differences <- function(df1, df2) {
+    n1 <- names(df1)[which(names(df1) %ni% names(df2))]
+    n2 <- names(df2)[which(names(df2) %ni% names(df1))]
+    cat("First dataframe has", length(n1), "unique columns:", n1,
+        "\nSecond dataframe has", length(n2), "unique columns:", n2)
+}
+
+# new_dons <- add_new_input_cols(read_csv('output/inputs-archive/who_dons.csv'), who_dons)
+# write.csv(new_dons, 'output/inputs-archive/who_dons.csv', row.names = F)

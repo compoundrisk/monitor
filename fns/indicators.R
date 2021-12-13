@@ -119,6 +119,18 @@ loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), f
   return(data)
 }
 
+add_dimension_prefix <- function(df, prefix) {
+  df <- df %>% rename_with(.cols = -Country, .fn = ~ paste0(prefix, .x))
+  return(df)
+}
+
+# Function for adding new columns to an inputs-archive file
+add_new_input_cols <- function(df1, df2) {
+  column_differences(df1, df2)
+  combined <- bind_rows(df1, df2[0,]) %>%
+      relocate(access_date, .after = ncol(.))
+  return(combined)
+}
 # Move external to functions file (is this still relevant?)
 try_log <- function(expr) {
   fun <- sub("\\(.*", "", deparse(substitute(expr)))
@@ -648,41 +660,61 @@ dons_collect <- function() {
     html_nodes(".trimmed") %>%
     html_text()
   
-  wmo_don_full <- bind_cols(dons_text, dons_date) %>%
-    rename(text = "...1" ,
-           date = "...2") %>%
+  dons_urls <- dons_raw %>%
+    html_nodes(".sf-list-vertical") %>%
+    html_nodes("a") %>%
+    html_attr("href")
+
+  # Check if notification is announcing *end* of outbreak
+  first_sentences <- sapply(dons_urls, function(url) {
+    p <- read_html(url) %>% 
+        html_nodes("article")  %>%
+        html_node("div:first-child") %>%
+        html_node("p:first-child") %>%
+        html_text()
+    sentence <- sub("(.*?\\.) [A-Z].*", "\\1", p)
+    return(sentence)
+  })
+  declared_over <- grepl("declared the end of|declared over", first_sentences, ignore.case = T)
+
+  who_dons <- data.frame(
+                    text = dons_text,
+                    date = dons_date,
+                    url = dons_urls,
+                    declared_over
+                    ) %>%
     mutate(disease = trimws(sub("\\s[-——ｰ].*", "", text)),
            country = trimws(sub(".*[-——ｰ]", "", text)),
            country = trimws(sub(".*-", "", country)),
            date = dmy(date)) %>%
     separate_rows(country, sep = ",") %>%
-    mutate(wmo_country_alert = countrycode(country,
+    mutate(who_country_alert = countrycode(country,
                                            origin = "country.name",
                                            destination = "iso3c",
                                            nomatch = NULL
     ))
   
-  who_don <- wmo_don_full
-  
-  archiveInputs(who_don, group_by = NULL)
+  archiveInputs(who_dons, group_by = NULL)
 }
+#----------------------------------—WHO DONs--------------------------------------------------------------
 
-#----------------------------------—WHO DONS--------------------------------------------------------------
+dons_process <- function(as_of, format) {
+  who_dons <- loadInputs("who_dons", group_by = NULL, as_of = as_of, format = format)
+  # Only include DONs alerts from the past 3 months and not declared over
+  # (more robust version would filter out outbreaks if they were later declared over)
+  who_dons_current <- who_dons %>%
+    subset(date >= as_of - 92) %>%
+    subset(!declared_over == T) %>%
+    mutate(who_dons_text = paste(date, "–", text))
 
-# REPLACE all WMO with WHO
-who_process <- function(as_of, format) {
-  wmo_don_full <- loadInputs("who_don", group_by = NULL, as_of = as_of, format = format)
+  who_dons <- left_join(countrylist, who_dons_current, by = c("Country" = "who_country_alert")) %>%
+    mutate(who_dons_alert = case_when(
+      !is.na(text) ~ 10,
+      TRUE ~ 0)) %>%
+      select(Country, who_dons_alert, who_dons_text) %>%
+      add_dimension_prefix("H_")
   
-  # countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-  wmo_don <- countrylist %>%
-    # dplyr::select(-X) %>%
-    # Should we specify which dates we care about?
-    # Also a problem where *end* of outbreaks are also reported
-    mutate(wmo_don_alert = case_when(Country %in% wmo_don_full$wmo_country_alert ~ 10,
-                                     TRUE ~ 0))  %>%
-    rename(H_wmo_don_alert = wmo_don_alert) %>%
-    dplyr::select(-Countryname)
-  return(wmo_don)
+  return(who_dons)
 }
 
 #---------------------------------—Health ACAPS---------------------------------
@@ -701,7 +733,7 @@ who_process <- function(as_of, format) {
 #     left_join(., Ox_cov_resp, by = "Country") %>%
 #     # left_join(., cov_forcast_alt, by = "Country") %>% # not current
 #     left_join(., inform_covid_warning, by = "Country", "Countryname") %>%
-#     left_join(., wmo_don, by = "Country") %>%
+#     left_join(., who_dons, by = "Country") %>%
 #     left_join(., acaps_health, by = "Country") %>%
 #     arrange(Country)
 

@@ -19,7 +19,7 @@ Emerging,Health,ACAPS Health Crisis Tracker,,INFORM,Daily,,1,17,H_health_acaps,H
 Emerging,Health,New Covid Cases per 1M,,OWID,Daily,,1,18,H_new_cases_smoothed_per_million_norm,H_new_cases_smoothed_per_million,covidgrowth,FALSE,TRUE
 Emerging,Health,New Covid Deaths per 1M,,OWID,Daily,,1,19,H_new_deaths_smoothed_per_million_norm,H_new_deaths_smoothed_per_million,covidgrowth,FALSE,TRUE
 Emerging,Health,Oxford Lockdown Rollback Index,,Oxford,Ad hoc,,1,20,H_Oxrollback_score_norm,H_Oxrollback_score,Oxrollback,FALSE,FALSE
-Emerging,Health,WHO Disease Outbreak News,,WHO,Ad hoc,,1,21,H_wmo_don_alert,H_wmo_don_alert,wmo_don,FALSE,TRUE
+Emerging,Health,WHO Disease Outbreak News,,WHO,Ad hoc,,1,21,H_who_dons_alert,H_who_dons_text,who_dons,FALSE,TRUE
 Emerging,Macro Fiscal,Operational Risk Score,,Economist Intelligence Unit,Monthly,,1,22,M_EIU_12m_change_norm,M_EIU_12m_change,eiu_joint,FALSE,TRUE
 Emerging,Natural Hazard,GDACS Live Hazard Tracker,,Global Disaster Alert and Coordination System,Daily,,1,23,NH_GDAC_Hazard_Score_Norm,NH_GDAC_Hazard_Score,gdac,FALSE,TRUE
 Emerging,Natural Hazard,Locust Threat Level,,FAO,Weekly,,1,24,NH_locust_norm,NH_locust_norm,locust_risk,FALSE,TRUE

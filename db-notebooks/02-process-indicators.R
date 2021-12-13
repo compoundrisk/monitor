@@ -54,7 +54,7 @@ health_sheet <- aggregate_dimension(
   owid_covid_process(as_of = as_of, format = format),
   # Oxres_process(as_of = as_of, format = format),
   inform_covid_process(as_of = as_of, format = format),
-  who_process(as_of = as_of, format = format))
+  dons_process(as_of = as_of, format = format))
 # Does it make sense to move all output writing to the end, in one spot?
 # Write to a temporary directory, and then move everything to the intended spot?
 # (/output/scheduled/ or /output/manual/run-date/)
