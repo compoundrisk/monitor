@@ -177,7 +177,7 @@ all_dimensions <- list(
       destination = "country.name"),
     .after = Country)
 
-write.csv(all_dimensions, paste0(output_directory, "crm-wide.csv"))
+# write.csv(all_dimensions, paste0(output_directory, "crm-wide.csv"))
 multi_write.csv(all_dimensions, "crm-wide.csv", c(output_directory, archive_directory))
 
 # Rename with pretty names

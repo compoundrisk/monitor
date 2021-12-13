@@ -29,4 +29,4 @@ Emerging,Socioeconomic Vulnerability,"Unemployment Rate, % Change",,IMF,Quarterl
 Emerging,Socioeconomic Vulnerability,MFRI Household Level Risk,,WB,Quarterly,,1,28,S_Household.risks,S_Household.risks_raw,household_risk,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,Income Support,,INFORM,Annual,,1,29,S_income_support.Rating_crm_norm,S_income_support.Value,socio_forward,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,COVID Phone Survey Index,,WB,Monthly,,1,30,S_phone_average_index_norm,S_phone_average_index,phone_index_data,FALSE,FALSE
-Emerging,Socioeconomic Vulnerability,"People Below $1.90 Poverty Line, % Change",,WB,Quarterly,,1,31,S_pov_comb_norm,"S_pov_prop_22_21, S_pov_prop_21_20, S_pov_prop_23_22",mpo_data,FALSE,TRUE
+Emerging,Socioeconomic Vulnerability,"People Below $1.90 Poverty Line, % Change",,WB,Quarterly,,1,31,S_pov_comb_norm,"S_pov_prop_22_21, S_pov_prop_23_22",mpo_data,FALSE,TRUE

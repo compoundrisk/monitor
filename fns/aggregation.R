@@ -310,7 +310,7 @@ write_excel_source_files <- function(
 
   # Write reliability sheet
   # This is necessary for the Excel dashboard, so maybe should be lumped with `write_excel_source_files()`
-  reliability <- select(all_dimensions, contains("Reliability")) %>%
+  reliability <- select(all_dimensions, Country, contains("Reliability")) %>%
     mutate(Underlying_Reliability = rowMeans(select(., starts_with("Underlying"))),
           Emerging_Reliability = rowMeans(select(., starts_with("Emerging"))))
   # Previously I was rounding this to one decimal (`round(rowMeans(...), 1)`) but I'm not sure this is helpful

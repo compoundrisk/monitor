@@ -33,6 +33,20 @@ normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
   return(df)
 }
 
+# FUNCTION TO READ MOST RECENT FILE IN A FOLDER
+# Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
+# Also could mean saving all live-downloaded data somewhere
+# I need to save the filename so I can use the date in it as the access_date
+read_most_recent <- function(directory_path, FUN = read.csv, ..., date_format = "%Y%m%d") {
+    file_names <- list.files(directory_path)
+    name_dates <- sub(".*(20[[:digit:]-]+).csv", "\\1", file_names) %>%
+        as.Date(format = date_format)
+    most_recent_file <- file_names[which(name_dates == max(name_dates))]
+
+    data <- FUN(paste_path(directory_path, most_recent_file), ...)
+    return(data)
+}
+
 ## FUNCTION TO ARCHIVE AND LOAD ALL INPUT DATA `archiveInputs()` 
 # _Edit this to use Spark_
 # - Should I store input archives as a separate CSV file for each date? E.g. `who_dons_20211001` which includes all of the *new* data from October 10?
@@ -90,13 +104,19 @@ archiveInputs <- function(data,
 }
 
 #--------------------FUNCTIONS TO LOAD INPUT DATA-----------------
-loadInputs <- function(filename, group_by = "CountryCode", as_of = Sys.Date(), format = "csv", full = F){
+loadInputs <- function(
+                filename,
+                group_by = "CountryCode",
+                as_of = Sys.Date(),
+                format = "csv",
+                full = F,
+                col_types = NULL) {
   # The as_of argument let's you run the function from a given historical date. Update indicators.R
   # to use this feature -- turning indicators.R into a function? with desired date as an argument
   
   if (format == "csv") {
     # Read in CSV
-    data <- suppressMessages(read_csv(paste0("output/inputs-archive/", filename, ".csv")))
+    data <- suppressMessages(read_csv(paste0("output/inputs-archive/", filename, ".csv"), col_types = col_types))
   }
   if (format == "spark") {
     # Read from Spark DataFrame
@@ -659,7 +679,7 @@ dons_collect <- function() {
   dons_text <- dons_select %>%
     html_nodes(".trimmed") %>%
     html_text()
-  
+
   dons_urls <- dons_raw %>%
     html_nodes(".sf-list-vertical") %>%
     html_nodes("a") %>%
@@ -693,7 +713,7 @@ dons_collect <- function() {
                                            destination = "iso3c",
                                            nomatch = NULL
     ))
-  
+
   archiveInputs(who_dons, group_by = NULL)
 }
 #----------------------------------—WHO DONs--------------------------------------------------------------
@@ -706,14 +726,14 @@ dons_process <- function(as_of, format) {
     subset(date >= as_of - 92) %>%
     subset(!declared_over == T) %>%
     mutate(who_dons_text = paste(date, "–", text))
-
+  
   who_dons <- left_join(countrylist, who_dons_current, by = c("Country" = "who_country_alert")) %>%
     mutate(who_dons_alert = case_when(
       !is.na(text) ~ 10,
       TRUE ~ 0)) %>%
       select(Country, who_dons_alert, who_dons_text) %>%
       add_dimension_prefix("H_")
-  
+
   return(who_dons)
 }
 
@@ -1019,8 +1039,10 @@ eiu_process <- function(as_of, format) {
     mutate(Macroeconomic_risk = (`Financial risk` + Macroeconomic_risk + `Foreign trade & payments risk`) / 3)
   
   eiu_one_year <- eiu_data %>%
-    filter(MONTH %in% unique(eiu_data$MONTH)[-1]) %>%
+    # filter(MONTH %in% unique(eiu_data$MONTH)[-1]) %>%
     group_by(`SERIES NAME`) %>%
+    slice_max(MONTH, n = 13) %>% # replaces commented out line above, to actually measure the last 12 months
+    slice_min(MONTH, n = 12) %>%
     summarise_at(country_nam, mean, na.rm = T) %>%
     ungroup %>%
     distinct(`SERIES NAME`, .keep_all = T) %>% 
@@ -1042,7 +1064,7 @@ eiu_process <- function(as_of, format) {
     mutate(Macroeconomic_risk_12 = (`Financial risk_12` + Macroeconomic_risk_12 + `Foreign trade & payments risk_12`) / 3)
   
   eiu_three_month <- eiu_data %>%
-    filter(MONTH %in% head(unique(MONTH)[-1], 3)) %>%
+    # filter(MONTH %in% head(unique(MONTH)[-1], 3)) %>%
     group_by(MONTH, `SERIES NAME`) %>%
     summarise_at(country_nam, mean, na.rm = T) %>%
     ungroup %>%
@@ -1215,16 +1237,21 @@ mpo_collect <- function() {
   archiveInputs(mpo, group_by = c("Country"))
 }
 
-
-mpo_arch <- read_csv('output/inputs-archive/mpo.csv')
-names(mpo_arch)
-names(mpo_data)
-names(mpo_data)[which(names(mpo_data) %ni% names(mpo_arch))]
-names(mpo_arch)[which(names(mpo_arch) %ni% names(mpo_data))]
-
-
 mpo_process <- function(as_of, format) {
-  mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = format)
+  # Specify the expected types for each column; I should do this everywhere.
+  col_types <- cols(
+                  Country = "c",
+                  S_pov_comb_norm = "d",
+                  S_pov_prop_22_21_norm = "d",
+                  S_pov_prop_21_20_norm = "d",
+                  S_pov_prop_20_19_norm = "d",
+                  S_pov_prop_22_21 = "d",
+                  S_pov_prop_21_20 = "d",
+                  S_pov_prop_20_19 = "d",
+                  S_pov_prop_23_22_norm = "d",
+                  S_pov_prop_23_22 = "d",
+                  access_date = "D")
+  mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = format, col_types = col_types)
 }
 
 ## MACROFIN / EFI Macro Financial Review Household Level Risk
@@ -1591,6 +1618,7 @@ gdacs_process <- function(as_of, format) {
   # All droughts on GDAC are current ... 
   gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2020", "active", gdaclist$status)
   gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2021", "active", gdaclist$status)
+  gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2022", "active", gdaclist$status)
   
   # Country names
   gdaclist$namesiso <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
