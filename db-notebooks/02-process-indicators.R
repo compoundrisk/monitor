@@ -40,7 +40,7 @@ dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions")
 # COMMAND ----------
 
 # ACAPS
-acapssheet <- acaps_process(as_of = as_of, format = format)
+# acaps_sheet <- acaps_process(as_of = as_of, format = format)
 
 # COMMAND ----------
 
@@ -48,7 +48,7 @@ acapssheet <- acaps_process(as_of = as_of, format = format)
 # Writes sheet of health variables to output/risk-sheets/health-sheet.csv
 health_sheet <- aggregate_dimension(
   "Health", # Important for these dimension names to match the names to match what's in indicators-list.csv
-  acapssheet[, c("Country", "H_health_acaps")],
+  acaps_category_process(as_of, format, category = "health", prefix = "H_"),
   ghsi_process(as_of = as_of, format = format),
   # oxford_openness_process(as_of = as_of, format = format),
   owid_covid_process(as_of = as_of, format = format),
@@ -108,7 +108,7 @@ natural_hazards_sheet <- aggregate_dimension(
   inform_nathaz_process(as_of = as_of, format = format),
   iri_process(as_of = as_of, format = format), # Rename iri_forecast)
   locust_process(as_of = as_of, format = format),
-  acapssheet[, c("Country", "NH_natural_acaps")])
+  acaps_category_process(as_of, format, category = "natural", prefix = "NH_"))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
 
 # COMMAND ----------

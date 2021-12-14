@@ -37,11 +37,13 @@ normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
 # Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
 # Also could mean saving all live-downloaded data somewhere
 # I need to save the filename so I can use the date in it as the access_date
-read_most_recent <- function(directory_path, FUN = read.csv, ..., date_format = "%Y%m%d") {
+read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d") {
     file_names <- list.files(directory_path)
-    name_dates <- sub(".*(20[[:digit:]-]+).csv", "\\1", file_names) %>%
+    # Reads the date portion of a filename in the format of acaps-2021-12-13
+    name_dates <- sub(".*(20[[:digit:]-]+)\\..*", "\\1", file_names) %>%
         as.Date(format = date_format)
-    most_recent_file <- file_names[which(name_dates == max(name_dates))]
+    selected_date <- subset(name_dates, name_dates <= as_of) %>% max()
+    most_recent_file <- file_names[which(name_dates == selected_date)]
 
     data <- FUN(paste_path(directory_path, most_recent_file), ...)
     return(data)
@@ -167,135 +169,126 @@ try_log <- function(expr) {
 acaps_collect <- function() {
   h <- new_handle()
   handle_setopt(h, ssl_verifyhost = 0, ssl_verifypeer = 0)
+  file_path <- paste_path("output/inputs-archive/acaps", paste0("acaps-", Sys.Date(), ".html"))
   curl_download(url = "https://www.acaps.org/countries",
-                "output/inputs-archive/acaps.html",
+                file_path,
                 handle = h)
-  # acaps <- read_html("acaps.html")
-  # unlink("acaps.html")
+  # Remove if text in ".severities" <div> of html is identical in previous run
+  new <- read_html(file_path) %>%
+    html_nodes(".severities") %>% html_text()
+  previous <- read_most_recent("output/inputs-archive/acaps", FUN = read_html, as_of = Sys.Date() - 1) %>%
+    html_nodes(".severities") %>% html_text()
+  if (identical(new, previous)) {
+    unlink(file_path)
+  }
 }
 
 ## Add in *_collect() function for ACAPS
 acaps_process <- function(as_of, format) {
-  # SPLIT UP INTO INPUTS SECTION
-  # Load website
-  h <- new_handle()
-  handle_setopt(h, ssl_verifyhost = 0, ssl_verifypeer=0)
-  curl_download(url="https://www.acaps.org/countries", "acaps.html", handle = h)
-  acaps <- read_html("acaps.html")
-  unlink("acaps.html")
+  acaps <- read_most_recent("output/inputs-archive/acaps", FUN = read_html, as_of = Sys.Date())
   
-  # Select relevant columns from the site all merged into a single string
-  country <- acaps %>%
-    html_nodes(".severity__country__label, .severity__country__crisis__label, .severity__country__crisis__value") %>%
-    html_text()
-  
-  # Find country labels in the string (select 2nd lag behind a numberic variable if the given item is a character)
-  countryisolate <- suppressWarnings(ifelse(!is.na(as.numeric(as.character(country))) & lag(is.na(as.numeric(as.character(country))), 2),
-                                            lag(country, 2),
-                                            NA
-  ))
-  
-  # For all variables that have a country label, change to iso categories
-  country[which(!is.na(countryisolate)) - 2] <- countrycode(country[which(!is.na(countryisolate)) - 2],
-                                                            origin = "country.name",
-                                                            destination = "iso3c",
-                                                            nomatch = NULL
-  )
-  
-  # Collect list of all world countries
-  world <- map_data("world")
-  world <- world %>%
-    dplyr::rename(Country = region) %>%
-    dplyr::mutate(Country = suppressWarnings(countrycode(Country,
-                                                         origin = "country.name",
-                                                         destination = "iso3c",
-                                                         nomatch = NULL
-    )))
-  
-  countrynam <- levels(as.factor(world$Country))
-  
-  # Find all countries in the list and replace with correct country name (then fill in remaining NAs)
-  gap <- ifelse(country %in% countrynam, country, NA)
-  gaplist <- na.locf(gap)
-  
-  # Create new dataframe with correct countrynames
-  # FIX: column names are swapped. Country column lists event, not countryname
-  acapslist <- cbind.data.frame(country, gaplist)
-  acapslist <- acapslist[!acapslist$country %in% countrynam, ]
-  acapslist <- acapslist %>%
-    filter(country != "Countrylevel")
-  
-  # Create new column with the risk scores (and duplicate for missing rows up until the correct value)
-  acapslist$risk <- suppressWarnings(ifelse(!is.na(as.numeric(as.character(acapslist$country))), as.numeric(as.character(acapslist$country)), NA))
-  acapslist$risk <- c(na.locf(acapslist$risk), NA)
-  
-  # Remove duplicate rows and numeric rows
-  acapslist <- acapslist %>%
-    filter(is.na(as.numeric(as.character(country)))) %>%
-    filter(country != "Country level") %>%
-    filter(country != "Country Level") %>%
-    filter(country != "")
-  
-  # Save csv with full acapslist
-  # write.csv(acapslist, "Indicator_dataset/acaps.csv")
-  
-  # List of countries with specific hazards
-  conflictnams <- acapslist %>%
-    filter(str_detect(acapslist$country, c("conflict|Crisis|crisis|Conflict|Refugees|refugees|
-                                       Migration|migration|violence|violence|Boko Haram"))) %>%
-    filter(risk >= 4) %>%
-    dplyr::select(gaplist)
-  
-  conflictnams <- unique(conflictnams)
-  
-  # Food security countries
-  foodnams <- acapslist[str_detect(acapslist$country, c("Food|food|famine|famine")), ] %>%
-    filter(risk >= 4) %>%
-    dplyr::select(gaplist)
-  
-  foodnams <- unique(foodnams)
-  
-  # Natural hazard countries
-  naturalnams <- acapslist[str_detect(acapslist$country, c("Floods|floods|Drought|drought|Cyclone|cyclone|
-                                                        Flooding|flooding|Landslides|landslides|
-                                                        Earthquake|earthquake")), ] %>%
-    filter(risk >= 3) %>%
-    dplyr::select(gaplist)
-  
-  naturalnams <- unique(naturalnams)
-  
-  # Epidemic countries
-  healthnams <- acapslist[str_detect(acapslist$country, c("Epidemic|epidemic")), ] %>%
-    filter(risk >= 3) %>%
-    dplyr::select(gaplist)
-  
-  healthnams <- unique(healthnams)
-  
-  # Load countries in the CRM
-  # countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-  
-  acapssheet <- countrylist %>%
-    # dplyr::select(-X) %>%
+# Scrape ACAPS website
+parent_nodes <- acaps %>% 
+    html_nodes(".severity__country")
+
+# Scrape crisis data for each listed country
+acaps_list <- lapply(parent_nodes, function(node) {
+    country <- node %>%
+        html_node(".severity__country__label") %>%
+        html_text()
+    country_level <- node %>%
+        html_node(".severity__country__value") %>%
+        html_text() %>%
+        as.numeric()
+    crises <- node %>%
+        html_nodes(".severity__country__crisis__label") %>%
+        html_text()
+    values <- node %>%
+        html_nodes(".severity__country__crisis__value") %>%
+        html_text() %>% 
+        as.numeric()
+    if (length(crises) != length(values)) {
+        stop(paste("Node lengths for labels and values do not match for", country))
+        }
+
+    df <- data.frame(
+            Countryname = country,
+            crisis = crises,
+            value = values)
+    return(df)
+    }) %>%
+    bind_rows() %>%
+    subset(!str_detect(tolower(crisis), "country level")) %>%
     mutate(
-      Fr_conflict_acaps = case_when(
-        Country %in% unlist(as.list(conflictnams)) ~ 10,
-        TRUE ~ 0
-      ),
-      H_health_acaps = case_when(
-        Country %in% unlist(as.list(healthnams)) ~ 10,
-        TRUE ~ 0
-      ),
-      NH_natural_acaps = case_when(
-        Country %in% unlist(as.list(naturalnams)) ~ 10,
-        TRUE ~ 0
-      ),
-      F_food_acaps = case_when(
-        Country %in% unlist(as.list(foodnams)) ~ 10,
-        TRUE ~ 0
-      )
-    )
+      Countryname = case_when(
+        Countryname == "CAR" ~ "Central African Republic",
+        TRUE ~ Countryname),
+      Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
+      .before = 1)
   
-  return(acapssheet)
+  select_acaps_countries <- function(data, string, minimum, category) {
+    selected <- data %>%
+      filter(str_detect(tolower(crisis), string)) %>%
+      filter(value >= minimum) %>%
+      group_by(Country) %>%
+      summarise(
+          crisis = paste(paste0(crisis, " (", value, ")"), collapse = "; "),
+          value = max(value)) %>%
+      mutate(category = category, .after = Country)
+    return(selected)
+  }
+
+  # Conflict countries
+  conflict_list <- select_acaps_countries(
+    acaps_list,
+    string = "conflict|Crisis|crisis|Conflict|Refugees|refugees|Migration|migration|violence|violence|Boko Haram",
+    minimum = 4,
+    category = "conflict")
+    
+  # Food security countries
+  food_list <- select_acaps_countries(
+    acaps_list,
+    string = "Food|food|famine|famine",
+    minimum = 4,
+    category = "food")
+    
+  # Natural hazard countries
+  natural_list <- select_acaps_countries(
+    acaps_list,
+    string = "flood|drought|cyclone|landslide|earthquake",
+    minimum = 3,
+    category = "natural")
+    
+  # Epidemic countries
+  health_list <- select_acaps_countries(
+    acaps_list,
+    string = "epidemic",
+    minimum = 3,
+    category = "health")
+
+  acaps_sheet <- bind_rows(conflict_list, food_list, natural_list, health_list) %>%
+    mutate(acaps_risk = case_when(
+      !is.na(value) ~ 10,
+      TRUE ~ 0)) %>%
+    rename(acaps_crisis = crisis)
+
+  return(acaps_sheet)
+}
+
+acaps_category_process <- function(as_of, format, category, prefix) {
+  acaps_sheet <- acaps_process(as_of = as_of, format = format)
+
+output <- acaps_sheet[which(acaps_sheet$category == category),] %>%
+right_join(countrylist) %>%
+mutate(acaps_risk = case_when(
+  is.na(acaps_risk) ~ 0,
+  TRUE ~ acaps_risk)) %>%
+  select(Country, acaps_crisis, acaps_risk) %>%
+  rename_with(
+    .cols = -Country,
+    .fn = ~ paste0(prefix, .x)
+  )
+return(output)
 }
 
 ##### HEALTH

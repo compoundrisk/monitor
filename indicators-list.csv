@@ -15,7 +15,7 @@ Emerging,Food Security,Food Price Inflation (Secondary Indicator),,WB,Monthly,,2
 Emerging,Health,"Covid Growth, Cases (biweekly)",,OWID,Daily,,1,14,H_Covidgrowth_casesnorm,H_Covidgrowth_biweeklycases,covidgrowth,FALSE,TRUE
 Emerging,Health,"Covid Growth, Deaths (biweekly)",,OWID,Daily,,1,15,H_Covidgrowth_deathsnorm,H_Covidgrowth_biweeklydeaths,covidgrowth,FALSE,TRUE
 Emerging,Health,Oxford Gov Response Index,,Oxford,Daily,,1,16,H_GovernmentResponseIndexForDisplay_norm,H_GovernmentResponseIndexForDisplay,Ox_cov_resp,FALSE,FALSE
-Emerging,Health,ACAPS Health Crisis Tracker,,INFORM,Daily,,1,17,H_health_acaps,H_health_acaps,acapssheet,FALSE,TRUE
+Emerging,Health,ACAPS Health Crisis Tracker,,INFORM,Daily,,1,17,H_acaps_risk,H_acaps_crisis,acapssheet,FALSE,TRUE
 Emerging,Health,New Covid Cases per 1M,,OWID,Daily,,1,18,H_new_cases_smoothed_per_million_norm,H_new_cases_smoothed_per_million,covidgrowth,FALSE,TRUE
 Emerging,Health,New Covid Deaths per 1M,,OWID,Daily,,1,19,H_new_deaths_smoothed_per_million_norm,H_new_deaths_smoothed_per_million,covidgrowth,FALSE,TRUE
 Emerging,Health,Oxford Lockdown Rollback Index,,Oxford,Ad hoc,,1,20,H_Oxrollback_score_norm,H_Oxrollback_score,Oxrollback,FALSE,FALSE
@@ -23,7 +23,7 @@ Emerging,Health,WHO Disease Outbreak News,,WHO,Ad hoc,,1,21,H_who_dons_alert,H_w
 Emerging,Macro Fiscal,Operational Risk Score,,Economist Intelligence Unit,Monthly,,1,22,M_EIU_12m_change_norm,M_EIU_12m_change,eiu_joint,FALSE,TRUE
 Emerging,Natural Hazard,GDACS Live Hazard Tracker,,Global Disaster Alert and Coordination System,Daily,,1,23,NH_GDAC_Hazard_Score_Norm,NH_GDAC_Hazard_Score,gdac,FALSE,TRUE
 Emerging,Natural Hazard,Locust Threat Level,,FAO,Weekly,,1,24,NH_locust_norm,NH_locust_norm,locust_risk,FALSE,TRUE
-Emerging,Natural Hazard,INFORM Severity,,INFORM,Daily,,1,25,NH_natural_acaps,NH_natural_acaps,acapssheet,FALSE,TRUE
+Emerging,Natural Hazard,INFORM Severity,,INFORM,Daily,,1,25,NH_acaps_risk,NH_acaps_crisis,acapssheet,FALSE,TRUE
 Emerging,Natural Hazard,Seasonal Forecast Index,,"WB, Columbia University","Monthly, on 15th",,1,26,NH_seasonal_risk_norm,NH_seasonal_risk_norm,seasonl_risk,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,"Unemployment Rate, % Change",,IMF,Quarterly,,1,27,S_change_unemp_norm,"S_change_unemp_21, S_change_unemp_20",imf_un,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,MFRI Household Level Risk,,WB,Quarterly,,1,28,S_Household.risks,S_Household.risks_raw,household_risk,FALSE,TRUE
