@@ -61,7 +61,7 @@ eiu_collect()
 # SOCIO-ECONOMIC
 mpo_collect()
 mfr_collect()
-phone_collect()
+# phone_collect()
 imf_collect()
 
 # COMMAND ----------
@@ -79,3 +79,5 @@ fcs_collect()
 idp_collect()
 # acled_collect()
 # reign_collect()
+gic_collect()
+ifes_collect()

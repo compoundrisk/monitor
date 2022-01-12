@@ -77,7 +77,7 @@ merge_indicators <- function(...) {
 assign_ternary_labels <- function(x, high, medium, low) {
   label <- ifelse(x >= low & x < medium, "Low",
                   ifelse(x >= medium & x < high, "Medium",
-                         ifelse(x == high, "High", NA
+                         ifelse(x >= high, "High", NA
                          )
                   )
   )
@@ -221,7 +221,7 @@ aggregate_dimension <- function(dim, ..., prefix = "") {
   # Check if any sheets have empty columns
   empties <- empty_cols(sheet) %>% names()
   if (length(empties) > 0) {
-    warning(paste(dimension, " is empty on ", empties)) 
+    warning(paste(dim, " is empty on ", empties)) 
     # } else {
     #   print(paste(dimension, " is filled")) 
   }
@@ -311,8 +311,13 @@ write_excel_source_files <- function(
   # Write reliability sheet
   # This is necessary for the Excel dashboard, so maybe should be lumped with `write_excel_source_files()`
   reliability <- select(all_dimensions, Country, contains("Reliability")) %>%
-    mutate(Underlying_Reliability = rowMeans(select(., starts_with("Underlying"))),
-          Emerging_Reliability = rowMeans(select(., starts_with("Emerging"))))
+    mutate(
+          Countryname = countrycode(Country, origin = "iso3c", destination = "country.name"),
+          Underlying_Reliability = rowMeans(select(., starts_with("Underlying"))),
+          Emerging_Reliability = rowMeans(select(., starts_with("Emerging"))), .after = Country) #%>%
+    # Add columns that Excel file expects
+    # mutate(id = row_number(),
+    #        Countyname = countrycode(Country, origin = "iso3c", destination = "country.name"), .before = 1)
   # Previously I was rounding this to one decimal (`round(rowMeans(...), 1)`) but I'm not sure this is helpful
   multi_write.csv(reliability, "reliability-sheet.csv", c(directory_path, archive_path))
 }
@@ -527,7 +532,9 @@ create_id <- function(data) {
         leading_zeros(as.numeric(Outlook), 1),
         leading_zeros(as.numeric(Dimension), 1),
         leading_zeros(as.numeric(`Data Level`), 1),
-        leading_zeros(Indicator_ID, 2))),
+        leading_zeros(Indicator_ID, 2)#,
+        # ifelse(`Data Level` == "Raw Indicator Data", 1, 0)
+        )),
       .before = 1) %>%
       select(-Indicator_ID)
   return(data)

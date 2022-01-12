@@ -8,7 +8,7 @@ Underlying,Natural Hazard,INFORM Natural Multi-hazard Rating,,INFORM,Annual,1,,0
 Underlying,Socioeconomic Vulnerability,INFORM Socio-economic Vulnerability Index,,INFORM,Annual,1,,07,S_INFORM_vul_norm,S_INFORM_vul,inform_data,FALSE,TRUE
 Emerging,Conflict and Fragility,Political Fatalities,,ACLED,Monthly,,1,08,Fr_BRD_Normalised,Fr_fatal_z,acled,FALSE,FALSE
 Emerging,Conflict and Fragility,Forcibly Displaced People,,UNHCR,Annual,,1,09,Fr_Displaced_UNHCR_Normalised,Fr_z_idps,idps,FALSE,TRUE
-Emerging,Conflict and Fragility,Political Disturbance,,REIGN,Monthly,,1,10,Fr_REIGN_Normalised,Fr_pol_trigger,reign,FALSE,TRUE
+Emerging,Conflict and Fragility,Political Disturbance,,REIGN,Monthly,,1,10,Fr_REIGN_Normalised,Fr_pol_trigger,reign,FALSE,FALSE
 Emerging,Food Security,FAO WFP Warning,,FAO,Ad hoc,,1,11,F_fao_wfp_warning,F_fao_wfp_warning,fao_wfp,FALSE,TRUE
 Emerging,Food Security,FEWS NET Score,,FEWS NET,Quarterly,,1,12,F_fews_crm_norm,F_fshighrisk,fews_dataset,FALSE,TRUE
 Emerging,Food Security,Food Price Inflation (Secondary Indicator),,WB,Monthly,,2,13,F_fpv_rating,F_fpv,ag_ob,TRUE,TRUE
@@ -30,3 +30,4 @@ Emerging,Socioeconomic Vulnerability,MFRI Household Level Risk,,WB,Quarterly,,1,
 Emerging,Socioeconomic Vulnerability,Income Support,,INFORM,Annual,,1,29,S_income_support.Rating_crm_norm,S_income_support.Value,socio_forward,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,COVID Phone Survey Index,,WB,Monthly,,1,30,S_phone_average_index_norm,S_phone_average_index,phone_index_data,FALSE,FALSE
 Emerging,Socioeconomic Vulnerability,"People Below $1.90 Poverty Line, % Change",,WB,Quarterly,,1,31,S_pov_comb_norm,"S_pov_prop_22_21, S_pov_prop_23_22",mpo_data,FALSE,TRUE
+Emerging,Conflict and Fragility,IFES Elections & GIC Coups,,"IFES, GIC",,,1,32,Fr_pseudo_reign_norm,Fr_coup_election_text,,FALSE,TRUE

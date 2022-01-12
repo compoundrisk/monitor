@@ -411,31 +411,61 @@ owid_covid_process <- function(as_of, format) {
   covidgrowth <- covid %>%
     mutate(
       previous2week = case_when(
+        # "twoweek" is the current two weeks, "lasttwoweek" is the two weeks preceding them
         date >= as_of - 13 ~ "twoweek",
         TRUE ~ "lasttwoweek"
       )) %>%
     group_by(iso_code, previous2week) %>%
     summarise(
+      # Should this be mean or should we divide by all number of days, 
+      # regardless of number of records? If a country reports 1x/week, should
+      # we divide by 14 or by 2? (Should be 14)
       meandeaths = mean(new_deaths_per_million, na.rm = T),
-      meancase = mean(new_cases_per_million, na.rm = T),
-    )
+      meancase = mean(new_cases_per_million, na.rm = T))
   
   covidgrowth <- covidgrowth %>%
     group_by(iso_code) %>%
     filter(!is.na(meandeaths) & !is.na(meancase)) 
   
-  # remove countries without two weeks
+  # remove countries without two weeks (seems the logical for remove is backwards?)
   # Slow (~4 seconds)
   covidgrowth <- covidgrowth %>%
     mutate(remove = iso_code %in% 
              as.data.frame(covidgrowth %>% 
                              dplyr::count(iso_code) %>% 
                              filter(n == 2) %>% 
-                             dplyr::select(iso_code))$iso_code)
-  
+                             dplyr::select(iso_code))$iso_code) %>%
+    filter(remove == TRUE) %>% 
+    select(-remove)
+
+    # #############
+
+    # # Could go with one of these simpler methods (probably the second) but not necessary
+
+    # cg <- pivot_wider(covidgrowth, names_from = previous2week, values_from = c(meandeaths, meancase)) %>%
+    #   mutate(growthdeath = meandeaths_twoweek - meandeaths_lasttwoweek,
+    #         growthcase = meancase_twoweek - meancase_lasttwoweek
+    #         growthratedeaths = case_when(mean_deaths_lasttwoweek)
+    #   )
+
+
+    # cg <- covidgrowth %>% group_by(iso_code) %>%
+    #   summarize(
+    #     meandeaths = subset(meandeaths, previous2week == "twoweek"),
+    #     meandeaths_previous = subset(meandeaths, previous2week == "lasttwoweek"),
+    #     growthdeath = meandeaths - meandeaths_previous,
+    #     growthratedeaths = growthdeath / meandeaths_previous,
+
+    #     meancase = subset(meancase, previous2week == "twoweek"),
+    #     meancase_previous = subset(meancase, previous2week == "lasttwoweek"),
+    #     growthcase = meancase - meancase_previous,
+    #     growthratecase = growthcase / meancase_previous,
+    #   )
+
+    # #############
+
   # Calculate variables of interest
   covidgrowth <- covidgrowth %>%
-    filter(remove == TRUE) %>%
     mutate(
       growthdeath = meandeaths[previous2week == "twoweek"] - meandeaths,
       growthratedeaths = case_when(
@@ -447,21 +477,30 @@ owid_covid_process <- function(as_of, format) {
       growthratecases = case_when(
         meandeaths[previous2week == "lasttwoweek"] == 0 ~ 0.01,
         meancase > 0 ~ growthcase / meancase[previous2week == "lasttwoweek"] * 100,
-        TRUE ~ NA_real_
-      )
-    ) %>%
-    dplyr::filter(previous2week != "twoweek") %>%
-    dplyr::select(-previous2week, -growthcase, -growthdeath, -meandeaths, -meancase, -remove)
+        TRUE ~ NA_real_),
+      meandeaths_current = meandeaths + growthdeath,
+      meancase_current = meancase + growthcase) %>%
+    # dplyr::filter(previous2week != "twoweek") %>%
+    # dplyr::select(-previous2week, -growthcase, -growthdeath)
+    dplyr::select(-growthcase, -growthdeath, -meandeaths, -meancase, -previous2week)
   
   # Normalised scores for deaths
-  covidgrowth <- normfuncpos(covidgrowth, 150, 0, "growthratedeaths")
-  covidgrowth <- normfuncpos(covidgrowth, 150, 0, "growthratecases")
+  covidgrowth <- normfuncpos(covidgrowth, 100, 0, "growthratedeaths")
+  covidgrowth <- normfuncpos(covidgrowth, 100, 0, "growthratecases")
   
   # Rename columns
-  colnames(covidgrowth) <- c(
-    "Country", "H_Covidgrowth_biweeklydeaths", "H_Covidgrowth_biweeklycases",
-    "H_Covidgrowth_deathsnorm", "H_Covidgrowth_casesnorm"
-  )
+  # colnames(covidgrowth) <- c(
+  #   "Country", "H_Covidgrowth_biweeklydeaths", "H_Covidgrowth_biweeklycases",
+  #   "H_Covidgrowth_deathsnorm", "H_Covidgrowth_casesnorm"
+  # )
+
+  covidgrowth <- covidgrowth %>%
+    rename(
+      Country = iso_code,
+      H_Covidgrowth_biweeklydeaths = growthratedeaths,
+      H_Covidgrowth_biweeklycases = growthratecases,
+      H_Covidgrowth_deathsnorm = growthratedeaths_norm,
+      H_Covidgrowth_casesnorm = growthratecases_norm)
   
   # Varibles on number of cases
   covidcurrent <- covid %>% 
@@ -472,14 +511,21 @@ owid_covid_process <- function(as_of, format) {
     dplyr::select(iso_code, new_cases_smoothed_per_million, new_deaths_smoothed_per_million) %>%
     rename(Country = iso_code)
   
-  covidcurrent <- normfuncpos(covidcurrent, 250, 0, "new_cases_smoothed_per_million")
+  covidcurrent <- normfuncpos(covidcurrent, 500, 0, "new_cases_smoothed_per_million")
   covidcurrent <- normfuncpos(covidcurrent, 5, 0, "new_deaths_smoothed_per_million")
   
-  # Rename columns
-  colnames(covidcurrent) <- c(
-    "Country", "H_new_cases_smoothed_per_million", "H_new_deaths_smoothed_per_million",
-    "H_new_cases_smoothed_per_million_norm", "H_new_deaths_smoothed_per_million_norm"
-  )
+  # # Rename columns
+  # colnames(covidcurrent) <- c(
+  #   "Country", "H_new_cases_smoothed_per_million", "H_new_deaths_smoothed_per_million",
+  #   "H_new_cases_smoothed_per_million_norm", "H_new_deaths_smoothed_per_million_norm"
+  # )
+
+  covidcurrent <- covidcurrent %>%
+    rename(
+      H_new_cases_smoothed_per_million = new_cases_smoothed_per_million,
+      H_new_deaths_smoothed_per_million = new_deaths_smoothed_per_million,
+      H_new_cases_smoothed_per_million_norm = new_cases_smoothed_per_million_norm,
+      H_new_deaths_smoothed_per_million_norm = new_deaths_smoothed_per_million_norm)
   
   # #—(Alternative COVID deaths)
   # # Load COVID data
@@ -542,6 +588,41 @@ owid_covid_process <- function(as_of, format) {
   # cov_forcast_alt <- normfuncpos(cov_forcast_alt, 100, 0, "H_add_death_prec_current")
   owid <- left_join(covidcurrent, covidgrowth)
   owid <- subset(owid, Country %in% countrylist$Country)
+  
+  pop <- wpp.by.year(wpp.indicator("tpop"), 2020) %>% 
+    rename(Country = charcode, population = value) %>% 
+    mutate(Country = countrycode(Country,
+                               origin = "iso2c", 
+                               destination = "iso3c",
+                               warn = F),
+         population = population / 1000)
+
+  owid <- left_join(owid, pop)
+
+  owid[which(owid$Country == "LIE"), "population"] <- 0.0387
+  owid[which(owid$Country == "DMA"), "population"] <- 0.0720
+  owid[which(owid$Country == "KNA"), "population"] <- 0.0532
+  owid[which(owid$Country == "MHL"), "population"] <- 0.0592
+  # owid[which(owid$Country == "NRU"), "population"] <- 0.0108
+  owid[which(owid$Country == "PLW"), "population"] <- 0.0181
+  # owid[which(owid$Country == "TUV"), "population"] <- 0.0118
+
+  # In case we want to put a minimum threshold for total deaths
+  owid <- owid %>%
+    mutate(death_count = population * meandeaths_current)
+
+  owid <- mutate(owid,
+    H_Covidgrowth_deathsnorm = case_when(
+      H_Covidgrowth_deathsnorm > 7 & 
+      H_new_deaths_smoothed_per_million < 0.15
+      ~ 7,
+    TRUE ~ H_Covidgrowth_deathsnorm),
+    H_Covidgrowth_casesnorm = case_when(
+      H_Covidgrowth_casesnorm > 7 & 
+      H_new_cases_smoothed_per_million < 10 ~ 7,
+    TRUE ~ H_Covidgrowth_casesnorm)) %>%
+    select(Country, starts_with("H_"))
+
   return(owid)
   # return(list(
   #   covidcurrent,
@@ -1102,9 +1183,9 @@ eiu_process <- function(as_of, format) {
                                              nomatch = NULL))
     )
   
-  eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.90), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
-  eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_12m_change, 0.90), quantile(eiu_joint$M_EIU_12m_change, 0.10), "M_EIU_12m_change")
-  eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score_12m, 0.90), quantile(eiu_joint$M_EIU_Score_12m, 0.10), "M_EIU_Score_12m")
+  eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
+  eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_12m_change, 0.95), quantile(eiu_joint$M_EIU_12m_change, 0.10), "M_EIU_12m_change")
+  eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score_12m, 0.95), quantile(eiu_joint$M_EIU_Score_12m, 0.10), "M_EIU_Score_12m")
   return(eiu_joint)
 }
 
@@ -1168,9 +1249,7 @@ mpo_collect <- function() {
 
   pop$charcode <- suppressWarnings(countrycode(pop$charcode,
                                               origin = "iso2c",
-                                              destination = "iso3c"
-                                              )
-                                  )
+                                              destination = "iso3c"))
 
   colnames(pop) <- c("Country", "Population")
 
@@ -1191,7 +1270,7 @@ mpo_collect <- function() {
     rename_with(
       .fn = ~ paste0("S_", .),
       .cols = colnames(.)[!colnames(.) %in% c("Country")]
-    ) 
+    )
 
   # Normalise based on percentiles
   mpo_data <- normfuncpos(mpo_data,
@@ -1265,7 +1344,8 @@ macrofin_process <- function(as_of, format) {
         . == "High" ~ 1,
         TRUE ~ NA_real_
       ))) %>%
-    mutate(macrofin_risk = dplyr::select(., `Spillover.risks.from.the.external.environment.outside.the.region`:`Household.risks`) %>% rowSums(na.rm=T)) %>%
+    # No longer use this, was from Macro Economic dimension
+    # mutate(macrofin_risk = dplyr::select(., `Spillover.risks.from.the.external.environment.outside.the.region`:`Household.risks`) %>% rowSums(na.rm=T)) %>%
     rename_with(
       .fn = ~ paste0("M_", .),
       .cols = colnames(.)[!colnames(.) %in% c("Country.Name","ISO3")]
@@ -1273,7 +1353,8 @@ macrofin_process <- function(as_of, format) {
     rename(Country = ISO3) %>%
     dplyr::select(-`Country.Name`)
   
-  macrofin <- normfuncpos(macrofin, 2.1, 0, "M_macrofin_risk")
+  # No longer use this, was from Macro Economic dimension
+  # macrofin <- normfuncpos(macrofin, 2.1, 0, "M_macrofin_risk")
   
   household_risk <- macrofin %>%
     dplyr::select(Country, M_Household.risks) %>%
@@ -1405,8 +1486,11 @@ imf_process <- function(as_of, format) {
       vars(starts_with("20")),
       ~ as.numeric(as.character(.))
     ) %>%
-    mutate(change_unemp_21 = `2021` - `2020`,
-           change_unemp_20 = `2020` - `2019`) %>%
+    mutate(
+           change_unemp_22 = `2022` - `2021`,
+           change_unemp_21 = `2021` - `2020`,
+          #  change_unemp_20 = `2020` - `2019`
+           ) %>%
     rename(
       Countryname = Country,
       Country = ISO3
@@ -1420,15 +1504,16 @@ imf_process <- function(as_of, format) {
     filter(S_Subject.Descriptor == "Unemployment rate")
   
   # Normalise values
+  imf_un <- normfuncpos(imf_un, 1, 0, "S_change_unemp_22")
   imf_un <- normfuncpos(imf_un, 1, 0, "S_change_unemp_21")
-  imf_un <- normfuncpos(imf_un, 3, 0, "S_change_unemp_20")
+  # imf_un <- normfuncpos(imf_un, 3, 0, "S_change_unemp_20")
   
   # Max values for index
   imf_un <- imf_un %>%
     mutate(
       S_change_unemp_norm = rowMaxs(as.matrix(dplyr::select(.,
-                                                            S_change_unemp_21_norm,
-                                                            S_change_unemp_20_norm)),
+                                                            S_change_unemp_22_norm,
+                                                            S_change_unemp_21_norm)),
                                     na.rm = T),
       S_change_unemp_norm = case_when(is.infinite(S_change_unemp_norm) ~ NA_real_,
                                       TRUE ~ S_change_unemp_norm)
@@ -1979,4 +2064,146 @@ reign_process <- function(as_of, format) {
     ) %>%
     dplyr::select(-FCS_normalised)
   return(reign)
+}
+
+#--------------------------GIC Global Instances of Coups-----------------------
+gic_collect <- function() {
+  gic <- read_tsv("http://www.uky.edu/~clthyn2/coup_data/powell_thyne_coups_final.txt") %>%
+    subset(year > 2020)
+
+  archiveInputs(gic, group_by = NULL)
+}
+
+gic_process <- function(as_of, format) {
+  coups_raw <- loadInputs("gic", group_by = NULL, as_of = as_of, format = format)
+  
+  coups <- coups_raw %>%
+    rename(Countryname = country) %>%
+    mutate(
+        Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
+        date = as.Date(paste(year, month, day, sep = "-")),
+        .before = 1) %>%
+    select(Country, Countryname, date, coup)
+
+  coups_recent <- coups %>%
+    subset(date >= as_of - 365) %>%
+    group_by(Country) %>%
+    mutate(coup_text = case_when(
+        coup == 1 ~ "failed",
+        coup == 2 ~ "successful"
+    )) %>%
+    summarize(
+        coup_text = paste(paste(date, coup_text), collapse = "; "),
+        coup = max(coup))
+
+  return(coups_recent)
+}
+
+#--------------------------IFES Inter. Foundation for Electoral Systems -------
+ifes_collect <- function() {
+  string <- read_html("https://www.electionguide.org/ajax/election/?sEcho=1&iColumns=5&sColumns=&iDisplayStart=0&iDisplayLength=2000&iSortCol_0=3&sSortDir_0=desc&iSortingCols=1") %>%
+    html_text()
+  
+  ifes <- string %>%     
+    str_replace_all(c(
+        ',\\s\\["https.*?",' = "\n",
+        '\\[' = '',
+        '\\]' = '',
+        '\\}' = ''
+    )) %>%
+    str_replace(".*?\\n", "") %>%
+    read_csv(col_names = c(
+        "Countryname",
+        "country_slug",
+        "office",
+        "election_slug",
+        "date",
+        "status",
+        "election_id",
+        "text",
+        "election_type",
+        "country_id"))
+
+    archiveInputs(ifes, group_by = NULL)
+}
+
+ifes_process <- function(as_of, format) {
+  elections_all <- loadInputs("ifes", group_by = NULL, as_of = as_of, format = format)
+ elections <- elections_all %>% 
+    mutate(
+        election_type = case_when(
+            # election_type == "null" & grepl("president", tolower(text)) ~ "Head of Government (coded as null)",
+            election_type == "null" & str_detect(tolower(text), "president") ~ "Head of Government (coded as null)",
+            TRUE ~ election_type)) %>%
+    subset(
+        str_detect(election_type, "Head of")) %>%
+    mutate(
+        Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
+        .before = Countryname)
+
+filter_for_fcs <- function(data, country_column) {
+    on_fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = format) %>%
+        subset(FCS_normalised == 10, select = Country)
+
+    filtered <- subset(data, get(country_column) %in% on_fcs$Country)
+    # filtered <- data[which(data[, country_column] %in% on_fcs[, "Country"]),]
+    return(filtered)
+}
+ 
+# anticipation: Is there an election in the next 6 months?
+# elections_next_6_months <- 
+elections_next_6m <- elections %>%
+    subset(date >= as_of & date <= as_of + 182) %>%
+    group_by(Country) %>%
+    summarize(
+        election_6m_text = paste(paste(date, text), collapse = "; "),
+        election_6m = 1) %>% 
+    filter_for_fcs("Country")
+
+delayed <- elections %>%
+    subset(
+    # looking for delayed elections within 6 months in either direction
+    (date > as_of - 182 & date < as_of + 182) &
+    (status == "Postponed" | status == "Cancelled")) %>%
+    group_by(Country) %>%
+    summarize(
+        delayed_text = paste(paste(date, status), collapse = "; "),
+        delayed = 1) %>%
+    filter_for_fcs("Country")
+
+irregular <- elections %>%
+    subset(
+    # looking for delayed elections within 6 months in either direction
+    (date >= as_of & date < as_of + 182) &
+    (str_detect(status, "Snap") | str_detect(status, "Moved"))) %>%
+    group_by(Country) %>%
+    summarize(
+        irregular_text = paste(paste(date, status), collapse = "; "),
+        irregular = 1) %>%
+    filter_for_fcs("Country")
+
+ifes <- merge_indicators(elections_next_6m, delayed, irregular)
+
+return(ifes)
+}
+
+pseudo_reign_process <- function(as_of, format) {
+  gic <- gic_process(as_of = as_of, format = format)
+  ifes <- ifes_process(as_of = as_of, format = format)
+
+pseudo_reign <- merge_indicators(gic, ifes) %>%
+    replace_NAs_0(c("delayed", "irregular", "election_6m", "coup")) %>%
+    mutate(
+        Fr_coup_election_count = rowSums(select(. , delayed, irregular, election_6m, coup)),
+        Fr_pseudo_reign_norm = ifelse(Fr_coup_election_count > 0, 10, 0)) %>%
+    as_tibble() %>%
+    mutate(Fr_coup_election_text = case_when(
+      Fr_coup_election_count > 0 ~ paste0(
+          ifelse(!is.na(coup_text), paste0("coup: ", coup_text, "; "), ""),
+          ifelse(Fr_coup_election_count - coup > 0,
+            paste("election: ",
+              ifelse(!is.na(election_6m_text), election_6m_text, ""),
+              ifelse(!is.na(delayed_text), delayed_text, ""),
+              ifelse(!is.na(irregular_text), irregular_text, "")), ""))))
+return(pseudo_reign)
 }

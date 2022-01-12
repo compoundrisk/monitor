@@ -93,7 +93,7 @@ socio_sheet <- aggregate_dimension(
   income_support_process(as_of = as_of, format = format),
   mpo_process(as_of = as_of, format = format),
   macrofin_process(as_of = as_of, format = format),
-  phone_process(as_of = as_of, format = format),
+  # phone_process(as_of = as_of, format = format),
   # Fix warnings
   imf_process(as_of = as_of, format = format))
 multi_write.csv(socio_sheet, "socio-sheet.csv", c(dim_path, dim_archive_path))
@@ -123,7 +123,8 @@ fragility_sheet <- aggregate_dimension(
   fcs,
   un_idp_process(as_of = as_of, format = format),
   # acled_process(as_of = as_of, format = format),
-  reign_process(as_of = as_of, format = format))
+  # reign_process(as_of = as_of, format = format)),
+  pseudo_reign_process(as_of = as_of, format = format))
 # fragility_sheet <- fragility_sheet %>%
 #   rename_with(
 #     .fn = ~ paste0("Fr_", .),

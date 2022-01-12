@@ -24,6 +24,10 @@ slugify <- function(x, non_alphanum_replace="", space_replace="_", tolower=TRUE,
 
 `%ni%` <- Negate(`%in%`)
 
+which_not <- function(v1, v2) {
+  v1[v1 %ni% v2]
+}
+
 is_string_number <- function(x, index = F) {
   if(index) {
     out <- grep("[^[:digit:][:punct:]]", x)
@@ -79,3 +83,16 @@ column_differences <- function(df1, df2) {
 
 # new_dons <- add_new_input_cols(read_csv('output/inputs-archive/who_dons.csv'), who_dons)
 # write.csv(new_dons, 'output/inputs-archive/who_dons.csv', row.names = F)
+
+
+replace_NAs_0 <- function(df, cols) {
+    for(c in cols) {
+        df <- df %>%
+            mutate(
+                !!c := case_when(
+                    is.na(get(c)) ~ 0,
+                    TRUE ~ get(c)
+                ))
+    }
+    return(df)
+}
