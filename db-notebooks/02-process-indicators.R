@@ -106,7 +106,7 @@ natural_hazards_sheet <- aggregate_dimension(
   "Natural Hazard",
   gdacs_process(as_of = as_of, format = format),
   inform_nathaz_process(as_of = as_of, format = format),
-  iri_process(as_of = as_of, format = format), # Rename iri_forecast)
+  iri_process(drop_geometry = T, as_of = as_of, format = format), # Rename iri_forecast)
   locust_process(as_of = as_of, format = format),
   acaps_category_process(as_of, format, category = "natural", prefix = "NH_"))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
@@ -122,7 +122,7 @@ fragility_sheet <- aggregate_dimension(
   "Conflict and Fragility",
   fcs,
   un_idp_process(as_of = as_of, format = format),
-  # acled_process(as_of = as_of, format = format),
+  acled_hdx_process(as_of = as_of, format = format),
   # reign_process(as_of = as_of, format = format)),
   pseudo_reign_process(as_of = as_of, format = format))
 # fragility_sheet <- fragility_sheet %>%

@@ -1,13 +1,23 @@
-packages <- c("curl", "DBI", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2", 
-              "jsonlite","lubridate", "maps", "matrixStats", "purrr", "readr", "readxl", "rmarkdown",
-              "rvest", "sjmisc", "sparklyr", "stringr", "tidyr", "xml2", "wppExplorer", "zoo")
+# packages <- c("curl", "DBI", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2", 
+#               "jsonlite","lubridate", "maps", "matrixStats", "purrr", "readr", "readxl", "rmarkdown",
+#               "rvest", "sjmisc", "sparklyr", "stringr", "tidyr", "xml2", "wppExplorer", "zoo")
+
+# Inclusive of raster packages
+packages <- c(
+  "curl", "DBI", "EnvStats", "stats", "countrycode", "exactextractr",
+  "ggplot2", "jsonlite","lubridate", "maps", "matrixStats", "purrr", "raster",
+  "readr", "readxl", "rgdal", "rmarkdown", "rvest", "sf", "sjmisc", "sparklyr",
+  "stringr", "tidyr", "xml2", "wppExplorer", "zoo")
 
 lapply(packages, function(p) {
   if (!require(p, character.only = T, quietly = T)) {
-    install.packages(p, destdir = "libs")
+    install.packages(p, lib = "libs", destdir = "libs")
   }
-  library(p, character.only = T, quietly = T)
+  library(p, character.only = T, quietly = T, lib.loc = "libs")
 })
+
+#loading dplyr last to prevent masking select()
+library('dplyr')
 
 source("fns/helpers.R")
 

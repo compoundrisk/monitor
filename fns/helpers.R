@@ -96,3 +96,10 @@ replace_NAs_0 <- function(df, cols) {
     }
     return(df)
 }
+
+curl_and_delete <- function(url, FUN, ...) {
+  curl::curl_download(url, "temporary")
+  data <- FUN("temporary", ...)
+  file.remove("RBTracker.xls")
+  return(data)
+}

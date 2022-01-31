@@ -77,7 +77,7 @@ locust_collect()
 # FRAGILITY AND CONFLICT
 fcs_collect()
 idp_collect()
-# acled_collect()
+acled_hdx_collect()
 # reign_collect()
 gic_collect()
 ifes_collect()

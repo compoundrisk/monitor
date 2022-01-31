@@ -65,6 +65,11 @@ archiveInputs <- function(data,
                           return = F
                           # large = F) 
                           ){
+  if (newFile) {
+    data <- data %>% mutate(access_date = today)
+    write.csv(data, path, row.names = F)
+  } else {
+
   # Read in the existing file for the input, which will be appended with new data
   prev <- suppressMessages(read_csv(path)) %>%
     mutate(access_date = as.Date(access_date))
@@ -103,6 +108,7 @@ archiveInputs <- function(data,
   combined <- rbind(prev, data_fresh) %>% distinct()
   write.csv(combined, path, row.names = F)
   if(return == T) return(combined)
+  }
 }
 
 #--------------------FUNCTIONS TO LOAD INPUT DATA-----------------
@@ -283,7 +289,7 @@ right_join(countrylist) %>%
 mutate(acaps_risk = case_when(
   is.na(acaps_risk) ~ 0,
   TRUE ~ acaps_risk)) %>%
-  select(Country, acaps_crisis, acaps_risk) %>%
+  dplyr::select(Country, acaps_crisis, acaps_risk) %>%
   rename_with(
     .cols = -Country,
     .fn = ~ paste0(prefix, .x)
@@ -873,11 +879,11 @@ proteus_process <- function(as_of, format) {
 #Load database
 fews_collect <- function() {
   fewsnet <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
-  archiveInputs(fewsnet, group_by = c("country", "year_month"))
+  archiveInputs(fewsnet, group_by = c("admin_code", "year_month"))
 }
 
 fews_process <- function(as_of, format) {
-  fewswb <- loadInputs("fewsnet", group_by = c("country", "year_month"), as_of = as_of, format = format)
+  fewswb <- loadInputs("fewsnet", group_by = c("admin_code", "year_month"), as_of = as_of, format = format)
   
   #Calculate country totals
   fewsg <- fewswb %>%
@@ -1041,26 +1047,16 @@ fpi_process <- function(as_of, format) {
 
 #-------------------------—FAO/WFP HOTSPOTS----------------------------
 fao_wfp_collect <- function() {
-  fao_wfp <- suppressWarnings(read_csv(paste0(github, "Indicator_dataset/WFP%3AFAO_food.csv"), col_types = cols()) %>%
-                                dplyr::select(-X2))
-  
+  fao_wfp <- read_csv(paste0(github, "Indicator_dataset/WFP%3AFAO_food.csv"), col_types = cols())
   fao_wfp <- fao_wfp %>%
     mutate(Country = countrycode(Country,
                                  origin = "country.name",
                                  destination = "iso3c",
-                                 nomatch = NULL
-    ))
-  
-  # fao_wfp$F_fao_wfp_warning <- 10
-  
-  fao_all <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv")) %>%
-    mutate(F_fao_wfp_warning = NA) %>%
-    dplyr::select(-X)
-  
-  # fao_all <- subset(countrylist, Country %in% fao_wfp$Country) %>%
-  # mutate(F_fao_wfp_warning = 10)
-  
+                                 nomatch = NULL))
+    
+  fao_all <- countrylist
   fao_all[fao_all$Country %in% fao_wfp$Country,"F_fao_wfp_warning"] <- 10
+  fao_all$Forecast_End <- max(fao_wfp$Forecast_End, na.rm = T)
   
   fao_wfp <- fao_all
   
@@ -1070,7 +1066,8 @@ fao_wfp_collect <- function() {
 fao_wfp_process <- function(as_of, format) {
   # Kind of unnecessary
   fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"), as_of = as_of, format = format) %>%
-    select(-X1, -Countryname)
+    select(-Countryname) %>%
+    filter(Forecast_End >= as_of)
   return(fao_wfp)
 }
 
@@ -1739,23 +1736,187 @@ inform_nathaz_process <- function(as_of, format) {
 }
 
 #----------------------------------—IRI Seasonal Forecast ------------------------------------------
-iri_collect <- function() {
-  # Load from Github
-  seasonl_risk <- suppressWarnings(read_csv(paste0(github, "Indicator_dataset/seasonal_risk_list"), col_types = cols()))
-  seasonl_risk <- seasonl_risk %>%
-    dplyr::select(-X1) %>%
-    rename(
-      Country = "ISO3",
-      NH_seasonal_risk_norm = risklevel
-    )
+# iri_collect_old <- function() {
+#   # Load from Github
+#   seasonl_risk <- suppressWarnings(read_csv(paste0(github, "Indicator_dataset/seasonal_risk_list"), col_types = cols()))
+#   seasonl_risk <- seasonl_risk %>%
+#     dplyr::select(-X1) %>%
+#     rename(
+#       Country = "ISO3",
+#       NH_seasonal_risk_norm = risklevel
+#     )
   
-  iri_forecast <- seasonl_risk #Go through and reduce renamings
-  archiveInputs(iri_forecast, group_by = c("Country"))
+#   iri_forecast <- seasonl_risk #Go through and reduce renamings
+#   archiveInputs(iri_forecast, group_by = c("Country"))
+# }
+
+# iri_process_old <- function(as_of, format) {
+#   iri_forecast <- loadInputs("iri_forecast", group_by = c("Country"), as_of = as_of, format = format)
+#   return(iri_forecast)
+# }
+
+iri_collect <- function() {
+
+  # library(raster)
+  # library(rgdal)
+  # library(sf)
+  # # library(dplyr)
+  # # library(RColorBrewer)
+  # library(exactextractr)
+
+  continuity_new <- raster(paste0(github, "Indicator_dataset/iri/continuity/IRI_continuity.tiff"))
+  continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = Sys.Date())
+  if(!identical(values(continuity_new), values(continuity_old))) {
+    writeRaster(continuity_new, paste0("output/inputs-archive/iri/continuity/iri-continuity-", Sys.Date(), ".tiff"), format = "GTiff")
+  }
+
+  forecast_new <- raster(paste0(github, "Indicator_dataset/iri/forecast/IRI_forecast.tiff"))
+  forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = Sys.Date())
+  if(!identical(values(forecast_new), values(forecast_old))) {
+    writeRaster(forecast_new, paste0("output/inputs-archive/iri/forecast/iri-forecast-", Sys.Date(), ".tiff"), format = "GTiff")
+  }
 }
 
-iri_process <- function(as_of, format) {
-  iri_forecast <- loadInputs("iri_forecast", group_by = c("Country"), as_of = as_of, format = format)
-  return(iri_forecast)
+iri_process <- function(
+    sp_path = read_most_recent("output/inputs-archive/iri/forecast", FUN = paste, as_of = as_of) ,
+    continuity_path = read_most_recent("output/inputs-archive/iri/continuity", FUN = paste, as_of = as_of) ,
+    include_area = F,
+    drop_geometry = F,
+    country_list = F,
+    probability_threshold = 50,
+    pop_threshold = 25,
+    agri_threshold = 0.35,
+    as_of,
+    format) {
+  
+  classify_country_size <- function(areas) {
+   classes <- sapply(areas, function(area) {
+      if (area <= quantile(areas, 0.2)) {
+         class <- 1
+      } else {
+      if (area <= quantile(areas, 0.4)) {
+         class <- 2
+      } else {
+      if (area <= quantile(areas, 0.6)) {
+         class <- 3
+      } else {
+      if (area <= quantile(areas, 0.8)) {
+         class <- 4
+      } else {
+      if (area <= quantile(areas, 1)) {
+         class <- 5
+      } else {
+         class <- NA
+      }}}}}
+      return(class)
+   })
+   return(classes)
+  }
+
+  proportion_thresholds <- data.frame(class = 1:5, proportion_threshold = c(1, 0.666, 0.5, 0.333, 0.333))
+
+  s <- stack(list(
+    # Selected precipitation forecasts issued
+    sp = crop(raster(sp_path), extent(-180.5, 180.5, -65.5, 75.5)),
+    # Continuity wet/dry condition data
+    continuity = crop(raster(continuity_path), extent(-180.5, 180.5, -65.5, 75.5)),
+    # Population density (gwp 2020 resampled to same grid as forecast)
+    pop_density = raster(paste0(github, "Indicator_dataset/iri/population_density_1deg.tiff")),
+    # Proportino crop+pasture, resampled to same grid as forecast
+    agri_density = raster(paste0(github, "Indicator_dataset/iri/crop_pasture_density_1deg.tiff"))))
+
+  countries <- st_read("output/inputs-archive/world-borders/TM_WORLD_BORDERS-0.3.shp") %>%
+    dplyr::select(-fips, -iso2, -un, -area, -pop2005, -lon, -lat, -Pixelcount)
+  st_crs(countries) <- st_crs(s)
+
+  # Filter sp layer for population density and crop + pasture density
+  s$sp[(s$pop_density < 25 | is.na(s$pop_density)) & (s$agri_density < 0.35 | is.na(s$agri_density))] <- NA
+  # IRI does not do this, but not doing so means a country can have more dry pixels than total pixels
+  s$continuity[(s$pop_density < 25 | is.na(s$pop_density)) & (s$agri_density < 0.35 | is.na(s$agri_density))] <- NA
+
+  s$wet <- ifelse(values(s$sp) > probability_threshold, 1, NA)
+  # what does continuity of 2 mean?
+  s$dry <- ifelse(values(s$sp) < -probability_threshold | values(s$continuity) == 2, 1, NA)
+
+
+  country_extract <- function(x, include_area) {
+    output <- exact_extract(
+            x = x,
+            y = countries,
+            include_area = include_area) %>%
+        sapply(function(x) {
+            x <- as_tibble(x) %>%
+            tidyr::drop_na()
+            if(include_area) {
+                x <- mutate(x, area_scaled = area / 1e+10)
+                return(sum(x$area_scaled))
+            }
+            return(nrow(x))
+        })
+    return(output)
+  }
+
+  if (country_list) {
+  countries <- subset(countries, iso3 %in% countrylist$Country)
+  }
+
+  if (include_area) {
+    # Separate out countries with 0 pixels because you can't `include_area` for features with no pixels
+    countries$pixels <- country_extract(x = s$sp, include_area = F)
+    zeros <- subset(countries, pixels == 0) %>% 
+        mutate(wet = NA, dry = NA)
+    countries <- subset(countries, pixels > 0)
+  }
+
+  countries$pixels <- country_extract(x = s$sp, include_area = include_area)
+  countries$wet <- country_extract(x = s$wet, include_area = include_area)
+  countries$dry <- country_extract(x = s$dry, include_area = include_area)
+
+  if (include_area) {
+  countries <- rbind(zeros, countries)
+  }
+
+  if(drop_geometry) {
+  countries <- countries %>% st_drop_geometry()
+  }
+
+  countries <- mutate(countries,
+    size_class = classify_country_size(pixels))
+  countries <- left_join(countries, proportion_thresholds, by = c("size_class" = "class"))
+
+  countries <- mutate(countries,
+    anomalous = wet + dry,
+    proportion_wet = wet/pixels,
+    proportion_dry = dry/pixels,
+    proportion_anomalous = anomalous/pixels,
+    wet_flag = case_when(
+        proportion_wet >= proportion_threshold ~ T,
+        TRUE ~ F),
+    dry_flag = case_when(
+        proportion_dry >= proportion_threshold ~ T,
+        TRUE ~ F),
+    flag = wet_flag | dry_flag) %>% 
+    rename(Country = iso3)
+
+  subset(countries, !flag & proportion_anomalous > proportion_threshold)
+
+  output <- countries %>%
+    mutate(
+      NH_seasonal_risk_norm = case_when(
+        flag ~ 10,
+        T ~ 0),
+      NH_seasonal_proportion_anomalous = proportion_anomalous) %>%
+    select(Country, contains("NH"))
+
+  return(output)
+}
+
+# # For temporarily generating file locally,
+# iri <- iri_process(drop_geometry = T, as_of = as_of, format = format)
+# write.csv(iri, "~/Documents/world-bank/crm/compoundriskdata/Indicator_dataset/iri-precipitation-temp.csv")
+
+iri_process_temp <- function() {
+ iri <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/iri-precipitation-temp.csv"), col_types = cols())) 
 }
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
@@ -1959,13 +2120,82 @@ acled_process <- function(as_of, format) {
       ),
       fatal_z_norm = case_when(
         fatal_3_month_log == 0 ~ 0,
-        (fatal_3_month_log <= log(5 + 1)) ~ 0,
+        (fatal_3_month_log <= log(25 + 1)) ~ 0,
         TRUE ~ fatal_z_norm
       )
     ) %>%
     ungroup() %>%
     dplyr::select(-iso3) %>% 
     rename(BRD_Normalised = fatal_z_norm)
+  return(acled)
+}
+
+acled_hdx_collect <- function() {
+    acled_hdx <- read_xlsx("/Users/bennotkin/Downloads/political_violence_events_and_fatalities_by_country-month-year_as-of-14jan2022.xlsx",
+    sheet = "Data") %>% 
+    subset(Year >= as.numeric(format(Sys.Date(), format = "%Y")) - 4)
+
+    # write.csv(acled_hdx, "output/inputs-archive/acled_hdx.csv", row.names = F)
+    archiveInputs(acled_hdx, group_by = NULL)
+}
+
+acled_hdx_process <- function(as_of, format) {
+  acled_hdx <- loadInputs("acled_hdx", group_by = NULL)
+  
+  # Select date as three years plus two month (date to retrieve ACLED data)
+  three_year <- as.yearmon(Sys.Date() - 45) - 3.2
+
+  # Progress conflict data
+  acled <- acled_hdx %>%
+    mutate(
+      iso3 = countrycode(Country, origin = "country.name", destination = "iso3c"),
+      fatal_month = as.numeric(as.character(Fatalities)),
+      month_yr = as.yearmon(paste(Month, Year))
+    ) %>%
+    filter(month_yr >= three_year) %>%
+    # Remove dates for the latest month (or month that falls under the prior 6 weeks)
+    # Is there a way to still acknowledge countries with high fatalities in past 6 weeks?
+    filter(month_yr <= as.yearmon(as_of - 45)) %>% 
+    select(iso3, month_yr, fatal_month) %>%
+    group_by(iso3) %>%
+    mutate(fatal_month_log = log(fatal_month + 1)) %>%
+    mutate(fatal_3_month = fatal_month + lag(fatal_month, na.rm= T) + lag(fatal_month, 2, na.rm= T),
+           fatal_3_month_log = log(fatal_3_month + 1)) %>%
+    group_by(iso3) %>%
+    mutate(
+      fatal_z = (fatal_3_month_log - mean(fatal_3_month_log, na.rm = T)) / sd(fatal_3_month_log, na.rm = T),
+      sd = sd(fatal_3_month_log, na.rm = T),
+      mean = mean(fatal_3_month_log, na.rm = T)
+    ) %>%
+    #Calculate month year based on present month (minus 6 weeks)
+    filter(month_yr == paste(month.abb[month(format(as_of - 45))], year(format(as_of - 45)))) 
+  
+  # Normalise scores
+  acled <- normfuncpos(acled, 1, 0, "fatal_z")
+  
+  # Correct for countries with 0
+  acled <- acled %>%
+    mutate(
+      fatal_z_norm = case_when(
+        is.nan(fatal_z) ~ 0,
+        TRUE ~ fatal_z_norm
+      ),
+      Country = countrycode(
+        iso3,
+        origin = "country.name",
+        destination = "iso3c",
+        nomatch = NULL
+      ),
+      fatal_z_norm = case_when(
+        fatal_3_month_log == 0 ~ 0,
+        (fatal_3_month_log <= log(25 + 1)) ~ 0,
+        TRUE ~ fatal_z_norm
+      )
+    ) %>%
+    ungroup() %>%
+    dplyr::select(-iso3) %>% 
+    rename(BRD_Normalised = fatal_z_norm) %>%
+    relocate(Country, .before = 1)
   return(acled)
 }
 

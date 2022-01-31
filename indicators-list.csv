@@ -6,7 +6,7 @@ Underlying,Health,INFORM Rating,,INFORM,Annual,1,,04,H_INFORM_rating.Value_norm,
 Underlying,Macro Fiscal,Operational Risk Score,,Economist Intelligence Unit,Monthly,1,,05,M_EIU_Score_12m_norm,M_EIU_Score_12m,eiu_joint,FALSE,TRUE
 Underlying,Natural Hazard,INFORM Natural Multi-hazard Rating,,INFORM,Annual,1,,06,NH_Hazard_Score_norm,NH_Hazard_Score,informnathaz,FALSE,TRUE
 Underlying,Socioeconomic Vulnerability,INFORM Socio-economic Vulnerability Index,,INFORM,Annual,1,,07,S_INFORM_vul_norm,S_INFORM_vul,inform_data,FALSE,TRUE
-Emerging,Conflict and Fragility,Political Fatalities,,ACLED,Monthly,,1,08,Fr_BRD_Normalised,Fr_fatal_z,acled,FALSE,FALSE
+Emerging,Conflict and Fragility,Political Fatalities,,ACLED,Monthly,,1,08,Fr_BRD_Normalised,Fr_fatal_z,acled,FALSE,TRUE
 Emerging,Conflict and Fragility,Forcibly Displaced People,,UNHCR,Annual,,1,09,Fr_Displaced_UNHCR_Normalised,Fr_z_idps,idps,FALSE,TRUE
 Emerging,Conflict and Fragility,Political Disturbance,,REIGN,Monthly,,1,10,Fr_REIGN_Normalised,Fr_pol_trigger,reign,FALSE,FALSE
 Emerging,Food Security,FAO WFP Warning,,FAO,Ad hoc,,1,11,F_fao_wfp_warning,F_fao_wfp_warning,fao_wfp,FALSE,TRUE
@@ -24,10 +24,10 @@ Emerging,Macro Fiscal,Operational Risk Score,,Economist Intelligence Unit,Monthl
 Emerging,Natural Hazard,GDACS Live Hazard Tracker,,Global Disaster Alert and Coordination System,Daily,,1,23,NH_GDAC_Hazard_Score_Norm,NH_GDAC_Hazard_Score,gdac,FALSE,TRUE
 Emerging,Natural Hazard,Locust Threat Level,,FAO,Weekly,,1,24,NH_locust_norm,NH_locust_norm,locust_risk,FALSE,TRUE
 Emerging,Natural Hazard,INFORM Severity,,INFORM,Daily,,1,25,NH_acaps_risk,NH_acaps_crisis,acapssheet,FALSE,TRUE
-Emerging,Natural Hazard,Seasonal Forecast Index,,"WB, Columbia University","Monthly, on 15th",,1,26,NH_seasonal_risk_norm,NH_seasonal_risk_norm,seasonl_risk,FALSE,TRUE
+Emerging,Natural Hazard,Seasonal Forecast Index,,"WB, Columbia University","Monthly, on 15th",,1,26,NH_seasonal_risk_norm,NH_seasonal_proportion_anomalous,seasonl_risk,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,"Unemployment Rate, % Change",,IMF,Quarterly,,1,27,S_change_unemp_norm,"S_change_unemp_21, S_change_unemp_20",imf_un,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,MFRI Household Level Risk,,WB,Quarterly,,1,28,S_Household.risks,S_Household.risks_raw,household_risk,FALSE,TRUE
-Emerging,Socioeconomic Vulnerability,Income Support,,INFORM,Annual,,1,29,S_income_support.Rating_crm_norm,S_income_support.Value,socio_forward,FALSE,TRUE
+Emerging,Socioeconomic Vulnerability,Income Support,,INFORM,Annual,,1,29,S_income_support.Rating_crm_norm,S_income_support.Value,socio_forward,FALSE,FALSE
 Emerging,Socioeconomic Vulnerability,COVID Phone Survey Index,,WB,Monthly,,1,30,S_phone_average_index_norm,S_phone_average_index,phone_index_data,FALSE,FALSE
 Emerging,Socioeconomic Vulnerability,"People Below $1.90 Poverty Line, % Change",,WB,Quarterly,,1,31,S_pov_comb_norm,"S_pov_prop_22_21, S_pov_prop_23_22",mpo_data,FALSE,TRUE
 Emerging,Conflict and Fragility,IFES Elections & GIC Coups,,"IFES, GIC",,,1,32,Fr_pseudo_reign_norm,Fr_coup_election_text,,FALSE,TRUE

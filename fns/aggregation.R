@@ -279,7 +279,8 @@ write_excel_source_files <- function(
   # reliability_sheet,
   directory_path,
   filepaths = F, # are the sheet arguments filepaths to CSVs (T) or are they dataframes (F)
-  archive = F # Set T to also save output in the crm-excel/archive/ folder
+  archive = F, # Set T to also save output in the crm-excel/archive/ folder
+  countries = NULL
 ) {
   
   ensure_directory_exists(directory_path)
@@ -300,6 +301,16 @@ write_excel_source_files <- function(
     # reliability_sheet <- read.csv(reliability_sheet)
   }
   
+if (!is.null(countries)) {
+  all_dimensions <- subset(all_dimensions, Country %in% countries)
+  health_sheet <- subset(health_sheet, Country %in% countries)
+  food_sheet <- subset(food_sheet, Country %in% countries)
+  macro_sheet <- subset(macro_sheet, Country %in% countries)
+  socio_sheet <- subset(socio_sheet, Country %in% countries)
+  natural_hazards_sheet <- subset(natural_hazards_sheet, Country %in% countries)
+  fragility_sheet <- subset(fragility_sheet, Country %in% countries)
+}
+
   write_excel_source_file(health_sheet, "health.csv", directory_path = directory_path, archive_path = archive_path)
   write_excel_source_file(food_sheet, "food-security.csv", directory_path = directory_path, archive_path = archive_path)
   write_excel_source_file(macro_sheet, "macro-fiscal.csv", directory_path = directory_path, archive_path = archive_path)
