@@ -2,15 +2,6 @@
 as_of <- Sys.Date()
 format <- "csv" # or "spark" or "both"; format of how input archives are saved (in case I switch )
 output_directory <- "output/scheduled/"
-# make sure subdirectories exist
-# - dimensions
-# - crm-excel
-
-# COMMAND ----------
-
-getwd()
-
-# COMMAND ----------
 
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
 source("fns/libraries.R")
@@ -106,7 +97,7 @@ natural_hazards_sheet <- aggregate_dimension(
   "Natural Hazard",
   gdacs_process(as_of = as_of, format = format),
   inform_nathaz_process(as_of = as_of, format = format),
-  iri_process(drop_geometry = T, as_of = as_of, format = format), # Rename iri_forecast)
+  iri_process_temp(), # Rename iri_forecast)
   locust_process(as_of = as_of, format = format),
   acaps_category_process(as_of, format, category = "natural", prefix = "NH_"))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))

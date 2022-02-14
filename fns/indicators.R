@@ -79,8 +79,7 @@ archiveInputs <- function(data,
     most_recent <- prev
   } else {
     most_recent <- prev %>%
-      # .dots allows group_by to take a vector of character strings
-      group_by(.dots = group_by) %>%
+      group_by(across(all_of(group_by))) %>%
       slice_max(order_by = access_date)
   }
   
@@ -138,8 +137,7 @@ loadInputs <- function(
     most_recent <- data
   } else {
     most_recent <- data %>%
-      # .dots allows group_by to take a vector of character strings
-      group_by(.dots = group_by) %>%
+      group_by(across(all_of(group_by))) %>%
       slice_max(order_by = access_date) %>%
       ungroup()
   }
@@ -595,39 +593,39 @@ owid_covid_process <- function(as_of, format) {
   owid <- left_join(covidcurrent, covidgrowth)
   owid <- subset(owid, Country %in% countrylist$Country)
   
-  pop <- wpp.by.year(wpp.indicator("tpop"), 2020) %>% 
-    rename(Country = charcode, population = value) %>% 
-    mutate(Country = countrycode(Country,
-                               origin = "iso2c", 
-                               destination = "iso3c",
-                               warn = F),
-         population = population / 1000)
+  # pop <- wpp.by.year(wpp.indicator("tpop"), 2020) %>% 
+  #   rename(Country = charcode, population = value) %>% 
+  #   mutate(Country = countrycode(Country,
+  #                              origin = "iso2c", 
+  #                              destination = "iso3c",
+  #                              warn = F),
+  #        population = population / 1000)
 
-  owid <- left_join(owid, pop)
+  # owid <- left_join(owid, pop)
 
-  owid[which(owid$Country == "LIE"), "population"] <- 0.0387
-  owid[which(owid$Country == "DMA"), "population"] <- 0.0720
-  owid[which(owid$Country == "KNA"), "population"] <- 0.0532
-  owid[which(owid$Country == "MHL"), "population"] <- 0.0592
-  # owid[which(owid$Country == "NRU"), "population"] <- 0.0108
-  owid[which(owid$Country == "PLW"), "population"] <- 0.0181
-  # owid[which(owid$Country == "TUV"), "population"] <- 0.0118
+  # owid[which(owid$Country == "LIE"), "population"] <- 0.0387
+  # owid[which(owid$Country == "DMA"), "population"] <- 0.0720
+  # owid[which(owid$Country == "KNA"), "population"] <- 0.0532
+  # owid[which(owid$Country == "MHL"), "population"] <- 0.0592
+  # # owid[which(owid$Country == "NRU"), "population"] <- 0.0108
+  # owid[which(owid$Country == "PLW"), "population"] <- 0.0181
+  # # owid[which(owid$Country == "TUV"), "population"] <- 0.0118
 
-  # In case we want to put a minimum threshold for total deaths
-  owid <- owid %>%
-    mutate(death_count = population * meandeaths_current)
+  # # In case we want to put a minimum threshold for total deaths
+  # owid <- owid %>%
+  #   mutate(death_count = population * meandeaths_current)
 
-  owid <- mutate(owid,
-    H_Covidgrowth_deathsnorm = case_when(
-      H_Covidgrowth_deathsnorm > 7 & 
-      H_new_deaths_smoothed_per_million < 0.15
-      ~ 7,
-    TRUE ~ H_Covidgrowth_deathsnorm),
-    H_Covidgrowth_casesnorm = case_when(
-      H_Covidgrowth_casesnorm > 7 & 
-      H_new_cases_smoothed_per_million < 10 ~ 7,
-    TRUE ~ H_Covidgrowth_casesnorm)) %>%
-    select(Country, starts_with("H_"))
+  # owid <- mutate(owid,
+  #   H_Covidgrowth_deathsnorm = case_when(
+  #     H_Covidgrowth_deathsnorm > 7 & 
+  #     H_new_deaths_smoothed_per_million < 0.15
+  #     ~ 7,
+  #   TRUE ~ H_Covidgrowth_deathsnorm),
+  #   H_Covidgrowth_casesnorm = case_when(
+  #     H_Covidgrowth_casesnorm > 7 & 
+  #     H_new_cases_smoothed_per_million < 10 ~ 7,
+  #   TRUE ~ H_Covidgrowth_casesnorm)) %>%
+  #   select(Country, starts_with("H_"))
 
   return(owid)
   # return(list(
@@ -953,6 +951,7 @@ fews_process <- function(as_of, format) {
   # Find max ipc for any region in the country
   fews_summary <- fewsg %>%
     group_by(country, year_month) %>%
+    # Yields warning of infinite values, but we filter these out below; not a concern
     summarise(max_ipc = max(fews_proj_med_adjusted, na.rm = T)) %>%
     mutate(
       year_month = str_replace(year_month, "_", "-"),
@@ -1071,8 +1070,6 @@ fao_wfp_process <- function(as_of, format) {
   return(fao_wfp)
 }
 
-
-
 #### MACRO
 
 #---------------------------—Economist Intelligence Unit---------------------------------
@@ -1083,11 +1080,11 @@ eiu_collect <- function() {
   eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
   file.remove("RBTracker.xls")
   
-  archiveInputs(eiu, group_by = c("`SERIES NAME`", "MONTH"))
+  archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"))
 }
 
 eiu_process <- function(as_of, format) {
-  eiu_data <- loadInputs("eiu", group_by = c("`SERIES NAME`", "MONTH")) %>%
+  eiu_data <- loadInputs("eiu", group_by = c("SERIES NAME", "MONTH")) %>%
     select(-access_date)
   
   country_nam <- colnames(eiu_data) 
@@ -1212,15 +1209,15 @@ income_support_process <- function(as_of, format) {
       .fn = ~ str_replace(., "H_", "S_"),
       .cols = colnames(.)[-1]
     ) %>%
-    mutate_at(
-      vars(S_gdp_change.Rating, S_unemployment.Rating),
-      funs(norm = case_when(
-        . == "High" ~ 10,
-        . == "Medium" ~ 7,
-        . == "Low" ~ 0,
+    mutate(across( # FIX: is this even being used?
+      .cols = c(S_gdp_change.Rating, S_unemployment.Rating),
+      ~ case_when(
+        .x == "High" ~ 10,
+        .x == "Medium" ~ 7,
+        .x == "Low" ~ 0,
         TRUE ~ NA_real_
-      ))
-    ) %>%
+),
+      .names = "{.col}_norm")) %>%
     mutate(
       S_income_support.Rating_crm_norm = case_when(
         S_income_support.Value == "No income support" ~ 7,
@@ -1321,6 +1318,7 @@ mpo_process <- function(as_of, format) {
                   S_pov_prop_23_22 = "d",
                   access_date = "D")
   mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = format, col_types = col_types)
+  return(mpo)
 }
 
 ## MACROFIN / EFI Macro Financial Review Household Level Risk
@@ -1479,10 +1477,12 @@ imf_process <- function(as_of, format) {
   # FIX
   
   imf_un <- imf_unemployment %>%
+    select(c(Country, ISO3, "2020", "2021", "2022", `Subject Descriptor`)) %>%
     mutate_at(
       vars(starts_with("20")),
       ~ as.numeric(as.character(.))
     ) %>%
+    # Warnings. Introduces NAs … because there are NAs.
     mutate(
            change_unemp_22 = `2022` - `2021`,
            change_unemp_21 = `2021` - `2020`,
@@ -1917,6 +1917,7 @@ iri_process <- function(
 
 iri_process_temp <- function() {
  iri <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/iri-precipitation-temp.csv"), col_types = cols())) 
+ return(iri)
 }
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
@@ -1924,7 +1925,7 @@ iri_process_temp <- function() {
 locust_collect <- function() {
   locust_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/locust_risk.csv"), col_types = cols()))
   locust_risk <- locust_risk %>%
-    dplyr::select(-X1)
+    dplyr::select(Country, NH_locust_norm)
   
   fao_locust <- locust_risk
   
@@ -1949,7 +1950,7 @@ locust_process <- function(as_of, format) {
 
 fcs_collect <- function() {
   fcv <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/Country_classification.csv"))) %>%
-    dplyr::select(-X1, Countryname, -`IDA-status`) %>%
+    dplyr::select(-`IDA-status`) %>%
     mutate(FCV_status = tolower(FCV_status)) %>%
     mutate(
       FCS_normalised = case_when(
@@ -1980,11 +1981,11 @@ idp_collect <- function() {
   ))
   
   un_idp <- idp_data
-  archiveInputs(un_idp, group_by = c("`Country of origin (ISO)`", "`Country of asylum (ISO)`", "`Year`"))
+  archiveInputs(un_idp, group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"))
 }
 
 un_idp_process <- function(as_of, format) {
-  un_idp <- loadInputs("un_idp", group_by = c("`Country of origin (ISO)`", "`Country of asylum (ISO)`", "`Year`"), as_of = as_of, format = format)
+  un_idp <- loadInputs("un_idp", group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"), as_of = as_of, format = format)
   # Calculate metrics
   idp <- un_idp %>%
     group_by(`Country of origin (ISO)`, Year) %>%
@@ -2131,16 +2132,18 @@ acled_process <- function(as_of, format) {
 }
 
 acled_hdx_collect <- function() {
-    acled_hdx <- read_xlsx("/Users/bennotkin/Downloads/political_violence_events_and_fatalities_by_country-month-year_as-of-14jan2022.xlsx",
-    sheet = "Data") %>% 
+  rhdx::set_rhdx_config(hdx_site = "prod")
+  acled_hdx <- rhdx::pull_dataset("political-violence-events-and-fatalities") %>% 
+    rhdx::get_resource(1) %>%
+    rhdx::read_resource(sheet = 2) %>%
     subset(Year >= as.numeric(format(Sys.Date(), format = "%Y")) - 4)
 
     # write.csv(acled_hdx, "output/inputs-archive/acled_hdx.csv", row.names = F)
-    archiveInputs(acled_hdx, group_by = NULL)
+    archiveInputs(acled_hdx, group_by = c("Country", "Year", "Month"))
 }
 
 acled_hdx_process <- function(as_of, format) {
-  acled_hdx <- loadInputs("acled_hdx", group_by = NULL)
+  acled_hdx <- loadInputs("acled_hdx", group_by = c("Country", "Year", "Month"))
   
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.yearmon(Sys.Date() - 45) - 3.2

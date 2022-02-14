@@ -6,6 +6,30 @@
 # Databricks notebook source
 # Set working directory, load libraries and read-in functions
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
+
+# COMMAND ----------
+
+# %sh
+
+# sudo apt-get update -y
+# sudo apt-get install -y libudunits2-dev
+# sudo apt-get install -y gdal-bin proj-bin libgdal-dev libproj-dev
+
+
+# COMMAND ----------
+
+# if (substr(packageVersion('rlang'), 1, 1) == '0') {
+
+# COMMAND ----------
+
+# This took 6.5 minutes; how to speed up. Would upgrade = F (or upgrade = T) help? 
+# Also might be good to nest within ACLED HDX function?
+install.packages('units')
+install.packages('remotes')
+remotes::install_gitlab('dickoa/rhdx')
+
+# COMMAND ----------
+
 source("fns/libraries.R")
 source("fns/indicators.R")
 
@@ -59,7 +83,7 @@ eiu_collect()
 # COMMAND ----------
 
 # SOCIO-ECONOMIC
-mpo_collect()
+# mpo_collect()
 mfr_collect()
 # phone_collect()
 imf_collect()
@@ -69,7 +93,7 @@ imf_collect()
 # NATURAL HAZARDS
 gdacs_collect()
 inform_risk_collect()
-iri_collect()
+# iri_collect()
 locust_collect()
 
 # COMMAND ----------
@@ -77,7 +101,7 @@ locust_collect()
 # FRAGILITY AND CONFLICT
 fcs_collect()
 idp_collect()
-acled_hdx_collect()
+acled_hdx_collect() # rhdx package not working on databricks
 # reign_collect()
 gic_collect()
 ifes_collect()
