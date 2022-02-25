@@ -1784,6 +1784,7 @@ iri_process <- function(
     drop_geometry = F,
     country_list = F,
     probability_threshold = 50,
+    full_output = F,
     pop_threshold = 25,
     agri_threshold = 0.35,
     as_of,
@@ -1835,7 +1836,7 @@ iri_process <- function(
   s$continuity[(s$pop_density < 25 | is.na(s$pop_density)) & (s$agri_density < 0.35 | is.na(s$agri_density))] <- NA
 
   s$wet <- ifelse(values(s$sp) > probability_threshold, 1, NA)
-  # what does continuity of 2 mean?
+  # Continuity of 2 means 40–505 probability of below normal precipation and a dry past 3 months
   s$dry <- ifelse(values(s$sp) < -probability_threshold | values(s$continuity) == 2, 1, NA)
 
 
@@ -1898,7 +1899,9 @@ iri_process <- function(
     flag = wet_flag | dry_flag) %>% 
     rename(Country = iso3)
 
-  subset(countries, !flag & proportion_anomalous > proportion_threshold)
+if(full_output) {
+  return(countries)
+}
 
   output <- countries %>%
     mutate(
@@ -1906,7 +1909,7 @@ iri_process <- function(
         flag ~ 10,
         T ~ 0),
       NH_seasonal_proportion_anomalous = proportion_anomalous) %>%
-    select(Country, contains("NH"))
+    dplyr::select(Country, contains("NH"))
 
   return(output)
 }
@@ -2345,7 +2348,11 @@ ifes_collect <- function() {
         '\\}' = ''
     )) %>%
     str_replace(".*?\\n", "") %>%
-    read_csv(col_names = c(
+    str_replace_all(', "', ',"') %>%
+    str_replace_all('\\n "', '\n"') %>%
+    str_replace(',"iTotal.*', '') %>%
+    read_csv(
+      col_names = c(
         "Countryname",
         "country_slug",
         "office",
@@ -2355,7 +2362,18 @@ ifes_collect <- function() {
         "election_id",
         "text",
         "election_type",
-        "country_id"))
+        "country_id"),
+      col_types = cols_only(
+        Countryname = 'c',
+        country_slug = 'c',
+        office = 'c',
+        election_slug = "c",
+        date = 'D',
+        status = 'c',
+        election_id = 'd',
+        text = 'c',
+        election_type = 'c',
+        country_id = 'd'))
 
     archiveInputs(ifes, group_by = NULL)
 }

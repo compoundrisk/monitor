@@ -1,3 +1,8 @@
+# For some reason `setwd(...)` loads rlang 0.4.12 to the namespace, so this needs to precede
+library(rlang, lib = "/dbfs/mnt/CompoundRiskMonitor/lib")
+
+# COMMAND ----------
+
 # Collecting data from external sources, and appending new data to inputs
 # archive. Some sources require cleaning in order to be appended. The next
 # notebook (02-process-indicators) reads from these archives to generate
@@ -9,28 +14,7 @@
 
 # COMMAND ----------
 
-# %sh
-
-# sudo apt-get update -y
-# sudo apt-get install -y libudunits2-dev
-# sudo apt-get install -y gdal-bin proj-bin libgdal-dev libproj-dev
-
-
-# COMMAND ----------
-
-# if (substr(packageVersion('rlang'), 1, 1) == '0') {
-
-# COMMAND ----------
-
-# This took 6.5 minutes; how to speed up. Would upgrade = F (or upgrade = T) help? 
-# Also might be good to nest within ACLED HDX function?
-install.packages('units')
-install.packages('remotes')
-remotes::install_gitlab('dickoa/rhdx')
-
-# COMMAND ----------
-
-source("fns/libraries.R")
+source("fns/prep.R")
 source("fns/indicators.R")
 
 # COMMAND ----------
@@ -85,7 +69,6 @@ eiu_collect()
 # SOCIO-ECONOMIC
 # mpo_collect()
 mfr_collect()
-# phone_collect()
 imf_collect()
 
 # COMMAND ----------

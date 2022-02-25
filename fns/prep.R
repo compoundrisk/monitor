@@ -1,19 +1,15 @@
-packages <- c("curl", "DBI", "dplyr", "EnvStats", "stats", "countrycode", "ggplot2", 
-              "jsonlite","lubridate", "maps", "matrixStats", "purrr", "readr", "readxl",
-              "rmarkdown", "remotes", "rvest", "sjmisc", "sparklyr", "stringr", "tidyr",
-              "xml2", "wppExplorer", "zoo")
+packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "ggplot2", 
+              "jsonlite","lubridate", "maps", "matrixStats", "purrr", "raster",
+              "readr", "readxl", "remotes", "rgdal", "rmarkdown", "rvest", "sf",
+              "sjmisc", "sparklyr", "stats", "stringr", "tidyr", "xml2",
+              "wppExplorer", "zoo")
 
-# Inclusive of raster packages
-# packages <- c(
-#   "curl", "DBI", "EnvStats", "stats", "countrycode", "exactextractr",
-#   "ggplot2", "jsonlite","lubridate", "maps", "matrixStats", "purrr", "raster",
-#   "readr", "readxl", "rgdal", "rmarkdown", "rvest", "sf", "sjmisc", "sparklyr",
-#   "stringr", "tidyr", "xml2", "wppExplorer", "zoo")
+.libPaths(c("lib", .libPaths()))
 
 lapply(packages, function(p) {
-  if (!require(p, character.only = T, quietly = T)) {
-    install.packages(p, destdir = "libs")
-  }
+  # if (!require(p, character.only = T, quietly = T)) {
+  #   install.packages(p, lib = "lib")
+  # }
   library(p, character.only = T, quietly = T)
 })
 

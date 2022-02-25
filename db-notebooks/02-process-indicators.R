@@ -1,10 +1,20 @@
 # Databricks notebook source
+# For some reason `setwd(...)` loads rlang 0.4.12 to the namespace, so this needs to precede
+library(rlang, lib = "/dbfs/mnt/CompoundRiskMonitor/lib")
+
+# COMMAND ----------
+
 as_of <- Sys.Date()
 format <- "csv" # or "spark" or "both"; format of how input archives are saved (in case I switch )
-output_directory <- "output/scheduled/"
+
+# if run is a job, save files to "output/scheduled"; if manually, save to "output/manual"
+run_type <- tryCatch(dbutils.widgets.get("run_type"), error = function(e) {return("manual")})
+output_directory <- paste0("output/", run_type)
+
+# COMMAND ----------
 
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
-source("fns/libraries.R")
+source("fns/prep.R")
 source("fns/indicators.R")
 source("fns/aggregation.R")
 
@@ -97,7 +107,8 @@ natural_hazards_sheet <- aggregate_dimension(
   "Natural Hazard",
   gdacs_process(as_of = as_of, format = format),
   inform_nathaz_process(as_of = as_of, format = format),
-  iri_process_temp(), # Rename iri_forecast)
+  #   iri_process(drop_geometry = T, as_of = as_of, format = format), # Rename iri_forecast)
+  iri_process_temp(),
   locust_process(as_of = as_of, format = format),
   acaps_category_process(as_of, format, category = "natural", prefix = "NH_"))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
@@ -190,6 +201,11 @@ dashboard_data <- subset(long, `Data Level` != "Reliability" & `Data Level` != "
 # write.csv(dashboard_data, paste0(output_directory, "/crm-dashboard-data.csv"))
 multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, archive_directory))
 # write.csv(dashboard_data, paste0(output_directory, "/crm-runs/", Sys.Date(), "-crm-run.csv"))
+
+# Fix so that this uses dashboard_data instead of reading the CSV
+dashboard_crisis <- label_crises()
+multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
+write.csv(dashboard_crisis, "production/crm-dashboard-prod.csv")
 
 # track_indicator_updates()
 # I've already written this. Do I still use it? My concern is that its reliance 

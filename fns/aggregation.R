@@ -1566,3 +1566,74 @@ countFlagChanges <- function(data, early = Sys.Date() - 1 , late = Sys.Date()) {
 # # write.csv(flagChanges, "output/reports/flag-changes.csv")
 
 # # rmarkdown::render('output-report.Rmd', output_format = "html_document", output_file = paste0("output/reports/", Sys.Date(), "-report"))
+
+
+# Add in-crisis labels
+label_crises <- function() {
+  acaps_high_severity <- function() {
+    # SPLIT UP INTO INPUTS SECTION
+    # Load website
+    h <- new_handle()
+    handle_setopt(h, ssl_verifyhost = 0, ssl_verifypeer=0)
+    curl_download(url="https://www.acaps.org/countries", "acaps.html", handle = h)
+    acaps <- read_html("acaps.html")
+    unlink("acaps.html")
+    
+  # Scrape ACAPS website
+  parent_nodes <- acaps %>% 
+      html_nodes(".severity__country")
+
+  # Scrape crisis data for each listed country
+  acaps_list <- lapply(parent_nodes, function(node) {
+      country <- node %>%
+          html_node(".severity__country__label") %>%
+          html_text()
+      country_level <- node %>%
+          html_node(".severity__country__value") %>%
+          html_text() %>%
+          as.numeric()
+
+      df <- data.frame(
+              Countryname = country,
+              value = country_level
+              # crisis = crises,
+              # value = values
+      )
+      return(df)
+      }) %>%
+      bind_rows() %>%
+      mutate(
+        Countryname = case_when(
+          Countryname == "CAR" ~ "Central African Republic",
+          TRUE ~ Countryname),
+        Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
+        .before = 1)
+
+  high_severity_countries <- pull(subset(acaps_list, value >= 4, select = Country))
+    return(high_severity_countries)
+  }
+
+  in_crisis <- acaps_high_severity()
+  # in_crisis <- acaps[which(rowSums(acaps[,3:6])>0),2]
+
+  latest <- read.csv(paste_path(output_directory, "crm-dashboard-data.csv"))
+  crisis_rows <- latest
+  crisis_rows[,c(1,4:12)] <- NA
+  # crisis_rows$`Risk Label` <- as.character(crisis_rows$`Risk Label`)
+  crisis_rows <- distinct(crisis_rows)
+  crisis_rows$Data.Level <- "Crisis Status"
+  # crisis_rows$Key <- ""
+  crisis_rows[,c("Value")] <- 0
+  crisis_rows[which(crisis_rows$Country %in% in_crisis),c("Value")] <- 1
+  crisis_rows <- dplyr::mutate(crisis_rows,
+                        Risk.Label =
+                          dplyr::case_when(
+                            Value == 1 ~ paste0("*", Countryname),
+                            Value == 0 ~ Countryname
+                          ))
+  crisis_rows$Overall.Contribution <- FALSE
+  crisis_rows <- dplyr::mutate(crisis_rows, Index = dplyr::row_number() + max(latest$Index))
+  comb <- rbind(latest, crisis_rows)
+  # write_csv(comb, "output/scheduled/crm-dashboard-data-with-crisis.csv")
+  return(comb)
+}
