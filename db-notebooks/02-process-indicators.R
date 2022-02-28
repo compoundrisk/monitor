@@ -1,6 +1,6 @@
 # Databricks notebook source
 # For some reason `setwd(...)` loads rlang 0.4.12 to the namespace, so this needs to precede
-library(rlang, lib = "/dbfs/mnt/CompoundRiskMonitor/lib")
+# library(rlang, lib.loc = "/dbfs/mnt/CompoundRiskMonitor/lib")
 
 # COMMAND ----------
 
@@ -34,7 +34,7 @@ archive_directory <- ensure_directory_exists(output_directory, "archive", Sys.Da
                                              new = T, suffix = "run_", return = T)
 dim_path <- ensure_directory_exists(output_directory, "dimensions", return = T)
 # ensure_directory_exists(output_directory, "dimensions/archive")
-dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions")
+dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions", return = T)
 # ensure_directory_exists(output_directory, "aggregated-archive")
 # aggregated_archive_path <- ensure_directory_exists(output_directory, "aggregated-archive", Sys.Date(), new = T, suffix = "run_", return = T)
 
@@ -217,7 +217,7 @@ write.csv(dashboard_crisis, "production/crm-dashboard-prod.csv")
 # to just use the combined output file, and  compare against the previous date 
 # (the way `countFlagChanges()` does? can I just abstract `flagChanges()`?)
 
-all_runs <- append_if_exists(long, paste0(output_directory, "crm-all-runs.csv"))
+all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"))
 # Task: what if I run the monitor multiple times in a day? 
 # write_csv(all_runs, paste0(output_directory, "crm-all-runs.csv"))
 multi_write.csv(all_runs, "crm-all-runs.csv", c(output_directory, archive_directory))

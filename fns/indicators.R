@@ -66,8 +66,11 @@ archiveInputs <- function(data,
                           # large = F) 
                           ){
   if (newFile) {
-    data <- data %>% mutate(access_date = today)
+    path <- path # Need to use path argument before we change `data` – otherwise path is changed
+    data <- data %>% mutate(access_date = today) #%>%
+      # group_by(across(all_of(group_by))) # not needed for first save
     write.csv(data, path, row.names = F)
+    if(return == T) return(data)
   } else {
 
   # Read in the existing file for the input, which will be appended with new data
@@ -132,6 +135,8 @@ loadInputs <- function(
   if (as_of < Sys.Date()) {
     data <- filter(data, access_date <= as_of)
   }
+  if (full) return(data)
+
   # Select the most recent access_date for each group, unless group_by = F
   if (is.null(group_by)) {
     most_recent <- data
@@ -141,8 +146,7 @@ loadInputs <- function(
       slice_max(order_by = access_date) %>%
       ungroup()
   }
-  if (!full) return(most_recent)
-  return(data)
+  return(most_recent)
 }
 
 add_dimension_prefix <- function(df, prefix) {
@@ -989,60 +993,87 @@ fews_process <- function(as_of, format) {
 }
 
 #------------------------—WBG FOOD PRICE MONITOR------------------------------------
-# _Add in *_collect() function_
-fpi_process <- function(as_of, format) {
-  ag_ob_data <- read.csv(paste0(github, "Indicator_dataset/food-inflation.csv"))
-  # FIX: Not yet recording historical data because data is structured messily, with 
-  # dates as columns. Fortunately, dataset includes historical data
-  ag_ob_data <- ag_ob_data %>%
-    mutate_at(
-      vars(contains("19"), contains("20"), contains("21")),
-      ~ as.numeric(as.character(gsub(",", ".", .)))
-    )
+# # _Add in *_collect() function_
+# fpi_process_old <- function(as_of, format) {
+#   ag_ob_data <- read.csv(paste0(github, "Indicator_dataset/food-inflation.csv"))
+#   # FIX: Not yet recording historical data because data is structured messily, with 
+#   # dates as columns. Fortunately, dataset includes historical data
+#   ag_ob_data <- ag_ob_data %>%
+#     mutate_at(
+#       vars(contains("19"), contains("20"), contains("21")),
+#       ~ as.numeric(as.character(gsub(",", ".", .)))
+#     )
   
-  ag_ob <- ag_ob_data %>%
-    filter(X == "Food Change Yoy") %>%
-    dplyr::select(-Income.Level, -Color.Bin, -X) %>%
-    mutate(Country = countrycode(Country,
-                          origin = "country.name",
-                          destination = "iso3c",
-                          nomatch = NULL
-    )) %>%
-    group_by(Country) %>%
-    summarise(
-      Sep = Sep.20[which(!is.na(Sep.20))[1]],
-      Oct = Oct.20[which(!is.na(Oct.20))[1]],
-      Nov = Nov.20[which(!is.na(Nov.20))[1]],
-      Dec = Dec.20[which(!is.na(Dec.20))[1]],
-      Jan = Jan.21[which(!is.na(Jan.21))[1]],
-      Feb = Feb.21[which(!is.na(Feb.21))[1]],
-      Mar = Mar.20[which(!is.na(Mar.21))[1]],
-      Apr = Apr.21[which(!is.na(Apr.21))[1]],
-      May = May.21[which(!is.na(May.21))[1]],
-      Jun = Jun.21[which(!is.na(Jun.21))[1]],
-      Jul = Jul.21[which(!is.na(Jul.21))[1]],
-      Aug = Aug.21[which(!is.na(Aug.21))[1]]
-    ) %>%
-    mutate(fpv = case_when(
-      !is.na(Aug) ~ Aug,
-      is.na(Aug) & !is.na(Jul) ~ Jul,
-      is.na(Aug) & is.na(Jul) & !is.na(Jun) ~ Jun,
-      TRUE ~ NA_real_
-    ),
-    fpv_rating = case_when(
-      fpv <= 0.02 ~ 1,
-      fpv > 0.02 & fpv <= 0.05 ~ 3,
-      fpv > 0.05 & fpv <= 0.30 ~ 5,
-      fpv >= 0.30 ~ 7,
-      TRUE ~ NA_real_
-    )) %>%
-    rename_with(   
-      .fn = ~ paste0("F_", .),
-      .cols = colnames(.)[!colnames(.) %in% c("Country")]
-    )
-  return(ag_ob)
+#   ag_ob <- ag_ob_data %>%
+#     filter(X == "Food Change Yoy") %>%
+#     dplyr::select(-Income.Level, -Color.Bin, -X) %>%
+#     mutate(Country = countrycode(Country,
+#                           origin = "country.name",
+#                           destination = "iso3c",
+#                           nomatch = NULL
+#     )) %>%
+#     group_by(Country) %>%
+#     summarise(
+#       Sep = Sep.20[which(!is.na(Sep.20))[1]],
+#       Oct = Oct.20[which(!is.na(Oct.20))[1]],
+#       Nov = Nov.20[which(!is.na(Nov.20))[1]],
+#       Dec = Dec.20[which(!is.na(Dec.20))[1]],
+#       Jan = Jan.21[which(!is.na(Jan.21))[1]],
+#       Feb = Feb.21[which(!is.na(Feb.21))[1]],
+#       Mar = Mar.20[which(!is.na(Mar.21))[1]],
+#       Apr = Apr.21[which(!is.na(Apr.21))[1]],
+#       May = May.21[which(!is.na(May.21))[1]],
+#       Jun = Jun.21[which(!is.na(Jun.21))[1]],
+#       Jul = Jul.21[which(!is.na(Jul.21))[1]],
+#       Aug = Aug.21[which(!is.na(Aug.21))[1]]
+#     ) %>%
+#     mutate(fpv = case_when(
+#       !is.na(Aug) ~ Aug,
+#       is.na(Aug) & !is.na(Jul) ~ Jul,
+#       is.na(Aug) & is.na(Jul) & !is.na(Jun) ~ Jun,
+#       TRUE ~ NA_real_
+#     ),
+#     fpv_rating = case_when(
+#       fpv <= 0.02 ~ 1,
+#       fpv > 0.02 & fpv <= 0.05 ~ 3,
+#       fpv > 0.05 & fpv <= 0.30 ~ 5,
+#       fpv >= 0.30 ~ 7,
+#       TRUE ~ NA_real_
+#     )) %>%
+#     rename_with(   
+#       .fn = ~ paste0("F_", .),
+#       .cols = colnames(.)[!colnames(.) %in% c("Country")]
+#     )
+#   return(ag_ob)
+# }
+
+# The above was for FPI data taken from a Tableau workbook. This is now taken
+# from https://microdatalib.worldbank.org/index.php/catalog/12421/
+fpi_collect <- function() {
+  wb_fpi <- read_csv('restricted-data/food-price-inflation.csv') %>%
+    subset(date > Sys.Date() - 365)
+  archiveInputs(wb_fpi, group_by = c("ISO3", "date"))
 }
 
+fpi_process <- function (as_of, format) {
+  fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = as_of, format = format) %>%
+    group_by(ISO3) %>%
+    slice_max(order_by = date) %>%
+    # in case any country's newest data is old, don't use
+    subset(date > as_of - 92) %>%
+    select(Country = ISO3, Inflation)
+
+  fpi <- mutate(fpi,
+    fpv_rating = case_when(
+      Inflation <= 2 ~ 1,
+      Inflation > 2 & Inflation <= 5 ~ 3,
+      Inflation > 5 & Inflation <= 30 ~ 5,
+      Inflation >= 30 ~ 7,
+      TRUE ~ NA_real_
+    )) %>%
+  add_dimension_prefix("F_")
+ return(fpi) 
+}
 
 #-------------------------—FAO/WFP HOTSPOTS----------------------------
 fao_wfp_collect <- function() {
