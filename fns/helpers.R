@@ -103,3 +103,9 @@ curl_and_delete <- function(url, FUN, ...) {
   file.remove("RBTracker.xls")
   return(data)
 }
+
+# See IFES and DONS paste summarizes for what this is trying to generalize
+# summarize_many_columns <- function(df, group_by, new_col, old_cols, sep) {
+#   df <- group_by(df, group_by)
+# ...
+# }

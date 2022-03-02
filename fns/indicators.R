@@ -496,11 +496,6 @@ owid_covid_process <- function(as_of, format) {
   covidgrowth <- normfuncpos(covidgrowth, 100, 0, "growthratedeaths")
   covidgrowth <- normfuncpos(covidgrowth, 100, 0, "growthratecases")
   
-  # Rename columns
-  # colnames(covidgrowth) <- c(
-  #   "Country", "H_Covidgrowth_biweeklydeaths", "H_Covidgrowth_biweeklycases",
-  #   "H_Covidgrowth_deathsnorm", "H_Covidgrowth_casesnorm"
-  # )
 
   covidgrowth <- covidgrowth %>%
     rename(
@@ -522,12 +517,6 @@ owid_covid_process <- function(as_of, format) {
   covidcurrent <- normfuncpos(covidcurrent, 500, 0, "new_cases_smoothed_per_million")
   covidcurrent <- normfuncpos(covidcurrent, 5, 0, "new_deaths_smoothed_per_million")
   
-  # # Rename columns
-  # colnames(covidcurrent) <- c(
-  #   "Country", "H_new_cases_smoothed_per_million", "H_new_deaths_smoothed_per_million",
-  #   "H_new_cases_smoothed_per_million_norm", "H_new_deaths_smoothed_per_million_norm"
-  # )
-
   covidcurrent <- covidcurrent %>%
     rename(
       H_new_cases_smoothed_per_million = new_cases_smoothed_per_million,
@@ -535,68 +524,10 @@ owid_covid_process <- function(as_of, format) {
       H_new_cases_smoothed_per_million_norm = new_cases_smoothed_per_million_norm,
       H_new_deaths_smoothed_per_million_norm = new_deaths_smoothed_per_million_norm)
   
-  # #—(Alternative COVID deaths)
-  # # Load COVID data
-  # cov <- read.csv("https://raw.githubusercontent.com/scc-usc/ReCOVER-COVID-19/master/results/forecasts/global_deaths_current_0.csv")
-  # cov_current <- read.csv("https://raw.githubusercontent.com/scc-usc/ReCOVER-COVID-19/master/results/forecasts/global_deaths.csv")
-  # 
-  # # Summarise country totals (forecast)
-  # cov_dat <- cov %>%
-  #   dplyr::select(Country, colnames(cov)[10], colnames(cov)[9]) %>%
-  #   rename(
-  #     w8forecast = colnames(cov)[10], 
-  #     w7forecast = colnames(cov)[9]
-  #     ) %>%
-  #   mutate(Country = suppressWarnings(countrycode(Country, 
-  #                                                 origin = "country.name",
-  #                                                 destination = "iso3c"
-  #                                                 )
-  #          )) %>%
-  #   drop_na(Country)
-  # 
-  # # Summarise country totals (current)
-  # cov_cur <- cov_current %>%
-  #   dplyr::select(Country, last(colnames(cov_current))) %>%
-  #   rename(
-  #     current = last(colnames(cov_current)),
-  #     ) %>%
-  #   mutate(
-  #     Country = suppressWarnings(countrycode(Country, 
-  #                                                 origin = "country.name",
-  #                                                 destination = "iso3c"
-  #                                            )
-  #       )) %>%
-  #   drop_na(Country)
-  # 
-  # # Add population
-  # pop <- wpp.by.year(wpp.indicator("tpop"), 2020)
-  # 
-  # pop$charcode <- suppressWarnings(countrycode(pop$charcode, 
-  #                                              origin = "iso2c", 
-  #                                              destination = "iso3c"
-  #                                              )
-  #                                  )
-  # 
-  # colnames(pop) <- c("Country", "Population")
-  # 
-  # # Join datasets
-  # cov_forcast_alt <- left_join(cov_dat, pop, by = "Country", keep = F) %>%
-  #   left_join(., cov_cur) %>%
-  #   drop_na(Country) %>%
-  #   mutate(
-  #     week_increase = w8forecast - w7forecast,
-  #     new_death_per_m = week_increase / (Population / 1000),
-  #     add_death_prec_current = ((w8forecast / current) * 100) - 100
-  #     ) %>%
-  #   rename_with(.fn = ~ paste0("H_", .), 
-  #               .cols = colnames(.)[-1]
-  #               )
-  # 
-  # # Normalise
-  # cov_forcast_alt <- normfuncpos(cov_forcast_alt, 100, 0, "H_add_death_prec_current")
   owid <- left_join(covidcurrent, covidgrowth)
   owid <- subset(owid, Country %in% countrylist$Country)
   
+  # # In case we want to put a minimum threshold for total deaths
   # pop <- wpp.by.year(wpp.indicator("tpop"), 2020) %>% 
   #   rename(Country = charcode, population = value) %>% 
   #   mutate(Country = countrycode(Country,
@@ -615,27 +546,22 @@ owid_covid_process <- function(as_of, format) {
   # owid[which(owid$Country == "PLW"), "population"] <- 0.0181
   # # owid[which(owid$Country == "TUV"), "population"] <- 0.0118
 
-  # # In case we want to put a minimum threshold for total deaths
   # owid <- owid %>%
   #   mutate(death_count = population * meandeaths_current)
 
-  # owid <- mutate(owid,
-  #   H_Covidgrowth_deathsnorm = case_when(
-  #     H_Covidgrowth_deathsnorm > 7 & 
-  #     H_new_deaths_smoothed_per_million < 0.15
-  #     ~ 7,
-  #   TRUE ~ H_Covidgrowth_deathsnorm),
-  #   H_Covidgrowth_casesnorm = case_when(
-  #     H_Covidgrowth_casesnorm > 7 & 
-  #     H_new_cases_smoothed_per_million < 10 ~ 7,
-  #   TRUE ~ H_Covidgrowth_casesnorm)) %>%
-  #   select(Country, starts_with("H_"))
+  owid <- mutate(owid,
+    H_Covidgrowth_deathsnorm = case_when(
+      H_Covidgrowth_deathsnorm > 7 & 
+      H_new_deaths_smoothed_per_million < 0.15
+      ~ 7,
+    TRUE ~ H_Covidgrowth_deathsnorm),
+    H_Covidgrowth_casesnorm = case_when(
+      H_Covidgrowth_casesnorm > 7 & 
+      H_new_cases_smoothed_per_million < 10 ~ 7,
+    TRUE ~ H_Covidgrowth_casesnorm)) %>%
+    select(Country, starts_with("H_"))
 
   return(owid)
-  # return(list(
-  #   covidcurrent,
-  #   covidgrowth
-  # ))
 }
 
 #--------------------------—Oxford Response Tracker----------------------------
@@ -805,13 +731,34 @@ dons_process <- function(as_of, format) {
   # Only include DONs alerts from the past 3 months and not declared over
   # (more robust version would filter out outbreaks if they were later declared over)
   who_dons_current <- who_dons %>%
-    subset(date >= as_of - 92) %>%
-    subset(!declared_over == T) %>%
-    mutate(who_dons_text = paste(date, "–", text))
+    subset(date >= as_of - 92) %>% # change back to 92
+    mutate(who_dons_text = paste(date, "–", text)) %>%
+    rename(Country = who_country_alert) %>%
+    select(Country, date, disease, who_dons_text, declared_over, url, access_date)
   
-  who_dons <- left_join(countrylist, who_dons_current, by = c("Country" = "who_country_alert")) %>%
+# Remove diseases that have been declared over
+over <- subset(who_dons_current, declared_over)  
+
+for (i in seq_len(nrow(over))) {
+  o <- over[i,]
+  who_dons_current <- who_dons_current %>% mutate(
+    declared_over = case_when(
+      Country == o$Country & date < o$date & disease == o$disease ~ T,
+      TRUE ~ declared_over
+    )
+  )
+}
+  
+  who_dons <- who_dons_current %>%
+  subset(!declared_over) %>%
+    group_by(Country) %>%
+    summarize(
+      who_dons_text = paste(who_dons_text, collapse = "; "),
+      events = n())
+
+  who_dons <- left_join(countrylist, who_dons, by = c("Country" = "Country")) %>%
     mutate(who_dons_alert = case_when(
-      !is.na(text) ~ 10,
+      !is.na(who_dons_text) ~ 10,
       TRUE ~ 0)) %>%
       select(Country, who_dons_alert, who_dons_text) %>%
       add_dimension_prefix("H_")
@@ -2020,8 +1967,11 @@ idp_collect <- function() {
 
 un_idp_process <- function(as_of, format) {
   un_idp <- loadInputs("un_idp", group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"), as_of = as_of, format = format)
+  recent_year <- max(un_idp$Year)
+
   # Calculate metrics
   idp <- un_idp %>%
+    subset(Year > recent_year - 5) %>%
     group_by(`Country of origin (ISO)`, Year) %>%
     summarise(
       refugees = sum(`Refugees under UNHCR mandate`, na.rm = T),
