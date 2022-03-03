@@ -2057,11 +2057,18 @@ acled_collect <- function() {
   # acled <- mutate(acled, access_date = Sys.Date())
   # write.csv(acled, "inputs-archive/acled.csv", row.names = F)
   
+  # # If I want to reduce file size, zipping takes ~10 seconds (unzipping: <1s)
+  # # and reduces size from 40 MB to 4 MB
+  # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
   archiveInputs(acled, group_by = NULL)
+  # zip("output/inputs-archive/acled.zip", "output/inputs-archive/acled.R") 
+  # file.remove("output/inputs-archive/acled.R")
 }
 
 acled_process <- function(as_of, format) {
+  # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
   acled <- loadInputs("acled", group_by = NULL) #158274
+  # file.remove("output/inputs-archive/acled.R")
   
   # Progress conflict data
   acled <- acled %>%

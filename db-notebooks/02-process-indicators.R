@@ -219,8 +219,8 @@ write.csv(dashboard_crisis, "production/crm-dashboard-prod.csv")
 
 all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"))
 # Task: what if I run the monitor multiple times in a day? 
-# write_csv(all_runs, paste0(output_directory, "crm-all-runs.csv"))
-multi_write.csv(all_runs, "crm-all-runs.csv", c(output_directory, archive_directory))
+write_csv(all_runs, paste0(output_directory, "crm-all-runs.csv"))
+# multi_write.csv(all_runs, "crm-all-runs.csv", c(output_directory, archive_directory))
 
 # test <- all_dimensions %>%
 #   pivot_longer(., cols = -contains("country") & -contains("_labels") & -contains("_raw"), names_to = "Name", values_to = "Value") %>%
