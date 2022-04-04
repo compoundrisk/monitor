@@ -1569,7 +1569,7 @@ countFlagChanges <- function(data, early = Sys.Date() - 1 , late = Sys.Date()) {
 
 
 # Add in-crisis labels
-label_crises <- function() {
+label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboard-data.csv"))) {
   acaps_high_severity <- function() {
     # SPLIT UP INTO INPUTS SECTION
     # Load website
@@ -1616,8 +1616,8 @@ label_crises <- function() {
   in_crisis <- acaps_high_severity()
   # in_crisis <- acaps[which(rowSums(acaps[,3:6])>0),2]
 
-  latest <- read.csv(paste_path(output_directory, "crm-dashboard-data.csv"))
-  crisis_rows <- latest
+  # df <- read.csv(paste_path(output_directory, "crm-dashboard-data.csv"))
+  crisis_rows <- df
   crisis_rows[,c(1,4:12)] <- NA
   # crisis_rows$`Risk Label` <- as.character(crisis_rows$`Risk Label`)
   crisis_rows <- distinct(crisis_rows)
@@ -1632,8 +1632,8 @@ label_crises <- function() {
                             Value == 0 ~ Countryname
                           ))
   crisis_rows$Overall.Contribution <- FALSE
-  crisis_rows <- dplyr::mutate(crisis_rows, Index = dplyr::row_number() + max(latest$Index))
-  comb <- rbind(latest, crisis_rows)
+  crisis_rows <- dplyr::mutate(crisis_rows, Index = dplyr::row_number() + max(df$Index))
+  comb <- rbind(df, crisis_rows)
   # write_csv(comb, "output/scheduled/crm-dashboard-data-with-crisis.csv")
   return(comb)
 }

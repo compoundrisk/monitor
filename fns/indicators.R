@@ -600,7 +600,7 @@ Oxres_process <- function(as_of, format) {
 #---------------------------------
 # SLOW
 inform_covid_collect <- function() {
-  inform_cov <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Covid-19/INFORM-Covid-19-Warning-beta-version")
+  inform_cov <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Covid-19/old-INFORM-Covid-19-Warning-beta-version")
   
   all_dat <- lapply(2:24, function(tt) {
     see <- lapply(c("data-country", "data-value", "style"), function(xx) {
@@ -832,7 +832,8 @@ fews_collect <- function() {
 }
 
 fews_process <- function(as_of, format) {
-  fewswb <- loadInputs("fewsnet", group_by = c("admin_code", "year_month"), as_of = as_of, format = format)
+  fewswb <- loadInputs("fewsnet", group_by = c("admin_code", "year_month"), as_of = as_of, format = format) %>%
+    mutate(year_month = as.yearmon(year_month, "%Y_%m"))
   
   #Calculate country totals
   fewsg <- fewswb %>%
@@ -862,15 +863,20 @@ fews_process <- function(as_of, format) {
                                  TRUE ~ NA_real_),
       ipc4pluspercnow = case_when(fews_ipc_adjusted >= 4 ~ countryproportion,
                                   TRUE ~ NA_real_)
-    )
+    ) %>%
+    ungroup()
   
   #Functions to calculate absolute and geometric growth rates
-  pctabs <- function(x) x- lag(x)
-  pctperc <- function(x) x - lag(x) / lag(x)
+  pctabs <- function(x) x - lag(x)
+  pctperc <- function(x) (x - lag(x)) / lag(x)
   
   #Summarise country totals per in last round of FEWS
   fewssum <- fewspop %>%
-    filter(year_month == "2021_02" | year_month == "2020_10") %>%
+    subset(!is.na(fews_ipc) & as.Date(year_month) > as_of - 365) %>%
+    group_by(admin_code) %>%
+    slice_max(year_month, n = 2) %>% 
+    ungroup() %>%
+    # filter(year_month == "2021_10" | year_month == "2021_06") %>%
     group_by(country, year_month) %>%
     mutate(totalipc3plusabsfor = sum(ipc3plusabsfor, na.rm=T),
            totalipc3pluspercfor = sum(ipc3pluspercfor, na.rm=T),
@@ -884,7 +890,7 @@ fews_process <- function(as_of, format) {
     dplyr::select(-ipc3plusabsfor, -ipc3pluspercfor, -ipc4plusabsfor, -ipc4pluspercfor, 
                   -ipc3plusabsnow, -ipc3pluspercnow, -ipc4plusabsnow, -ipc4pluspercnow,
                   -admin_name, -pop) %>%
-    group_by(country) %>%
+    group_by(country) %>% #select(-year_month) %>% View()
     mutate(pctchangeipc3for = pctabs(totalipc3pluspercfor),
            pctchangeipc4for = pctperc(totalipc4pluspercfor),
            pctchangeipc3now = pctabs(totalipc3pluspercnow),
@@ -897,19 +903,23 @@ fews_process <- function(as_of, format) {
                                   TRUE ~ "Not high risk")) %>%
     dplyr::select(-fews_ipc, -fews_ha, -fews_proj_near, -fews_proj_near_ha, -fews_proj_med, 
                   -fews_proj_med_ha, -fews_ipc_adjusted, -fews_proj_med_adjusted, -countryproportion) %>%
-    filter(year_month == "2021_02")
+    group_by(country) %>%
+    slice_max(year_month) %>%
+    ungroup()
+    # filter(year_month == "2021_10")
   
   # Find max ipc for any region in the country
   fews_summary <- fewsg %>%
     group_by(country, year_month) %>%
     # Yields warning of infinite values, but we filter these out below; not a concern
     summarise(max_ipc = max(fews_proj_med_adjusted, na.rm = T)) %>%
-    mutate(
-      year_month = str_replace(year_month, "_", "-"),
-      year_month = as.Date(as.yearmon(year_month)),
-      year_month = as.Date(year_month)) %>%
+    # mutate(
+    #   year_month = str_replace(year_month, "_", "-"),
+    #   year_month = as.Date(as.yearmon(year_month)),
+    #   year_month = as.Date(year_month)) %>%
     filter(!is.infinite(max_ipc)) %>%
-    filter(year_month == max(year_month, na.rm = T))
+    # filter(year_month == max(year_month, na.rm = T))
+    group_by(country) %>% slice_max(year_month) %>% ungroup()
   
   # Join the two datasets
   fews_dataset <- left_join(fewssum, fews_summary, by = "country") %>%
@@ -923,6 +933,7 @@ fews_process <- function(as_of, format) {
         fshighrisk != "High risk" & max_ipc == 1 ~ 3,
         TRUE ~ NA_real_
       ),
+      fews_crm = paste(fshighrisk, "and max IPC of", max_ipc, "in", year_month.x),
       Country = countrycode(
         country,
         origin = "country.name",
@@ -1052,11 +1063,13 @@ fao_wfp_process <- function(as_of, format) {
 
 #---------------------------—Economist Intelligence Unit---------------------------------
 eiu_collect <- function() {
-  url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
-  destfile <- "RBTracker.xls"
-  curl::curl_download(url, destfile)
-  eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
-  file.remove("RBTracker.xls")
+  # url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
+  # destfile <- "RBTracker.xls"
+  # curl::curl_download(url, destfile)
+  # eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
+  # file.remove("RBTracker.xls")
+
+  read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
   
   archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"))
 }
@@ -1742,16 +1755,47 @@ iri_collect <- function() {
   # # library(RColorBrewer)
   # library(exactextractr)
 
-  continuity_new <- raster(paste0(github, "Indicator_dataset/iri/continuity/IRI_continuity.tiff"))
-  continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = Sys.Date())
-  if(!identical(values(continuity_new), values(continuity_old))) {
-    writeRaster(continuity_new, paste0("output/inputs-archive/iri/continuity/iri-continuity-", Sys.Date(), ".tiff"), format = "GTiff")
+  is_diff_month <- function(s) {
+      m <- str_replace(s, ".*20..-(..)-...tif.*", "\\1")
+      print(m)
+      return(m != format(Sys.Date(), "%m"))
   }
 
-  forecast_new <- raster(paste0(github, "Indicator_dataset/iri/forecast/IRI_forecast.tiff"))
-  forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = Sys.Date())
-  if(!identical(values(forecast_new), values(forecast_old))) {
-    writeRaster(forecast_new, paste0("output/inputs-archive/iri/forecast/iri-forecast-", Sys.Date(), ".tiff"), format = "GTiff")
+  expect_new <- 
+      read_most_recent("output/inputs-archive/iri/forecast", FUN = is_diff_month, as_of = Sys.Date()) &
+      as.numeric(format(Sys.Date(), "%d")) >= 15
+
+  if (expect_new) {
+
+      iri_urls <- list(c('forecast', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.FD/.NMME_Seasonal_Forecast/.Precipitation_ELR/Y/-85/85/RANGE/X/-180/180/RANGEEDGES/a:/.dominant/:a:/.target_date/:a/X/Y/fig-/colors/plotlabel/black/thin/coasts_gaz/thin/countries_gaz/-fig/(L)cvn/1.0/plotvalue/(F)cvn/last/plotvalue/(antialias)cvn/true/psdef/(framelabel)cvn/(%=[target_date]%20IRI%20Seasonal%20Precipitation%20Forecast%20issued%20%=[F])psdef/(dominant)cvn/-100.0/100.0/plotrange/(plotaxislength)cvn/590/psdef/(plotborderbottom)cvn/40/psdef/(plotbordertop)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'),
+                  c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
+
+      curl_iri <- function(x) {
+          iri_date <- paste0('?F=', format(Sys.Date(), "%b%%20%Y"))
+          dest_file <- x[[1]]
+          iri_curl <- paste0('curl -g -k -b ".access/iri-access.txt" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
+          system(iri_curl)
+          iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
+          return(T)
+      }
+
+      lapply(iri_urls, curl_iri)
+
+      continuity_new <- raster("tmp-continuity.tiff")
+      continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = Sys.Date())
+      if(!identical(values(continuity_new), values(continuity_old))) {
+          writeRaster(continuity_new, paste0("output/inputs-archive/iri/continuity/iri-continuity-", Sys.Date(), ".tiff"), format = "GTiff")
+      }
+
+      forecast_new <- raster("tmp-forecast.tiff")
+      forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = Sys.Date())
+      if(!identical(values(forecast_new), values(forecast_old))) {
+          writeRaster(forecast_new, paste0("output/inputs-archive/iri/forecast/iri-forecast-", Sys.Date(), ".tiff"), format = "GTiff")
+
+      }
+
+      file.remove("tmp-continuity.tiff")
+      file.remove("tmp-forecast.tiff")
   }
 }
 

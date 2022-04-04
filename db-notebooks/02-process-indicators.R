@@ -196,7 +196,8 @@ long <- pretty_col_names(all_dimensions) %>%
 
 # Make function: `write_dashboard_data(data)`? – or should it go after I've written the appended file,
 # and it takes a date argument? I think yes
-dashboard_data <- subset(long, `Data Level` != "Reliability" & `Data Level` != "Raw Indicator Data") # %>%
+# dashboard_data <- subset(long, `Data Level` != "Reliability" & `Data Level` != "Raw Indicator Data") # %>%
+dashboard_data <- subset(long, `Data Level` != "Reliability") # %>%
 #  mutate(Index = row_number()) # Don't include because indices should match between long and dashboard
 # write.csv(dashboard_data, paste0(output_directory, "/crm-dashboard-data.csv"))
 multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, archive_directory))

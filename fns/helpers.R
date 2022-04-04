@@ -109,3 +109,17 @@ curl_and_delete <- function(url, FUN, ...) {
 #   df <- group_by(df, group_by)
 # ...
 # }
+
+iso2name <- function(v) {
+  names <- countrycode(v, origin = "iso3c", destination = "country.name", custom_match = c(
+    "XKX" = "Kosovo",
+    "CIV" = "Cote d'Ivoire",
+    "COD" = "Congo, DR",
+    "COG" = "Congo, Republic"))
+  return(names)
+}
+
+name2iso <- function(v) {
+  names <- countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c("Kosovo" = "XKX"))
+  return(names)
+}

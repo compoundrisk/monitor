@@ -76,7 +76,7 @@ imf_collect()
 # NATURAL HAZARDS
 gdacs_collect()
 inform_risk_collect()
-# iri_collect()
+iri_collect()
 locust_collect()
 
 # COMMAND ----------

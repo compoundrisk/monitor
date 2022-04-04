@@ -10,7 +10,7 @@ Emerging,Conflict and Fragility,Political Fatalities,,ACLED,Monthly,,1,08,Fr_BRD
 Emerging,Conflict and Fragility,Forcibly Displaced People,,UNHCR,Annual,,1,09,Fr_Displaced_UNHCR_Normalised,Fr_z_idps,idps,FALSE,TRUE
 Emerging,Conflict and Fragility,Political Disturbance,,REIGN,Monthly,,1,10,Fr_REIGN_Normalised,Fr_pol_trigger,reign,FALSE,FALSE
 Emerging,Food Security,FAO WFP Warning,,FAO,Ad hoc,,1,11,F_fao_wfp_warning,F_fao_wfp_warning,fao_wfp,FALSE,TRUE
-Emerging,Food Security,FEWS NET Score,,FEWS NET,Quarterly,,1,12,F_fews_crm_norm,F_fshighrisk,fews_dataset,FALSE,TRUE
+Emerging,Food Security,FEWS NET Score,,FEWS NET,Quarterly,,1,12,F_fews_crm_norm,F_fews_crm,fews_dataset,FALSE,TRUE
 Emerging,Food Security,Food Price Inflation (Secondary Indicator),,WB,Monthly,,2,13,F_fpv_rating,F_Inflation,fpi,TRUE,TRUE
 Emerging,Health,"Covid Growth, Cases (biweekly)",,OWID,Daily,,1,14,H_Covidgrowth_casesnorm,H_Covidgrowth_biweeklycases,covidgrowth,FALSE,TRUE
 Emerging,Health,"Covid Growth, Deaths (biweekly)",,OWID,Daily,,1,15,H_Covidgrowth_deathsnorm,H_Covidgrowth_biweeklydeaths,covidgrowth,FALSE,TRUE
@@ -25,7 +25,7 @@ Emerging,Natural Hazard,GDACS Live Hazard Tracker,,Global Disaster Alert and Coo
 Emerging,Natural Hazard,Locust Threat Level,,FAO,Weekly,,1,24,NH_locust_norm,NH_locust_norm,locust_risk,FALSE,TRUE
 Emerging,Natural Hazard,INFORM Severity,,INFORM,Daily,,1,25,NH_acaps_risk,NH_acaps_crisis,acapssheet,FALSE,TRUE
 Emerging,Natural Hazard,Seasonal Forecast Index,,"WB, Columbia University","Monthly, on 15th",,1,26,NH_seasonal_risk_norm,NH_seasonal_proportion_anomalous,seasonl_risk,FALSE,TRUE
-Emerging,Socioeconomic Vulnerability,"Unemployment Rate, % Change",,IMF,Quarterly,,1,27,S_change_unemp_norm,"S_change_unemp_21, S_change_unemp_20",imf_un,FALSE,TRUE
+Emerging,Socioeconomic Vulnerability,"Unemployment Rate, % Change",,IMF,Quarterly,,1,27,S_change_unemp_norm,"S_change_unemp_22, S_change_unemp_21",imf_un,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,MFRI Household Level Risk,,WB,Quarterly,,1,28,S_Household.risks,S_Household.risks_raw,household_risk,FALSE,TRUE
 Emerging,Socioeconomic Vulnerability,Income Support,,INFORM,Annual,,1,29,S_income_support.Rating_crm_norm,S_income_support.Value,socio_forward,FALSE,FALSE
 Emerging,Socioeconomic Vulnerability,COVID Phone Survey Index,,WB,Monthly,,1,30,S_phone_average_index_norm,S_phone_average_index,phone_index_data,FALSE,FALSE
