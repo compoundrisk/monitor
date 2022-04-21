@@ -193,7 +193,7 @@ acaps_collect <- function() {
 
 ## Add in *_collect() function for ACAPS
 acaps_process <- function(as_of, format) {
-  acaps <- read_most_recent("output/inputs-archive/acaps", FUN = read_html, as_of = Sys.Date())
+  acaps <- read_most_recent("output/inputs-archive/acaps", FUN = read_html, as_of = as_of)
   
 # Scrape ACAPS website
 parent_nodes <- acaps %>% 
@@ -488,7 +488,7 @@ owid_covid_process <- function(as_of, format) {
         TRUE ~ NA_real_),
       meandeaths_current = meandeaths + growthdeath,
       meancase_current = meancase + growthcase) %>%
-    # dplyr::filter(previous2week != "twoweek") %>%
+    dplyr::filter(previous2week != "twoweek") %>%
     # dplyr::select(-previous2week, -growthcase, -growthdeath)
     dplyr::select(-growthcase, -growthdeath, -meandeaths, -meancase, -previous2week)
   
@@ -769,32 +769,6 @@ for (i in seq_len(nrow(over))) {
 #---------------------------------—Health ACAPS---------------------------------
 # acaps_health <- acapssheet[,c("Country", "H_health_acaps")]
 
-#----------------------------------—Create combined Health Sheet-------------------------------------------
-# collate_health <- function(format) {
-#   countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv"))
-#   countrylist <- countrylist %>%
-#     dplyr::select(-X)
-
-#   health_sheet <- left_join(countrylist, HIS, by = "Country") %>%
-#     left_join(., OXrollback, by = "Country") %>%
-#     left_join(., covidgrowth, by = "Country") %>%
-#     left_join(., covidcurrent, by = "Country") %>%
-#     left_join(., Ox_cov_resp, by = "Country") %>%
-#     # left_join(., cov_forcast_alt, by = "Country") %>% # not current
-#     left_join(., inform_covid_warning, by = "Country", "Countryname") %>%
-#     left_join(., who_dons, by = "Country") %>%
-#     left_join(., acaps_health, by = "Country") %>%
-#     arrange(Country)
-
-#   if (format == "csv" | format == "both") {
-#     write.csv(health_sheet, "Risk_sheets/healthsheet.csv")
-#   }
-#   if (format == "spark" | format == "both") {
-#     # Write Spark DataFrame
-#   }
-
-# }
-
 #### FOOD SECURITY
 # -------------------------------— Proteus Index -------------------------------
 proteus_collect <- function() {
@@ -890,7 +864,7 @@ fews_process <- function(as_of, format) {
     dplyr::select(-ipc3plusabsfor, -ipc3pluspercfor, -ipc4plusabsfor, -ipc4pluspercfor, 
                   -ipc3plusabsnow, -ipc3pluspercnow, -ipc4plusabsnow, -ipc4pluspercnow,
                   -admin_name, -pop) %>%
-    group_by(country) %>% #select(-year_month) %>% View()
+    group_by(country) %>%
     mutate(pctchangeipc3for = pctabs(totalipc3pluspercfor),
            pctchangeipc4for = pctperc(totalipc4pluspercfor),
            pctchangeipc3now = pctabs(totalipc3pluspercnow),
@@ -951,62 +925,8 @@ fews_process <- function(as_of, format) {
 }
 
 #------------------------—WBG FOOD PRICE MONITOR------------------------------------
-# # _Add in *_collect() function_
-# fpi_process_old <- function(as_of, format) {
-#   ag_ob_data <- read.csv(paste0(github, "Indicator_dataset/food-inflation.csv"))
-#   # FIX: Not yet recording historical data because data is structured messily, with 
-#   # dates as columns. Fortunately, dataset includes historical data
-#   ag_ob_data <- ag_ob_data %>%
-#     mutate_at(
-#       vars(contains("19"), contains("20"), contains("21")),
-#       ~ as.numeric(as.character(gsub(",", ".", .)))
-#     )
-  
-#   ag_ob <- ag_ob_data %>%
-#     filter(X == "Food Change Yoy") %>%
-#     dplyr::select(-Income.Level, -Color.Bin, -X) %>%
-#     mutate(Country = countrycode(Country,
-#                           origin = "country.name",
-#                           destination = "iso3c",
-#                           nomatch = NULL
-#     )) %>%
-#     group_by(Country) %>%
-#     summarise(
-#       Sep = Sep.20[which(!is.na(Sep.20))[1]],
-#       Oct = Oct.20[which(!is.na(Oct.20))[1]],
-#       Nov = Nov.20[which(!is.na(Nov.20))[1]],
-#       Dec = Dec.20[which(!is.na(Dec.20))[1]],
-#       Jan = Jan.21[which(!is.na(Jan.21))[1]],
-#       Feb = Feb.21[which(!is.na(Feb.21))[1]],
-#       Mar = Mar.20[which(!is.na(Mar.21))[1]],
-#       Apr = Apr.21[which(!is.na(Apr.21))[1]],
-#       May = May.21[which(!is.na(May.21))[1]],
-#       Jun = Jun.21[which(!is.na(Jun.21))[1]],
-#       Jul = Jul.21[which(!is.na(Jul.21))[1]],
-#       Aug = Aug.21[which(!is.na(Aug.21))[1]]
-#     ) %>%
-#     mutate(fpv = case_when(
-#       !is.na(Aug) ~ Aug,
-#       is.na(Aug) & !is.na(Jul) ~ Jul,
-#       is.na(Aug) & is.na(Jul) & !is.na(Jun) ~ Jun,
-#       TRUE ~ NA_real_
-#     ),
-#     fpv_rating = case_when(
-#       fpv <= 0.02 ~ 1,
-#       fpv > 0.02 & fpv <= 0.05 ~ 3,
-#       fpv > 0.05 & fpv <= 0.30 ~ 5,
-#       fpv >= 0.30 ~ 7,
-#       TRUE ~ NA_real_
-#     )) %>%
-#     rename_with(   
-#       .fn = ~ paste0("F_", .),
-#       .cols = colnames(.)[!colnames(.) %in% c("Country")]
-#     )
-#   return(ag_ob)
-# }
-
-# The above was for FPI data taken from a Tableau workbook. This is now taken
-# from https://microdatalib.worldbank.org/index.php/catalog/12421/
+# Taken from https://microdatalib.worldbank.org/index.php/catalog/12421/
+# Behind intranet
 fpi_collect <- function() {
   wb_fpi <- read_csv('restricted-data/food-price-inflation.csv') %>%
     subset(date > Sys.Date() - 365)
@@ -1069,7 +989,7 @@ eiu_collect <- function() {
   # eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
   # file.remove("RBTracker.xls")
 
-  read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
+  eiu <- read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
   
   archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"))
 }
@@ -1314,146 +1234,35 @@ mpo_process <- function(as_of, format) {
 
 ## MACROFIN / EFI Macro Financial Review Household Level Risk
 mfr_collect <- function() {
-  # If EFI Macro Financial Review is re-included above, we can reuse that. For clarity, moving data read here because it's not being used by macrosheet
   macrofin <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
   archiveInputs(macrofin, group_by = c("ISO3"))
 }
 
 macrofin_process <- function(as_of, format) {
   macrofin <- loadInputs("macrofin", group_by = c("ISO3"), as_of = as_of, format = format)
-  macrofin <- macrofin %>%
-    mutate_at(
-      vars(`Monetary.and.financial.conditions`, contains("risk")),
-      funs(case_when(
-        . == "Low" ~ 0,
-        . == "Medium" ~ 0.5,
-        . == "High" ~ 1,
-        TRUE ~ NA_real_
-      ))) %>%
-    # No longer use this, was from Macro Economic dimension
-    # mutate(macrofin_risk = dplyr::select(., `Spillover.risks.from.the.external.environment.outside.the.region`:`Household.risks`) %>% rowSums(na.rm=T)) %>%
-    rename_with(
-      .fn = ~ paste0("M_", .),
-      .cols = colnames(.)[!colnames(.) %in% c("Country.Name","ISO3")]
-    ) %>%
-    rename(Country = ISO3) %>%
-    dplyr::select(-`Country.Name`)
-  
-  # No longer use this, was from Macro Economic dimension
-  # macrofin <- normfuncpos(macrofin, 2.1, 0, "M_macrofin_risk")
   
   household_risk <- macrofin %>%
-    dplyr::select(Country, M_Household.risks) %>%
-    mutate(M_Household.risks_raw = M_Household.risks,
-           M_Household.risks = case_when(
-             M_Household.risks == 0.5 ~ 7,
-             M_Household.risks == 1 ~ 10,
-             TRUE ~ M_Household.risks
+    dplyr::select(Country = ISO3, Household.risks) %>%
+    mutate(Household.risks_raw = Household.risks,
+           Household.risks = case_when(
+             Household.risks == "Low" ~ 0,
+             Household.risks == "Medium" ~ 7,
+             Household.risks == "High" ~ 10,
+             TRUE ~ NA_real_
            )) %>%
-    rename(S_Household.risks = M_Household.risks,
-           S_Household.risks_raw = M_Household.risks_raw)
+    rename(S_Household.risks = Household.risks,
+           S_Household.risks_raw = Household.risks_raw)
   return(household_risk)
 }
 
 #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
 
 ## WB COVID PHONE SURVEYS
-#Incorporate phone.R
-#---------------------------------
 phone_collect <- function() {
   wb_phone <- read_csv(paste0(github, "Indicator_dataset/phone.csv"))[,-1]
   archiveInputs(wb_phone , group_by = c("Country"))
 }
 
-# phone_collect <- function() { 
-#   curl_download("https://datacatalogfiles.worldbank.org/ddh-published/0037769/DR0045662/data-coviddash-latest.xlsx",
-#                 "covid-phone.xlsx"
-#   )
-#   phone_data <- read_excel("covid-phone.xlsx",
-#                           sheet = "2. Harmonized Indicators",
-#                           col_types = c(
-#                             "numeric",
-#                             rep("text", 2),
-#                             "numeric",
-#                             rep("text", 2),
-#                             "numeric",
-#                             rep("text", 3),
-#                             rep("numeric", 3),
-#                             rep("text", 11),
-#                             rep("numeric", 4),
-#                             rep("text", 4),
-#                             "text",
-#                             "numeric",
-#                             "text")
-#                           )
-#   unlink("covid-phone.xlsx")
-
-#   # phone_data <- read_excel("/Users/bennotkin/Downloads/data-coviddash-latest-8.xlsx",
-#   #                          sheet = "2. Harmonized Indicators")
-    
-#   phone_compile <- phone_data %>%
-#     filter(level_data == "Gender=All, Urb_rur=National. sector=All") %>%
-#     mutate(survey_no = as.numeric(as.character(str_replace(wave, "WAVE", "")))) %>%
-#     group_by(code) %>%
-#     mutate(last_survey = max(survey_no, na.rm=T)) %>%
-#     ungroup() %>%
-#     filter(last_survey == survey_no) %>% 
-#     # Two values for "% able to access [staple food item] in the past 7 days when needed? - any staple food"
-#     # Drop "Able to access any staple food in the past 7 days - first 3 staple food items (% of HHs)"
-#     filter(indicator_display != "Able to access any staple food in the past 7 days - first 3 staple food items (% of HHs)")
-
-#   phone_unique <- phone_compile %>% 
-#     distinct(code, indicator_description, .keep_all = T)
-
-#   phone_wide <- phone_unique %>%
-#     dplyr::select(code, indicator_description, indicator_val) %>%
-#     pivot_wider(names_from = indicator_description, values_from = indicator_val  )
-
-#   phone_index <-phone_wide %>%
-#     dplyr::select(
-#       "code", #"% of respondents currently employed/working",  
-#       "% of respondents who have stopped working since COVID-19 outbreak", 
-#       "% able to access [staple food item] in the past 7 days when needed? - any staple food" ,
-#       # "% of HHs that saw reduced their remittances" , "% of HHs not able to perform normal farming activities (crop, livestock, fishing)" ,
-#       # "% of HHs able to pay rent for the next month",
-#       # "% of respondents who were not able to work as usual last week","Experienced decrease in wage income (% HHs with wage income as a source of livelihood in the past 12 months)",
-#       # "% of HHs that experienced change in total income - decrease"  ,
-#       "% of HHs used money saved for emergencies to cover basic living expenses" ,
-#       "% of respondents received government assistance when experiencing labor income/job loss" ,   
-#       # "% of HHs sold assets such as property during the pandemic in order to pay for basic living expenses" ,
-#       "In the last 30 days, you skipped a meal because there was not enough money or other resources for food?(%)"   ,
-#       # "In the last 30 days, your household worried about running out of food because of a lack of money or other resources?(%)" ,
-#     )
-
-#   # Normalised values
-#   #phone_index <- normfuncpos(phone_index, 70, 0, "% of respondents currently employed/working")
-#   phone_index <- normfuncpos(phone_index, 50, 0, "% of respondents who have stopped working since COVID-19 outbreak" )
-#   phone_index <- normfuncneg(phone_index, 80, 100, "% able to access [staple food item] in the past 7 days when needed? - any staple food" )
-#   #phone_index <- normfuncpos(phone_index, 70, 0, "% of HHs that saw reduced their remittances" )
-#   #phone_index <- normfuncpos(phone_index, 25, 0, "% of HHs not able to perform normal farming activities (crop, livestock, fishing)")
-#   #phone_index <- normfuncneg(phone_index, 50, 100, "% of HHs able to pay rent for the next month")
-#   #phone_index <- normfuncpos(phone_index, 25, 0,  "% of respondents who were not able to work as usual last week")
-#   #phone_index <- normfuncpos(phone_index, 50, 0,  "Experienced decrease in wage income (% HHs with wage income as a source of livelihood in the past 12 months)")
-#   #phone_index <- normfuncpos(phone_index, 50, 0,  "% of HHs that experienced change in total income - decrease")
-#   phone_index <- normfuncpos(phone_index, 25, 0,  "% of HHs used money saved for emergencies to cover basic living expenses" )
-#   phone_index <- normfuncneg(phone_index, 5, 80,  "% of respondents received government assistance when experiencing labor income/job loss")
-#   #phone_index <- normfuncpos(phone_index, 20, 0,  "% of HHs sold assets such as property during the pandemic in order to pay for basic living expenses"  )
-#   phone_index <- normfuncpos(phone_index, 50, 0,  "In the last 30 days, you skipped a meal because there was not enough money or other resources for food?(%)"  )
-#   #phone_index <- normfuncpos(phone_index, 50, 0,  "In the last 30 days, your household worried about running out of food because of a lack of money or other resources?(%)")
-            
-#   # Calculate index
-#   phone_index_data <- phone_index %>%
-#     mutate(
-#       phone_average_index = dplyr::select(., contains("_norm")) %>% rowMeans(na.rm=T)  ) %>%
-#     rename(Country = code) %>%
-#     rename_with(
-#       .fn = ~ paste0("S_", .), 
-#       .cols = -contains("Country")
-#     )
-
-#   wb_phone <- normfuncpos(phone_index_data, 7, 0, "S_phone_average_index")
-#   archiveInputs(wb_phone, group_by = c("Country"))
-# }
 phone_process <- function(as_of, format) {
   wb_phone  <- loadInputs("wb_phone", group_by = c("Country"), as_of = as_of, format = format)
 }
@@ -1727,25 +1536,6 @@ inform_nathaz_process <- function(as_of, format) {
 }
 
 #----------------------------------—IRI Seasonal Forecast ------------------------------------------
-# iri_collect_old <- function() {
-#   # Load from Github
-#   seasonl_risk <- suppressWarnings(read_csv(paste0(github, "Indicator_dataset/seasonal_risk_list"), col_types = cols()))
-#   seasonl_risk <- seasonl_risk %>%
-#     dplyr::select(-X1) %>%
-#     rename(
-#       Country = "ISO3",
-#       NH_seasonal_risk_norm = risklevel
-#     )
-  
-#   iri_forecast <- seasonl_risk #Go through and reduce renamings
-#   archiveInputs(iri_forecast, group_by = c("Country"))
-# }
-
-# iri_process_old <- function(as_of, format) {
-#   iri_forecast <- loadInputs("iri_forecast", group_by = c("Country"), as_of = as_of, format = format)
-#   return(iri_forecast)
-# }
-
 iri_collect <- function() {
 
   # library(raster)
@@ -1757,7 +1547,6 @@ iri_collect <- function() {
 
   is_diff_month <- function(s) {
       m <- str_replace(s, ".*20..-(..)-...tif.*", "\\1")
-      print(m)
       return(m != format(Sys.Date(), "%m"))
   }
 
@@ -1781,21 +1570,18 @@ iri_collect <- function() {
 
       lapply(iri_urls, curl_iri)
 
+      # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
       continuity_new <- raster("tmp-continuity.tiff")
       continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = Sys.Date())
       if(!identical(values(continuity_new), values(continuity_old))) {
-          writeRaster(continuity_new, paste0("output/inputs-archive/iri/continuity/iri-continuity-", Sys.Date(), ".tiff"), format = "GTiff")
+        file.rename("tmp-continuity.tiff", paste0("output/inputs-archive/iri/continuity/iri-continuity-", Sys.Date(), ".tiff"))
       }
-
+      
       forecast_new <- raster("tmp-forecast.tiff")
       forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = Sys.Date())
       if(!identical(values(forecast_new), values(forecast_old))) {
-          writeRaster(forecast_new, paste0("output/inputs-archive/iri/forecast/iri-forecast-", Sys.Date(), ".tiff"), format = "GTiff")
-
+        file.rename("tmp-forecast.tiff", paste0("output/inputs-archive/iri/forecast/iri-forecast-", Sys.Date(), ".tiff"))
       }
-
-      file.remove("tmp-continuity.tiff")
-      file.remove("tmp-forecast.tiff")
   }
 }
 
@@ -1844,9 +1630,9 @@ iri_process <- function(
     # Continuity wet/dry condition data
     continuity = crop(raster(continuity_path), extent(-180.5, 180.5, -65.5, 75.5)),
     # Population density (gwp 2020 resampled to same grid as forecast)
-    pop_density = raster(paste0(github, "Indicator_dataset/iri/population_density_1deg.tiff")),
+    pop_density = raster("output/inputs-archive/iri/pop-density.tiff"),
     # Proportino crop+pasture, resampled to same grid as forecast
-    agri_density = raster(paste0(github, "Indicator_dataset/iri/crop_pasture_density_1deg.tiff"))))
+    agri_density = raster("output/inputs-archive/iri/crop-pasture-density.tiff")))
 
   countries <- st_read("output/inputs-archive/world-borders/TM_WORLD_BORDERS-0.3.shp") %>%
     dplyr::select(-fips, -iso2, -un, -area, -pop2005, -lon, -lat, -Pixelcount)

@@ -56,7 +56,7 @@ merge_indicators <- function(...) {
   #   return(sheet)
   # })
   sheet <- arrange(sheet, Country) %>%
-    distinct(Country, .keep_all = TRUE) %>%
+    distinct(Country, .keep_all = TRUE) %>% # This is a bit worrisome as a way to hide errors
     drop_na(Country)
   if ('Countryname' %in% names(sheet)) {
     sheet <- select(sheet, -Countryname)
@@ -84,7 +84,7 @@ assign_ternary_labels <- function(x, high, medium, low) {
   return(label)
 }
 
-aggregate_dimension <- function(dim, ..., prefix = "") {
+aggregate_dimension <- function(dim, ..., prefix = "", overall_method = "geometric") {
   
   if(!dim %in% indicators_list$Dimension) {
     stop(cat("Dimension name", dim, "not in indicators-list.csv"))
@@ -186,7 +186,8 @@ aggregate_dimension <- function(dim, ..., prefix = "") {
     # Calculate overall dimension value by taking geometric mean of underlying and emerging
     mutate(
       overall = case_when(
-        !is.na(underlying) ~ sqrt(underlying * emerging),
+        overall_method == "emerging" ~ emerging,
+        overall_method == "geometric" & !is.na(underlying) ~ sqrt(underlying * emerging),
         TRUE ~ emerging),
       overall_labels = assign_ternary_labels(overall, high = 7, medium = 5, low = 0)  %>% as.factor()
     ) %>%
@@ -1637,3 +1638,114 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
   # write_csv(comb, "output/scheduled/crm-dashboard-data-with-crisis.csv")
   return(comb)
 }
+
+quick_scan <- function(countries, group_name, file_name, outlooks, pdf = F) {
+
+    data <- read.csv('production/crm-dashboard-prod.csv') #%>%
+        # subset(Run_ID == max(Run_ID))
+
+    data <- subset(data, Country %in% countries)
+    
+    file_md <- paste0(file_name, ".md")
+
+    cat("---\ngeometry: margin=2cm\noutput: pdf_document\n---\n\n", file = file_md)
+
+    lapply(outlooks, function(outlook) {
+    # for(outlook in c("Underlying", "Emerging", "Overall")) {
+
+    outlook_data <- subset(data, Outlook == outlook)
+
+    dimensions <- c("Food Security", "Conflict and Fragility", "Health", "Macro Fiscal", "Natural Hazard", "Socioeconomic Vulnerability")
+
+    indicators <- subset(outlook_data, Data.Level == "Indicator" | Data.Level == "Raw Indicator Data") %>% 
+        select(Record_ID, Country, Data.Level, Dimension, Key, Value, Value_Char) %>% 
+        mutate(Ind_ID = as.numeric(str_sub(Record_ID, -2))) %>%
+        arrange(Ind_ID)
+
+    raw_indicators <- subset(indicators, Data.Level == "Raw Indicator Data") %>%
+                select(Record_ID, Ind_ID, Country, Key, Value_Char) %>% group_by(Country, Ind_ID) %>%
+                summarize(
+                    # Raw_Key = paste(Key, collapse = "; "),
+                    Raw = paste(Value_Char, collapse = "; "))
+    norm_indicators <- subset(indicators, Data.Level == "Indicator") %>%
+        select(Record_ID, Ind_ID, Country, Dimension, Key, Value)
+
+    wide_indicators <- full_join(norm_indicators, raw_indicators, by = c("Country", "Ind_ID"))
+
+    # For each country, for each high dimension, list the high indicators, and the raw indicator value underneath
+
+    # sapply(countries_countries, function(country) 
+    cat(paste0("# ", outlook, " Flags for ", group_name, "\n",Sys.Date(),"\n\nTables show high and medium value indicators for each country's high and medium risk dimensions\n\n"), append = T, file = file_md)
+
+    lapply(countries, function(country) {
+    # for (country in countries) {
+        c_data <- subset(outlook_data, Country == country)
+        
+        outlook_count <- c_data$Value[which(c_data$Dimension == "Flag")]
+        cat(paste("##",
+            countrycode(country, origin = "iso3c", destination = "country.name"),
+            "has",
+            outlook_count,
+            paste0("flag", ifelse(outlook_count == 1, "", "s"))), file = file_md, append = T, sep = "\n")
+
+        dims <- subset(c_data, Dimension %in% dimensions & 
+            Data.Level == "Dimension Value" & Value >= 7) %>%
+            arrange(desc(Value)) 
+        
+        dims_high <- dims %>% subset(Value == 10) %>% select(Dimension) %>% pull()
+        dims_med <- dims %>% subset(Value >= 7 & Value < 10) %>% select(Dimension) %>% pull()
+            
+        dims <- dims$Dimension
+
+        if (length(dims_high) > 0) {
+            cat(paste("-", paste(dims_high, collapse = ", "), ifelse(length(dims_high) == 1, "is", "are"), "high risk."), file = file_md, append = T, sep = "\n")
+        }
+        if (length(dims_med) > 0) {
+            cat(paste("-", paste(dims_med, collapse = ", "), ifelse(length(dims_med) == 1, "is", "are"), "medium risk."), file = file_md, append = T, sep = "\n")
+            }
+        cat("\n", file = file_md, sep = "\n", append = T)
+
+            if (length(dims > 0)) {
+        high_indicators <- lapply(dims, function(dim) {
+            high_inds <- subset(wide_indicators, Country == country & Dimension == dim & Value >= 7)
+            return(high_inds)
+        }) %>%
+            bind_rows() %>% 
+            mutate(Risk = case_when(Value >= 10 ~ "High", Value >= 7 ~ "Medium", TRUE ~ NA_character_), .after = Value) %>%
+            mutate(Risk = paste0(Risk, " (", round(Value, 1), ")")) %>%
+            select(-Ind_ID, -Record_ID, -Country, -Value)
+        # }
+
+        cat(knitr::kable(high_indicators, format = "markdown"), file = file_md, append = T, sep = "\n")
+            }
+        cat("\n--------\n", file = file_md, sep = "\n", append = T)
+
+    })
+ })
+
+    if (pdf) {
+        file_pdf <- paste0(file_name, ".pdf")
+        bash <- paste("pandoc -s", file_md, "-o", file_pdf)
+        system(bash)
+    }
+}
+
+zip_into_months <- function(dir_path) {
+  months <- list.files(dir_path) %>%
+    str_extract("202\\d-\\d\\d") %>%
+    unique() %>%
+    str_subset(substr(Sys.Date(), 0, 7), negate = T)
+  
+  lapply(months, function(m) {
+    wd <- getwd()
+    setwd(dir_path)
+    files <- list.files() %>%
+      str_subset(m) %>%
+      str_subset(".zip", negate = T)
+    system(paste0("zip -b /tmp -rX9 ", m, ".zip ", paste(files, collapse = " ")))
+    # unlink(files, recursive = T)
+    setwd(wd)
+  })
+}
+# To unzip, run
+# unzip(<ZIPFILE PATH>, exdir = <DESTINATION PATH>

@@ -107,8 +107,7 @@ natural_hazards_sheet <- aggregate_dimension(
   "Natural Hazard",
   gdacs_process(as_of = as_of, format = format),
   inform_nathaz_process(as_of = as_of, format = format),
-  #   iri_process(drop_geometry = T, as_of = as_of, format = format), # Rename iri_forecast)
-  iri_process_temp(),
+  iri_process(drop_geometry = T, as_of = as_of, format = format), # Rename iri_forecast)
   locust_process(as_of = as_of, format = format),
   acaps_category_process(as_of, format, category = "natural", prefix = "NH_"))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
@@ -122,37 +121,14 @@ fcs <- fcs_process(as_of = as_of, format = "csv")
 
 fragility_sheet <- aggregate_dimension(
   "Conflict and Fragility",
+  # Unlike other dimensions. conflict only uses emerging outlook to calculate overall
+  overall_method = "emerging", 
   fcs,
   un_idp_process(as_of = as_of, format = format),
   acled_hdx_process(as_of = as_of, format = format),
   # reign_process(as_of = as_of, format = format)),
   pseudo_reign_process(as_of = as_of, format = format))
-# fragility_sheet <- fragility_sheet %>%
-#   rename_with(
-#     .fn = ~ paste0("Fr_", .),
-#     .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname")]
-#   )
 multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_path))
-
-# COMMAND ----------
-
-# TOMORROW: Does it actually make more sense to join all the indicators at once, and then just
-# lapply the selecting aggregating files? It might be better to keep them separate because that
-# leaves more room for nuance – bundling everything up too tight means I can't treat Fragility
-# different than food, e.g..
-
-# write_sheet <- function(dim, sheet, format)   {
-#   if (format == "csv" | format == "both") {
-#     write.csv(sheet, paste0("output/risk-sheets/", dim, "-sheet.csv"))
-#   }
-#   if (format == "tbl" | format == "both") {
-#     # Write Spark DataFrame
-#   }
-#   if (format == "return") {
-#     return(sheet)
-#   }
-# }
-# write_sheet("fragility", fragility_sheet, format = format)
 
 # COMMAND ----------
 
@@ -162,7 +138,6 @@ multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_
 # COMMAND ----------
 
 # Combine all dimension sheets (should this be a named function? wouldn't be much shorter)
-# reduce(., full_join, ...) is the equivalent of multiple sequential full_joins
 all_dimensions <- list(
   health_sheet,
   food_sheet,
@@ -170,6 +145,7 @@ all_dimensions <- list(
   socio_sheet,
   natural_hazards_sheet,
   fragility_sheet) %>%
+  # NB: reduce(., full_join, ...) is the equivalent of multiple sequential full_joins
   reduce(full_join, by = "Country") %>%
   count_flags(outlook = "emerging", high = 10, medium = 7) %>%
   count_flags(outlook = "underlying", high = 10, medium = 7) %>%
