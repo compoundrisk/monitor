@@ -33,22 +33,6 @@ normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
   return(df)
 }
 
-# FUNCTION TO READ MOST RECENT FILE IN A FOLDER
-# Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
-# Also could mean saving all live-downloaded data somewhere
-# I need to save the filename so I can use the date in it as the access_date
-read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d") {
-    file_names <- list.files(directory_path)
-    # Reads the date portion of a filename in the format of acaps-2021-12-13
-    name_dates <- sub(".*(20[[:digit:]-]+)\\..*", "\\1", file_names) %>%
-        as.Date(format = date_format)
-    selected_date <- subset(name_dates, name_dates <= as_of) %>% max()
-    most_recent_file <- file_names[which(name_dates == selected_date)]
-
-    data <- FUN(paste_path(directory_path, most_recent_file), ...)
-    return(data)
-}
-
 ## FUNCTION TO ARCHIVE AND LOAD ALL INPUT DATA `archiveInputs()` 
 # _Edit this to use Spark_
 # - Should I store input archives as a separate CSV file for each date? E.g. `who_dons_20211001` which includes all of the *new* data from October 10?
@@ -85,7 +69,11 @@ archiveInputs <- function(data,
       group_by(across(all_of(group_by))) %>%
       slice_max(order_by = access_date)
   }
-  
+
+  # Round all numeric columns to an excessive 10 places so that rows aren't counted as different
+  # just because of digit cropping (such as with MPO)
+  data <- mutate(data, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 10)))
+
   # Add access_date for new data
   data <- mutate(data, access_date = today)
   
@@ -983,13 +971,13 @@ fao_wfp_process <- function(as_of, format) {
 
 #---------------------------—Economist Intelligence Unit---------------------------------
 eiu_collect <- function() {
-  # url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
-  # destfile <- "RBTracker.xls"
-  # curl::curl_download(url, destfile)
-  # eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
-  # file.remove("RBTracker.xls")
+  url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
+  destfile <- "RBTracker.xls"
+  curl::curl_download(url, destfile)
+  eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
+  file.remove("RBTracker.xls")
 
-  eiu <- read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
+  # eiu <- read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
   
   archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"))
 }
@@ -1141,13 +1129,15 @@ income_support_process <- function(as_of, format) {
 
 #--------------------------—MPO: Poverty projections----------------------------------------------------
 mpo_collect <- function() {
+  most_recent <- read_most_recent("restricted-data/mpo", FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
+  file_date <- most_recent[[2]]
   # mpo <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/mpo.csv")))
   # archiveInputs(mpo, group_by = c("Country"))
 
 
   # FIX: Ideally most of this would be in the mpo_process() function, rather than the collect
   # function, but doing so would conflict with the current mpo archive structure
-  mpo <- read_xlsx("restricted-data/mpo_global_AM21.xlsx")
+  mpo <- most_recent[[1]]
 
   # Add population
   pop <- wpp.by.year(wpp.indicator("tpop"), 2020)
@@ -1211,7 +1201,7 @@ mpo_collect <- function() {
 
   # write_csv(mpo_data, "Indicator_dataset/mpo.csv")
   mpo <- mpo_data
-  archiveInputs(mpo, group_by = c("Country"))
+  archiveInputs(mpo, group_by = c("Country"), today = file_date)
 }
 
 mpo_process <- function(as_of, format) {

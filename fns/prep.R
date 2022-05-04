@@ -1,8 +1,14 @@
 packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "ggplot2", 
               "jsonlite","lubridate", "maps", "matrixStats", "purrr", "raster",
-              "readr", "readxl", "remotes", "rgdal", "rmarkdown", "rvest", "sf",
-              "sjmisc", "sparklyr", "stats", "stringr", "tidyr", "xml2",
+              "readr", "readxl", "remotes", "rvest", "sf",
+              "sjmisc", "stats", "stringr", "tidyr", "xml2",
               "wppExplorer", "zoo")
+              
+# packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "ggplot2", 
+#               "jsonlite","lubridate", "maps", "matrixStats", "purrr", "raster",
+#               "readr", "readxl", "remotes", "rgdal", "rmarkdown", "rvest", "sf",
+#               "sjmisc", "sparklyr", "stats", "stringr", "tidyr", "xml2",
+#               "wppExplorer", "zoo")
 
 .libPaths(c("lib", .libPaths()))
 
@@ -25,7 +31,7 @@ github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 
 countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv")) %>%
   dplyr::select(-X) %>%
-  arrange(Country)
+  dplyr::arrange(Country)
 
 indicators_list <- as.data.frame(read.csv("indicators-list.csv")) %>%
   subset(active == T)

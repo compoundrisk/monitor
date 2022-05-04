@@ -123,3 +123,23 @@ name2iso <- function(v) {
   names <- countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c("Kosovo" = "XKX"))
   return(names)
 }
+
+# FUNCTION TO READ MOST RECENT FILE IN A FOLDER
+# Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
+# Also could mean saving all live-downloaded data somewhere
+# I need to save the filename so I can use the date in it as the access_date
+read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F) {
+    file_names <- list.files(directory_path)
+    # Reads the date portion of a filename in the format of acaps-2021-12-13
+    name_dates <- sub(".*(20[[:digit:]-]+)\\..*", "\\1", file_names) %>%
+        as.Date(format = date_format)
+    selected_date <- subset(name_dates, name_dates <= as_of) %>% max()
+    most_recent_file <- file_names[which(name_dates == selected_date)]
+
+    data <- FUN(paste_path(directory_path, most_recent_file), ...)
+
+    if (return_date) {
+      return(list(data = data, date = selected_date))
+    }
+    return(data)
+}

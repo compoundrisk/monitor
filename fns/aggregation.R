@@ -1639,7 +1639,7 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
   return(comb)
 }
 
-quick_scan <- function(countries, group_name, file_name, outlooks, pdf = F) {
+quick_scan <- function(countries, group_name, file_name, outlooks = c("Underlying", "Emerging", "Overall"), pdf = F) {
 
     data <- read.csv('production/crm-dashboard-prod.csv') #%>%
         # subset(Run_ID == max(Run_ID))
@@ -1658,17 +1658,17 @@ quick_scan <- function(countries, group_name, file_name, outlooks, pdf = F) {
     dimensions <- c("Food Security", "Conflict and Fragility", "Health", "Macro Fiscal", "Natural Hazard", "Socioeconomic Vulnerability")
 
     indicators <- subset(outlook_data, Data.Level == "Indicator" | Data.Level == "Raw Indicator Data") %>% 
-        select(Record_ID, Country, Data.Level, Dimension, Key, Value, Value_Char) %>% 
-        mutate(Ind_ID = as.numeric(str_sub(Record_ID, -2))) %>%
+        select(Index, Country, Data.Level, Dimension, Key, Value, Value_Char) %>% 
+        mutate(Ind_ID = as.numeric(str_sub(Index, -2))) %>%
         arrange(Ind_ID)
 
     raw_indicators <- subset(indicators, Data.Level == "Raw Indicator Data") %>%
-                select(Record_ID, Ind_ID, Country, Key, Value_Char) %>% group_by(Country, Ind_ID) %>%
+                select(Index, Ind_ID, Country, Key, Value_Char) %>% group_by(Country, Ind_ID) %>%
                 summarize(
                     # Raw_Key = paste(Key, collapse = "; "),
                     Raw = paste(Value_Char, collapse = "; "))
     norm_indicators <- subset(indicators, Data.Level == "Indicator") %>%
-        select(Record_ID, Ind_ID, Country, Dimension, Key, Value)
+        select(Index, Ind_ID, Country, Dimension, Key, Value)
 
     wide_indicators <- full_join(norm_indicators, raw_indicators, by = c("Country", "Ind_ID"))
 
@@ -1713,7 +1713,7 @@ quick_scan <- function(countries, group_name, file_name, outlooks, pdf = F) {
             bind_rows() %>% 
             mutate(Risk = case_when(Value >= 10 ~ "High", Value >= 7 ~ "Medium", TRUE ~ NA_character_), .after = Value) %>%
             mutate(Risk = paste0(Risk, " (", round(Value, 1), ")")) %>%
-            select(-Ind_ID, -Record_ID, -Country, -Value)
+            select(-Ind_ID, -Index, -Country, -Value)
         # }
 
         cat(knitr::kable(high_indicators, format = "markdown"), file = file_md, append = T, sep = "\n")
@@ -1735,7 +1735,7 @@ zip_into_months <- function(dir_path) {
     str_extract("202\\d-\\d\\d") %>%
     unique() %>%
     str_subset(substr(Sys.Date(), 0, 7), negate = T)
-  
+
   lapply(months, function(m) {
     wd <- getwd()
     setwd(dir_path)
@@ -1743,9 +1743,12 @@ zip_into_months <- function(dir_path) {
       str_subset(m) %>%
       str_subset(".zip", negate = T)
     system(paste0("zip -b /tmp -rX9 ", m, ".zip ", paste(files, collapse = " ")))
-    # unlink(files, recursive = T)
+    if (file.exists(paste0(m, ".zip"))) {
+      unlink(files, recursive = T)
+    }
     setwd(wd)
   })
 }
+
 # To unzip, run
 # unzip(<ZIPFILE PATH>, exdir = <DESTINATION PATH>
