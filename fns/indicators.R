@@ -1526,7 +1526,7 @@ inform_nathaz_process <- function(as_of, format) {
 }
 
 #----------------------------------—IRI Seasonal Forecast ------------------------------------------
-iri_collect <- function() {
+iri_collect <- function(as_of = Sys.Date()) {
 
   # library(raster)
   # library(rgdal)
@@ -1536,13 +1536,12 @@ iri_collect <- function() {
   # library(exactextractr)
 
   is_diff_month <- function(s) {
-      m <- str_replace(s, ".*20..-(..)-...tif.*", "\\1")
-      return(m != format(Sys.Date(), "%m"))
+        m <- str_replace(s, ".*20..-(..)-...tif.*", "\\1")
+        return(m != format(Sys.Date(), "%m"))
   }
-
   expect_new <- 
-      read_most_recent("output/inputs-archive/iri/forecast", FUN = is_diff_month, as_of = Sys.Date()) &
-      as.numeric(format(Sys.Date(), "%d")) >= 15
+      read_most_recent("output/inputs-archive/iri/forecast", FUN = is_diff_month, as_of = as_of) &
+      as.numeric(format(as_of, "%d")) >= 15
 
   if (expect_new) {
 
@@ -1550,7 +1549,7 @@ iri_collect <- function() {
                   c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
 
       curl_iri <- function(x) {
-          iri_date <- paste0('?F=', format(Sys.Date(), "%b%%20%Y"))
+          iri_date <- paste0('?F=', format(as_of, "%b%%20%Y"))
           dest_file <- x[[1]]
           iri_curl <- paste0('curl -g -k -b ".access/iri-access.txt" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
           system(iri_curl)
@@ -1562,15 +1561,15 @@ iri_collect <- function() {
 
       # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
       continuity_new <- raster("tmp-continuity.tiff")
-      continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = Sys.Date())
+      continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = as_of)
       if(!identical(values(continuity_new), values(continuity_old))) {
-        file.rename("tmp-continuity.tiff", paste0("output/inputs-archive/iri/continuity/iri-continuity-", Sys.Date(), ".tiff"))
+        file.rename("tmp-continuity.tiff", paste0("output/inputs-archive/iri/continuity/iri-continuity-", as_of, ".tiff"))
       }
       
       forecast_new <- raster("tmp-forecast.tiff")
-      forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = Sys.Date())
+      forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = as_of)
       if(!identical(values(forecast_new), values(forecast_old))) {
-        file.rename("tmp-forecast.tiff", paste0("output/inputs-archive/iri/forecast/iri-forecast-", Sys.Date(), ".tiff"))
+        file.rename("tmp-forecast.tiff", paste0("output/inputs-archive/iri/forecast/iri-forecast-", as_of, ".tiff"))
       }
   }
 }
@@ -2114,6 +2113,17 @@ reign_process <- function(as_of, format) {
 gic_collect <- function() {
   gic <- read_tsv("http://www.uky.edu/~clthyn2/coup_data/powell_thyne_coups_final.txt") %>%
     subset(year > 2020)
+
+  # The May 2022 update started including `ccode_gw` and `ccode_polity` columns; the latter
+  # seems to relate to "correlates of war"
+  # https://correlatesofwar.org/data-sets/downloadable-files/cow-country-codes/cow-country-codes/view
+  # Run the below one time on Databricks
+  # prev <- suppressMessages(read_csv("output/inputs-archive/gic.csv")) %>%
+  #   mutate(access_date = as.Date(access_date)) %>%
+  #   mutate(ccode_gw = NA_real_, ccode_polity = NA_real_, .after = country)
+  # write.csv(prev, "output/inputs-archive/gic.csv", row.names = F)
+
+
 
   archiveInputs(gic, group_by = NULL)
 }
