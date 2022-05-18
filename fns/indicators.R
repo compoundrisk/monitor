@@ -916,10 +916,33 @@ fews_process <- function(as_of, format) {
 # Taken from https://microdatalib.worldbank.org/index.php/catalog/12421/
 # Behind intranet
 fpi_collect <- function() {
-  wb_fpi <- read_csv('restricted-data/food-price-inflation.csv') %>%
+  most_recent <- read_most_recent("restricted-data/food-price-inflation", FUN = read.csv, as_of = Sys.Date(), return_date = T)
+  file_date <- most_recent[[2]]
+
+  wb_fpi <- most_recent[[1]] %>%
     subset(date > Sys.Date() - 365)
-  archiveInputs(wb_fpi, group_by = c("ISO3", "date"))
+  archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = file_date)
 }
+
+# dates <- list.files("restricted-data/food-price-inflation") %>%
+#   str_extract("2022.*[^.csv]") %>%
+#   as.Date()
+
+# as_of <- dates[[3]]
+# path = "output/inputs-archive/wb_fpi.csv"
+# data = wb_fpi
+
+# dates[-c(1:3)]
+
+# lapply(dates[-c(1:2)], function (as_of) {
+#   most_recent <- read_most_recent("restricted-data/food-price-inflation", FUN = read.csv, as_of = as_of, return_date = T)
+#   file_date <- most_recent[[2]]
+
+#   wb_fpi <- most_recent[[1]] %>%
+#     mutate(date = as.Date(date)) %>%
+#     subset(date > Sys.Date() - 365)
+#   archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = file_date)
+# })
 
 fpi_process <- function (as_of, format) {
   fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = as_of, format = format) %>%
@@ -1689,9 +1712,15 @@ iri_process <- function(
     proportion_anomalous = anomalous/pixels,
     wet_flag = case_when(
         proportion_wet >= proportion_threshold ~ T,
+        is.na(proportion_wet) ~ NA,
         TRUE ~ F),
     dry_flag = case_when(
         proportion_dry >= proportion_threshold ~ T,
+        is.na(proportion_dry) ~ NA,
+        TRUE ~ F),
+    anomalous_flag = case_when(
+        proportion_anomalous >= proportion_threshold ~ T,
+        is.na(proportion_anomalous) ~ NA,        
         TRUE ~ F),
     flag = wet_flag | dry_flag) %>% 
     rename(Country = iso3)
@@ -1703,7 +1732,8 @@ if(full_output) {
   output <- countries %>%
     mutate(
       NH_seasonal_risk_norm = case_when(
-        flag ~ 10,
+        anomalous_flag ~ 10,
+        is.na(proportion_anomalous) ~ NA_real_,
         T ~ 0),
       NH_seasonal_proportion_anomalous = proportion_anomalous) %>%
     dplyr::select(Country, contains("NH"))

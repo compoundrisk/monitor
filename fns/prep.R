@@ -44,6 +44,16 @@ left_join(codes, region_codes, by = c("Region" = "GroupName"))
 }
 regions <- select(country_groups, iso = Code, region = Region, region_code)
 
+regions$region_code <- regions$region_code %>%
+  str_replace_all(c(
+    "LCN" = "LAC",
+    "SAS" = "SAR",
+    "SSF" = "SSA",
+    "MEA" = "MNA",
+    "EAS" = "EAP",
+    "NAC" = "NAR",
+    "ECS" = "ECA"))
+
 indicators_list <- as.data.frame(read.csv("indicators-list.csv")) %>%
   subset(active == T)
 

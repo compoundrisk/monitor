@@ -477,7 +477,7 @@ add_secondary_columns <- function(data) {
       `Data Level` == "Dimension Value" ~ as.character(floor(Value)),
       # TRUE ~ as.character(floor(Value))
       TRUE ~ as.character(round(Value, 1))),
-    Date = Sys.Date()) # Should the date column so system date, or should it show the access date (this would be a good bit harder to do)
+    Date = Sys.Date()) # Should the date column show system date, or should it show the access date (this would be a good bit harder to do)
   return(output)
 }
 round_value_col <- function(data) {
@@ -552,10 +552,10 @@ create_id <- function(data) {
   return(data)
 }
 
-append_if_exists <- function(data, path) {
+append_if_exists <- function(data, path, col_types = NULL) {
   if(file.exists(path)) {
     already_exists <- T
-    existing <- read_csv(path)
+    existing <- read_csv(path, col_types = col_types)
     data <- mutate(data, Run_ID = max(existing$Run_ID) + 1, .before = Index)
     prior_run <- subset(existing, Run_ID = max(Run_ID)) %>% factorize_columns()
     # TODO Check also if data is fresh. If all duplicates, don't append

@@ -194,7 +194,7 @@ write.csv(dashboard_crisis, "production/crm-dashboard-prod.csv")
 # to just use the combined output file, and  compare against the previous date 
 # (the way `countFlagChanges()` does? can I just abstract `flagChanges()`?)
 
-all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"))
+all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"), col_types = 'iiiccccccdccccD')
 # Task: what if I run the monitor multiple times in a day? 
 write_csv(all_runs, paste_path(output_directory, "crm-all-runs.csv"))
 # multi_write.csv(all_runs, "crm-all-runs.csv", c(output_directory, archive_directory))

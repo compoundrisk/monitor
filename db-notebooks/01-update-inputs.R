@@ -67,7 +67,7 @@ eiu_collect()
 # COMMAND ----------
 
 # SOCIO-ECONOMIC
-# mpo_collect()
+mpo_collect()
 mfr_collect()
 imf_collect()
 

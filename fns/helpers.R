@@ -143,3 +143,29 @@ read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_fo
     }
     return(data)
 }
+
+count_extremes <- function(v) {
+# how many peaks and valleys are in vector?
+# the last value in a plateau is counted as the extreme
+# the ends are not counted as extremes (a monotonic line has no extremes)
+    d <- ifelse(v - lag(v, 1) > 0, 1,
+        ifelse(v - lag(v, 1) < 0, -1,
+        ifelse(v - lag(v, 1) == 0, 0, NA)))
+    while(any(d == 0, na.rm = T)) {
+        d <- ifelse(d != 0, d, lag(d))
+    }
+
+    extremes <- d + lead(d)
+    sum(extremes == 0, na.rm = T)
+}
+
+first_ordered_instance <- function(v, na.eq = T) {
+    if (na.eq){
+        l <- !(v == lag(v) | (is.na(v) & is.na(lag(v))))
+        l[is.na(l)] <- T
+    } else {
+        l <- v != lag(v)
+        l[!is.na(v) & is.na(l)] <- T
+    }
+    return(l)
+}
