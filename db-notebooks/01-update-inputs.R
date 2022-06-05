@@ -42,49 +42,49 @@ source("fns/indicators.R")
 # COMMAND ----------
 
 # HEALTH
-acaps_collect()
+acaps_collect() %>% delay_error(return = NA)
 # Add in OWID
-owid_collect()
+owid_collect() %>% delay_error(return = NA)
 # Add in Oxford Response Tracker
-ghsi_collect()
+ghsi_collect() %>% delay_error(return = NA)
 # oxford_openness_collect()
-inform_covid_collect()
-dons_collect()
+inform_covid_collect() %>% delay_error(return = NA)
+dons_collect() %>% delay_error(return = NA)
 
 # COMMAND ----------
 
 # FOOD
-# Add in WBG Food Price Monitor
-proteus_collect()
-fews_collect()
-fao_wfp_collect()
+fpi_collect_many() %>% delay_error(return = NA)
+proteus_collect() %>% delay_error(return = NA)
+fews_collect() %>% delay_error(return = NA)
+fao_wfp_collect() %>% delay_error(return = NA)
 
 # COMMAND ----------
 
 # MACRO FISCAL
-eiu_collect()
+eiu_collect() %>% delay_error(return = NA)
 
 # COMMAND ----------
 
 # SOCIO-ECONOMIC
-mpo_collect()
-mfr_collect()
-imf_collect()
+mpo_collect() %>% delay_error(return = NA)
+mfr_collect() %>% delay_error(return = NA)
+imf_collect() %>% delay_error(return = NA)
 
 # COMMAND ----------
 
 # NATURAL HAZARDS
-gdacs_collect()
-inform_risk_collect()
-iri_collect()
-locust_collect()
+gdacs_collect()  %>% delay_error(return = NA)
+inform_risk_collect()  %>% delay_error(return = NA)
+iri_collect() %>% delay_error(return = NA)
+locust_collect()  %>% delay_error(return = NA)
 
 # COMMAND ----------
 
 # FRAGILITY AND CONFLICT
-fcs_collect()
-idp_collect()
-acled_hdx_collect() # rhdx package not working on databricks
+fcs_collect() %>% delay_error(return = NA)
+idp_collect() %>% delay_error(return = NA)
+acled_hdx_collect() %>% delay_error(return = NA) # rhdx package not working on databricks
 # reign_collect()
-gic_collect()
-ifes_collect()
+gic_collect() %>% delay_error(return = NA)
+ifes_collect() %>% delay_error(return = NA)

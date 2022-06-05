@@ -49,7 +49,12 @@ merge_indicators <- function(...) {
   sources <- list(...)
   sheet <- countrylist
   for(s in sources) {
-    sheet <- left_join(sheet, s, by = "Country")
+    # Conditional means that if a indicator processing fails, and returns a NA,
+    # the sheet can still be built, just without that indicator. Probably would be good
+    # to fall back on old data instead of leaving it out, but for now this works.
+    if (!is.null(nrow(s))) {
+      sheet <- left_join(sheet, s, by = "Country")
+    }
   }
   # sheet <- lapply(sources, function(s) {
   #   sheet <- left_join(sheet, s, by = "Country")
@@ -255,14 +260,43 @@ df <- rename(
   return(df)
 }
 
+date_dimension_highs <- function(crm) {
+  high_ind_indices <- crm %>% subset(`Data Level` == "Indicator") %>%
+    group_by(Index) %>%
+    slice_max(Date) %>%
+    ungroup() %>%
+    group_by(Country, Dimension, Outlook) %>%
+    slice_max(Value) %>%
+    ungroup() %>%
+    .$Index
 
+flag_dates <- subset(crm, Index %in% (high_ind_indices + 100)) %>%
+    arrange(Index, Date) %>%
+    subset(first_ordered_instance(Value_Char)) %>%
+    group_by(Country, Outlook, Dimension) %>%
+    slice_max(Date) %>%
+    select(Country, Outlook, Dimension, dimension_date = Date) %>%
+    distinct()
+  return(flag_dates)
+}
 
+join_dimension_dates <- function(sheet, dimension) {
+  new_sheet <- dimension_dates %>%
+    subset(Dimension == dimension, select = -Dimension) %>% 
+    pivot_wider(names_from = "Outlook", values_from = "dimension_date") %>%
+    select(
+      underlying_dimension_date = Underlying,
+      emerging_dimension_date = Emerging,
+      Country) %>%
+    full_join(sheet, by = c("Country" = "Country"))
+  return(new_sheet)
+}
 
 write_excel_source_file <- function(sheet, filename, directory_path, archive_path = NULL) {
   sheet <- select(sheet,
-                  -starts_with("Underlying_"),
-                  -starts_with("Emerging"),
-                  -starts_with("Overall_"))
+                  -starts_with("Underlying_", ignore.case = F),
+                  -starts_with("Emerging", ignore.case = F),
+                  -starts_with("Overall_", ignore.case = F))
   write_csv(sheet, paste_path(directory_path, filename))
   if(!is.null(archive_path)) {
     write_csv(sheet, paste_path(archive_path, filename))
@@ -394,6 +428,15 @@ pretty_col_names <- function(data) {
 
 # Move this basic function elsewhere, somewhere more basic (helpers.R?)
 ensure_directory_exists <- function(..., return = F, new = F, suffix = "") {
+
+# Could be helpful to make every level of directory in one go, so if only abc 
+# exists in abc/def/ghi, both def and ghi are made
+# dirs <- ...
+
+# lapply(dirs, function(d) {
+
+# })
+
   path <- paste_path(...)
   if(!dir.exists(path)) {
     already_exists <- F
@@ -432,7 +475,7 @@ lengthen_data <- function(data) {
   return(long)
 }
 
-add_secondary_columns <- function(data) {
+add_secondary_columns <- function(data, as_of = as_of) {
   output <- data %>%
   # Fill in other columns (`add_data_level_column()`? `add_secondary_columns()`?) 
   mutate(
@@ -477,7 +520,7 @@ add_secondary_columns <- function(data) {
       `Data Level` == "Dimension Value" ~ as.character(floor(Value)),
       # TRUE ~ as.character(floor(Value))
       TRUE ~ as.character(round(Value, 1))),
-    Date = Sys.Date()) # Should the date column show system date, or should it show the access date (this would be a good bit harder to do)
+    Date = as_of) #Sys.Date()) # Should the date column show system date, or should it show the access date (this would be a good bit harder to do)
   return(output)
 }
 round_value_col <- function(data) {
@@ -1534,6 +1577,51 @@ append_if_exists <- function(data, path, col_types = NULL) {
 # #   mutate(`Flag Change` = Count - `Previous Count`
 # #          # `Risk Change` = as.numeric(Risk) - as.numeric(`Previous Risk`)
 # #          )
+
+# add last_changed to indicator_list.csv
+# functionalize this more precisely
+date_indicators <- function(crm) {
+  new_ind_vals <- crm %>%
+      subset(`Data Level` == "Indicator") %>% 
+      arrange(Index, Date) %>%
+      subset(first_ordered_instance(Value))
+
+  last_changed <- new_ind_vals %>%
+      group_by(Key) %>%
+      slice_max(Date, with_ties = F) %>%
+      ungroup() %>%
+      mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
+      select(indicator_id, `Last Changed` = Date)
+
+  new_ind_vals_raw <- crm %>%
+      subset(`Data Level` == "Raw Indicator Data") %>% 
+      arrange(Index, Date) %>%
+      subset(first_ordered_instance(Value))
+
+  last_changed_raw <- new_ind_vals_raw %>%
+      group_by(Key) %>%
+      slice_max(Date, with_ties = F) %>%
+      ungroup() %>%
+      mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
+      select(indicator_id, `Last Changed` = Date)
+
+last_changed <- left_join(last_changed, last_changed_raw,
+    by = c("indicator_id" = "indicator_id"), suffix = c("", "_raw")) %>%
+    mutate(`Last Changed` = case_when(
+        `Last Changed_raw` == "2022-04-05" ~ `Last Changed`,
+        is.na(`Last Changed_raw`) ~ `Last Changed`,
+        T ~ `Last Changed_raw`)) %>%
+        select(-`Last Changed_raw`)
+
+  ind_list <- as.data.frame(read_csv("indicators-list.csv")) %>%
+    select(-`Last Changed`)
+  ind_list <- full_join(ind_list, last_changed, ) %>%
+      relocate(`Last Changed`, .after = Updates) %>%
+      arrange(desc(Timeframe), Dimension)
+  return(ind_list)
+}
+
+
 
 countFlagChanges <- function(data, early = Sys.Date() - 1 , late = Sys.Date()) {
   data <- data %>%

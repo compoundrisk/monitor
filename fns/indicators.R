@@ -82,7 +82,7 @@ archiveInputs <- function(data,
   # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
   # new dates. Those automatically get added. 
   # if(!large) {
-    bound <- rbind(most_recent, data)
+    bound <- bind_rows(most_recent, data)
     data_fresh <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
       filter(access_date == today) %>% 
       distinct()
@@ -95,7 +95,7 @@ archiveInputs <- function(data,
   #   data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
   # }
   # Append new data to CSV
-  combined <- rbind(prev, data_fresh) %>% distinct()
+  combined <- bind_rows(prev, data_fresh) %>% distinct()
   write.csv(combined, path, row.names = F)
   if(return == T) return(combined)
   }
@@ -158,6 +158,7 @@ try_log <- function(expr) {
     write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
   })
 }
+
 
 #--------------------—INDICATOR SPECIFIC FUNCTIONS-----------------------------
 
@@ -401,7 +402,7 @@ owid_covid_process <- function(as_of, format) {
   
   covid <- covidweb %>%
     mutate(date = as.Date(date)) %>%
-    filter(date > as_of - 28)
+    filter(date > as_of - 28 & date <= as_of)
   
   # bi-weekly growth rate for covid deaths and cases
   covidgrowth <- covid %>%
@@ -444,7 +445,6 @@ owid_covid_process <- function(as_of, format) {
     #         growthratedeaths = case_when(mean_deaths_lasttwoweek)
     #   )
 
-
     # cg <- covidgrowth %>% group_by(iso_code) %>%
     #   summarize(
     #     meandeaths = subset(meandeaths, previous2week == "twoweek"),
@@ -457,7 +457,6 @@ owid_covid_process <- function(as_of, format) {
     #     growthcase = meancase - meancase_previous,
     #     growthratecase = growthcase / meancase_previous,
     #   )
-
     # #############
 
   # Calculate variables of interest
@@ -484,7 +483,6 @@ owid_covid_process <- function(as_of, format) {
   covidgrowth <- normfuncpos(covidgrowth, 100, 0, "growthratedeaths")
   covidgrowth <- normfuncpos(covidgrowth, 100, 0, "growthratecases")
   
-
   covidgrowth <- covidgrowth %>%
     rename(
       Country = iso_code,
@@ -719,7 +717,7 @@ dons_process <- function(as_of, format) {
   # Only include DONs alerts from the past 3 months and not declared over
   # (more robust version would filter out outbreaks if they were later declared over)
   who_dons_current <- who_dons %>%
-    subset(date >= as_of - 92) %>% # change back to 92
+    subset(date >= as_of - 92 & date <= as_of) %>% # change back to 92
     mutate(who_dons_text = paste(date, "–", text)) %>%
     rename(Country = who_country_alert) %>%
     select(Country, date, disease, who_dons_text, declared_over, url, access_date)
@@ -834,7 +832,7 @@ fews_process <- function(as_of, format) {
   
   #Summarise country totals per in last round of FEWS
   fewssum <- fewspop %>%
-    subset(!is.na(fews_ipc) & as.Date(year_month) > as_of - 365) %>%
+    subset(!is.na(fews_ipc) & as.Date(year_month) > as_of - 365 & as.Date(year_month) <= as_of) %>%
     group_by(admin_code) %>%
     slice_max(year_month, n = 2) %>% 
     ungroup() %>%
@@ -915,13 +913,20 @@ fews_process <- function(as_of, format) {
 #------------------------—WBG FOOD PRICE MONITOR------------------------------------
 # Taken from https://microdatalib.worldbank.org/index.php/catalog/12421/
 # Behind intranet
-fpi_collect <- function() {
-  most_recent <- read_most_recent("restricted-data/food-price-inflation", FUN = read.csv, as_of = Sys.Date(), return_date = T)
+fpi_collect <- function(as_of = Sys.Date()) {
+  most_recent <- read_most_recent("restricted-data/food-price-inflation", FUN = read_csv, col_types = "dddddccD", as_of = as_of, return_date = T)
   file_date <- most_recent[[2]]
 
   wb_fpi <- most_recent[[1]] %>%
-    subset(date > Sys.Date() - 365)
+    subset(date > as_of - 365)
   archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = file_date)
+}
+
+fpi_collect_many <- function() {
+    oldest_date <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = as_of, format = format) %>% .$access_date %>% max()
+    new_dates <- read_most_recent("restricted-data/food-price-inflation", n = "all", FUN = paste, as_of = Sys.Date(), return_date = T)$date %>%
+        vsubset(">oldest_date")
+    lapply(new_dates, fpi_collect)
 }
 
 # dates <- list.files("restricted-data/food-price-inflation") %>%
@@ -949,7 +954,7 @@ fpi_process <- function (as_of, format) {
     group_by(ISO3) %>%
     slice_max(order_by = date) %>%
     # in case any country's newest data is old, don't use
-    subset(date > as_of - 92) %>%
+    subset(date > as_of - 92 & date <= as_of) %>%
     select(Country = ISO3, Inflation)
 
   fpi <- mutate(fpi,
@@ -1000,106 +1005,54 @@ eiu_collect <- function() {
   eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
   file.remove("RBTracker.xls")
 
+  first_of_month <- str_replace(Sys.Date(), "\\d\\d$", "01")
+
   # eiu <- read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
   
-  archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"))
+  archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"), today = first_of_month)
 }
 
 eiu_process <- function(as_of, format) {
-  eiu_data <- loadInputs("eiu", group_by = c("SERIES NAME", "MONTH")) %>%
-    select(-access_date)
-  
-  country_nam <- colnames(eiu_data) 
-  country_nam <- country_nam[4:length(country_nam)]
-  
-  eiu_latest_month <- eiu_data %>%
-    filter(MONTH == max(MONTH)) %>% 
-    dplyr::select(-MONTH, -`SERIES CODE`) %>%
-    #Pivot the database so countries are rows
-    pivot_longer(
-      !`SERIES NAME`,
-      names_to = "Country",
-      values_to = "Values"
-    ) %>%
-    pivot_wider(
-      names_from = `SERIES NAME`,
-      values_from = Values
-    ) %>%
-    rename(Macroeconomic_risk = `Macroeconomic risk`) %>%
-    mutate(Macroeconomic_risk = (`Financial risk` + Macroeconomic_risk + `Foreign trade & payments risk`) / 3)
-  
-  eiu_one_year <- eiu_data %>%
-    # filter(MONTH %in% unique(eiu_data$MONTH)[-1]) %>%
-    group_by(`SERIES NAME`) %>%
-    slice_max(MONTH, n = 13) %>% # replaces commented out line above, to actually measure the last 12 months
+eiu_data <- loadInputs("eiu", group_by = c("SERIES NAME", "MONTH"), as_of = as_of) %>%
+    select(-access_date) %>%
+    subset(MONTH <= as_of)
+
+eiu_data_long <- eiu_data %>%
+    select(-`SERIES CODE`) %>%
+    subset(`SERIES NAME` %in% c("Macroeconomic risk", "Financial risk", "Foreign trade & payments risk")) %>%
+    pivot_longer(-c(`SERIES NAME`, MONTH), names_to = "Country", values_to = "Values") %>%
+    pivot_wider(names_from = `SERIES NAME`, values_from = Values) %>%
+    mutate(Macroeconomic_risk = (`Financial risk` + `Macroeconomic risk` + `Foreign trade & payments risk`) / 3,
+        .keep = "unused")
+
+eiu_latest_month <- eiu_data_long %>%
+    group_by(Country) %>%
+    slice_max(MONTH, n = 1) %>%
+    summarize(Macroeconomic_risk = mean(Macroeconomic_risk))
+eiu_one_year <- eiu_data_long %>%
+    group_by(Country) %>%
+    slice_max(MONTH, n = 13) %>%
     slice_min(MONTH, n = 12) %>%
-    summarise_at(country_nam, mean, na.rm = T) %>%
-    ungroup %>%
-    distinct(`SERIES NAME`, .keep_all = T) %>% 
-    #Pivot the database so countries are rows
-    pivot_longer(
-      !`SERIES NAME`,
-      names_to = "Country",
-      values_to = "Values"
-    ) %>%
-    pivot_wider(
-      names_from = `SERIES NAME`,
-      values_from = Values
-    ) %>%
-    rename_with(
-      .col = c(contains("risk"), contains("Overall")),
-      .fn  = ~ paste0(., "_12")
-    ) %>%
-    rename(Macroeconomic_risk_12 = `Macroeconomic risk_12`) %>%
-    mutate(Macroeconomic_risk_12 = (`Financial risk_12` + Macroeconomic_risk_12 + `Foreign trade & payments risk_12`) / 3)
-  
-  eiu_three_month <- eiu_data %>%
-    # filter(MONTH %in% head(unique(MONTH)[-1], 3)) %>%
-    group_by(MONTH, `SERIES NAME`) %>%
-    summarise_at(country_nam, mean, na.rm = T) %>%
-    ungroup %>%
-    dplyr::select(-MONTH) %>%
-    distinct(`SERIES NAME`, .keep_all = T) %>% 
-    #Pivot the database so countries are rows
-    pivot_longer(
-      !`SERIES NAME`,
-      names_to = "Country",
-      values_to = "Values"
-    ) %>%
-    pivot_wider(
-      names_from = `SERIES NAME`,
-      values_from = Values
-    ) %>%
-    rename_with(
-      .col = c(contains("risk"), contains("Overall")),
-      .fn  = ~ paste0(., "_3")
-    ) %>%
-    rename(Macroeconomic_risk_3 = `Macroeconomic risk_3`) %>%
-    mutate(Macroeconomic_risk_3 = (`Financial risk_3` + Macroeconomic_risk_3 + `Foreign trade & payments risk_3`) / 3)
-  
-  # Join datasets
-  eiu_joint <- left_join(eiu_latest_month, eiu_three_month, by = "Country") %>%
-    left_join(., eiu_one_year, by = "Country") %>%
+    summarize(Macroeconomic_risk_12 = mean(Macroeconomic_risk))
+# eiu_three_month <- eiu_data_long %>%
+#     group_by(Country) %>%
+#     slice_max(MONTH, n = 4) %>%
+#     slice_min(MONTH, n = 3) %>%
+#     summarize(Macroeconomic_risk_3 = mean(Macroeconomic_risk))
+
+eiu_joint <-
+    reduce(list(eiu_latest_month, eiu_one_year, eiu_three_month),
+            full_join, by = "Country") %>%
     mutate(
-      EIU_3m_change = Macroeconomic_risk - Macroeconomic_risk_3,
       EIU_12m_change = Macroeconomic_risk - Macroeconomic_risk_12
-    ) %>%
-    dplyr::select(contains("Country"), contains("Macro"), contains("EIU")) %>%
-    rename_with(
-      .col = c(contains("Macro"), contains("EIU")),
-      .fn = ~ paste0("M_", .)
+    #   EIU_3m_change = Macroeconomic_risk - Macroeconomic_risk_3
     ) %>%
     rename(M_EIU_Score = `M_Macroeconomic_risk`,
            M_EIU_Score_12m = `M_Macroeconomic_risk_12`) %>%
-    # Add Country name
-    mutate(
-      Country = suppressWarnings(countrycode(Country,
-                                             origin = "country.name",
-                                             destination = "iso3c",
-                                             nomatch = NULL))
-    )
-  
-  eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
+    rename_with(.col = -Country, .fn = ~ paste0("M_", .)) %>%
+    mutate(Country = name2iso(Country))
+
+#   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_12m_change, 0.95), quantile(eiu_joint$M_EIU_12m_change, 0.10), "M_EIU_12m_change")
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score_12m, 0.95), quantile(eiu_joint$M_EIU_Score_12m, 0.10), "M_EIU_Score_12m")
   return(eiu_joint)
@@ -1282,6 +1235,11 @@ phone_process <- function(as_of, format) {
 #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
 imf_collect <- function() {
   imf_unemployment <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/imf_unemployment.csv")))
+
+# imf_archive <- read_csv("output/inputs-archive/imf_unemployment.csv") %>%
+#   mutate(`2027` = NA, .after = `2026`)
+# write.csv(imf_archive, "output/inputs-archive/imf_unemployment.csv")
+
   archiveInputs(imf_unemployment, group_by = c("Country"))
 }
 
@@ -1659,7 +1617,6 @@ iri_process <- function(
   # Continuity of 2 means 40–505 probability of below normal precipation and a dry past 3 months
   s$dry <- ifelse(values(s$sp) < -probability_threshold | values(s$continuity) == 2, 1, NA)
 
-
   country_extract <- function(x, include_area) {
     output <- exact_extract(
             x = x,
@@ -1986,7 +1943,7 @@ acled_hdx_process <- function(as_of, format) {
   acled_hdx <- loadInputs("acled_hdx", group_by = c("Country", "Year", "Month"))
   
   # Select date as three years plus two month (date to retrieve ACLED data)
-  three_year <- as.yearmon(Sys.Date() - 45) - 3.2
+  three_year <- as.yearmon(as_of - 45) - 3.2
 
   # Progress conflict data
   acled <- acled_hdx %>%
@@ -2141,7 +2098,8 @@ reign_process <- function(as_of, format) {
 
 #--------------------------GIC Global Instances of Coups-----------------------
 gic_collect <- function() {
-  gic <- read_tsv("http://www.uky.edu/~clthyn2/coup_data/powell_thyne_coups_final.txt") %>%
+  gic <- read_tsv("http://www.uky.edu/~clthyn2/coup_data/powell_thyne_coups_final.txt",
+                  col_types = "cdddddddc") %>%
     subset(year > 2020)
 
   # The May 2022 update started including `ccode_gw` and `ccode_polity` columns; the latter
@@ -2153,24 +2111,27 @@ gic_collect <- function() {
   #   mutate(ccode_gw = NA_real_, ccode_polity = NA_real_, .after = country)
   # write.csv(prev, "output/inputs-archive/gic.csv", row.names = F)
 
-
-
   archiveInputs(gic, group_by = NULL)
 }
 
 gic_process <- function(as_of, format) {
-  coups_raw <- loadInputs("gic", group_by = NULL, as_of = as_of, format = format)
-  
+  # coups_raw <- loadInputs("gic", group_by = NULL, as_of = as_of, format = format)
+  # Not using loadInputs because I want to be able to include results from before an "access_date"
+  coups_raw <- read_csv("output/inputs-archive/gic.csv", col_types = "cdddddddc")
+
   coups <- coups_raw %>%
-    rename(Countryname = country) %>%
     mutate(
-        Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
-        date = as.Date(paste(year, month, day, sep = "-")),
-        .before = 1) %>%
+      date = as.Date(paste(year, month, day, sep = "-")),
+      version = as.Date(str_replace_all(version, c("\\." = "-", "V" = "")))) %>%
+    subset(date <= as_of & date >= as_of - 365) %>%
+    rename(Countryname = country) %>%
+    mutate(Country = name2iso(Countryname)) %>% 
+    group_by(Country, date) %>%
+    slice_max(version) %>%
     select(Country, Countryname, date, coup)
 
   coups_recent <- coups %>%
-    subset(date >= as_of - 365) %>%
+    # subset(date >= as_of - 365) %>%
     group_by(Country) %>%
     mutate(coup_text = case_when(
         coup == 1 ~ "failed",
@@ -2227,7 +2188,10 @@ ifes_collect <- function() {
 }
 
 ifes_process <- function(as_of, format) {
-  elections_all <- loadInputs("ifes", group_by = NULL, as_of = as_of, format = format)
+  # elections_all <- loadInputs("ifes", group_by = NULL, as_of = as_of, format = format)
+  elections_all <- read_csv("output/inputs-archive/ifes.csv", col_types = "ccccDcdccdD") %>% 
+    subset(date >= as_of & date <= as_of + 182)
+ 
  elections <- elections_all %>% 
     mutate(
         election_type = case_when(
@@ -2252,7 +2216,7 @@ filter_for_fcs <- function(data, country_column) {
 # anticipation: Is there an election in the next 6 months?
 # elections_next_6_months <- 
 elections_next_6m <- elections %>%
-    subset(date >= as_of & date <= as_of + 182) %>%
+    subset(date >= as_of) %>%
     group_by(Country) %>%
     summarize(
         election_6m_text = paste(paste(date, text), collapse = "; "),
@@ -2262,7 +2226,7 @@ elections_next_6m <- elections %>%
 delayed <- elections %>%
     subset(
     # looking for delayed elections within 6 months in either direction
-    (date > as_of - 182 & date < as_of + 182) &
+    # (date > as_of - 182 & date < as_of + 182) &
     (status == "Postponed" | status == "Cancelled")) %>%
     group_by(Country) %>%
     summarize(
@@ -2273,7 +2237,7 @@ delayed <- elections %>%
 irregular <- elections %>%
     subset(
     # looking for delayed elections within 6 months in either direction
-    (date >= as_of & date < as_of + 182) &
+    # (date >= as_of & date < as_of + 182) &
     (str_detect(status, "Snap") | str_detect(status, "Moved"))) %>%
     group_by(Country) %>%
     summarize(

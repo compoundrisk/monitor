@@ -24,8 +24,20 @@ slugify <- function(x, non_alphanum_replace="", space_replace="_", tolower=TRUE,
 
 `%ni%` <- Negate(`%in%`)
 
-which_not <- function(v1, v2) {
-  v1[v1 %ni% v2]
+vsubset <- function(v, condition) v[eval(str2expression(paste("v", condition)))]
+
+which_not <- function(v1, v2, swap = F, both = F) {
+  if (both) {
+    list(
+      "In V1, not in V2" = v1[v1 %ni% v2],
+      "In V2, not in V1" = v2[v2 %ni% v1]
+    )
+  } else
+  if (swap) {
+    v2[v2 %ni% v1]
+  } else {
+    v1[v1 %ni% v2]
+  }
 }
 
 is_string_number <- function(x, index = F) {
@@ -128,18 +140,23 @@ name2iso <- function(v) {
 # Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
 # Also could mean saving all live-downloaded data somewhere
 # I need to save the filename so I can use the date in it as the access_date
-read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F) {
+read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, n = 1) {
     file_names <- list.files(directory_path)
     # Reads the date portion of a filename in the format of acaps-2021-12-13
     name_dates <- sub(".*(20[[:digit:]-]+)\\..*", "\\1", file_names) %>%
-        as.Date(format = date_format)
-    selected_date <- subset(name_dates, name_dates <= as_of) %>% max()
-    most_recent_file <- file_names[which(name_dates == selected_date)]
+        as.Date(format = date_format) %>% sort()
+    if (n == "all") n <- length(name_dates)
+    selected_dates <- subset(name_dates, name_dates <= as_of) %>% tail(n)
 
-    data <- FUN(paste_path(directory_path, most_recent_file), ...)
+    data <- lapply(selected_dates, function(date) {
+      most_recent_file <- file_names[which(name_dates == date)]
+      data <- FUN(paste_path(directory_path, most_recent_file), ...)
+    })
+
+    if (n == 1) data <- data[[1]]
 
     if (return_date) {
-      return(list(data = data, date = selected_date))
+      return(list(data = data, date = selected_dates))
     }
     return(data)
 }
@@ -168,4 +185,45 @@ first_ordered_instance <- function(v, na.eq = T) {
         l[!is.na(v) & is.na(l)] <- T
     }
     return(l)
+}
+
+expr2text <- function(x) {
+  getAST <- function(ee) purrr::map_if(as.list(ee), is.call, getAST)
+
+  sc <- sys.calls()
+  ASTs <- purrr::map( as.list(sc), getAST ) %>%
+    purrr::keep( ~identical(.[[1]], quote(`%>%`)) )  # Match first element to %>%
+
+  if( length(ASTs) == 0 ) return( enexpr(x) )        # Not in a pipe
+  dplyr::last( ASTs )[[2]]    # Second element is the left-hand side
+}
+
+
+delay_error <- function(expr, return = NULL, no_stop = F) {
+  # fun <- sub("\\(.*", "", deparse(substitute(expr)))
+  fun <- expr2text(expr)
+  tryCatch({
+    expr
+  },
+    error = function(e) {
+      if (!no_stop) {
+        if (!exists("delayed_error")) {
+          assign("delayed_error", fun, envir = .GlobalEnv)
+        } else {
+          assign("delayed_error", c(delayed_error, fun), envir = .GlobalEnv)
+        }
+      }
+      write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
+      if (!is.null(return)) {
+        return(return)
+      }
+    })
+}
+
+release_delayed_errors <- function() {
+  if (exists("delayed_error")) {
+    de <- delayed_error
+    rm(delayed_error, envir = .GlobalEnv) # removing from global env so it doesnt continue to stop future runs
+    stop(paste("Error on", paste(de, collapse = ", ")))
+  }
 }
