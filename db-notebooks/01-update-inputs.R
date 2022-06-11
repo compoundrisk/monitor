@@ -84,7 +84,7 @@ locust_collect()  %>% delay_error(return = NA)
 # FRAGILITY AND CONFLICT
 fcs_collect() %>% delay_error(return = NA)
 idp_collect() %>% delay_error(return = NA)
-acled_hdx_collect() %>% delay_error(return = NA) # rhdx package not working on databricks
+acled_collect() %>% delay_error(return = NA)
 # reign_collect()
 gic_collect() %>% delay_error(return = NA)
 ifes_collect() %>% delay_error(return = NA)

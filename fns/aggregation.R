@@ -1584,25 +1584,27 @@ date_indicators <- function(crm) {
   new_ind_vals <- crm %>%
       subset(`Data Level` == "Indicator") %>% 
       arrange(Index, Date) %>%
-      subset(first_ordered_instance(Value))
+      subset(first_ordered_instance(Value)) %>%
+      mutate(indicator_id = as.numeric(str_sub(Index, -2)))
 
   last_changed <- new_ind_vals %>%
-      group_by(Key) %>%
+      group_by(indicator_id) %>%
       slice_max(Date, with_ties = F) %>%
       ungroup() %>%
-      mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
+      # mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
       select(indicator_id, `Last Changed` = Date)
 
   new_ind_vals_raw <- crm %>%
       subset(`Data Level` == "Raw Indicator Data") %>% 
       arrange(Index, Date) %>%
-      subset(first_ordered_instance(Value))
+      subset(first_ordered_instance(Value)) %>%
+      mutate(indicator_id = as.numeric(str_sub(Index, -2)))
 
   last_changed_raw <- new_ind_vals_raw %>%
-      group_by(Key) %>%
+      group_by(indicator_id) %>%
       slice_max(Date, with_ties = F) %>%
       ungroup() %>%
-      mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
+      # mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
       select(indicator_id, `Last Changed` = Date)
 
 last_changed <- left_join(last_changed, last_changed_raw,
@@ -1613,8 +1615,8 @@ last_changed <- left_join(last_changed, last_changed_raw,
         T ~ `Last Changed_raw`)) %>%
         select(-`Last Changed_raw`)
 
-  ind_list <- as.data.frame(read_csv("indicators-list.csv")) %>%
-    select(-`Last Changed`)
+  ind_list <- as.data.frame(read_csv("indicators-list.csv")) #%>%
+    # select(-`Last Changed`)
   ind_list <- full_join(ind_list, last_changed, ) %>%
       relocate(`Last Changed`, .after = Updates) %>%
       arrange(desc(Timeframe), Dimension)

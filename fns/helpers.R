@@ -132,7 +132,10 @@ iso2name <- function(v) {
 }
 
 name2iso <- function(v) {
-  names <- countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c("Kosovo" = "XKX"))
+  names <- countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c(
+    "Kosovo" = "XKX",
+    "Türkiye" = "TUR",
+    "Turkiye" = "TUR"))
   return(names)
 }
 

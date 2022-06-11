@@ -220,7 +220,7 @@ acaps_list <- lapply(parent_nodes, function(node) {
       Countryname = case_when(
         Countryname == "CAR" ~ "Central African Republic",
         TRUE ~ Countryname),
-      Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
+      Country = name2iso(Countryname),
       .before = 1)
   
   select_acaps_countries <- function(data, string, minimum, category) {
@@ -925,7 +925,7 @@ fpi_collect <- function(as_of = Sys.Date()) {
 fpi_collect_many <- function() {
     oldest_date <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = as_of, format = format) %>% .$access_date %>% max()
     new_dates <- read_most_recent("restricted-data/food-price-inflation", n = "all", FUN = paste, as_of = Sys.Date(), return_date = T)$date %>%
-        vsubset(">oldest_date")
+        .[. > oldest_date]
     lapply(new_dates, fpi_collect)
 }
 
@@ -1005,7 +1005,7 @@ eiu_collect <- function() {
   eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
   file.remove("RBTracker.xls")
 
-  first_of_month <- str_replace(Sys.Date(), "\\d\\d$", "01")
+  first_of_month <- str_replace(Sys.Date(), "\\d\\d$", "01") %>% as.Date()
 
   # eiu <- read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
   
@@ -1041,14 +1041,14 @@ eiu_one_year <- eiu_data_long %>%
 #     summarize(Macroeconomic_risk_3 = mean(Macroeconomic_risk))
 
 eiu_joint <-
-    reduce(list(eiu_latest_month, eiu_one_year, eiu_three_month),
+    reduce(list(eiu_latest_month, eiu_one_year),#, eiu_three_month),
             full_join, by = "Country") %>%
     mutate(
       EIU_12m_change = Macroeconomic_risk - Macroeconomic_risk_12
     #   EIU_3m_change = Macroeconomic_risk - Macroeconomic_risk_3
     ) %>%
-    rename(M_EIU_Score = `M_Macroeconomic_risk`,
-           M_EIU_Score_12m = `M_Macroeconomic_risk_12`) %>%
+    rename(EIU_Score = `Macroeconomic_risk`,
+           EIU_Score_12m = `Macroeconomic_risk_12`) %>%
     rename_with(.col = -Country, .fn = ~ paste0("M_", .)) %>%
     mutate(Country = name2iso(Country))
 
@@ -1767,8 +1767,12 @@ idp_collect <- function() {
                                         ), skip = 14
   ))
   
+  update_date <- readLines(paste0(github, "Indicator_dataset/population.csv"), 3)[3] %>%
+    str_extract("\\d+ [[:alpha:]]+ 20\\d\\d") %>%
+    as.Date(format = "%d %B %y")
+
   un_idp <- idp_data
-  archiveInputs(un_idp, group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"))
+  archiveInputs(un_idp, group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"), today = update_date)
 }
 
 un_idp_process <- function(as_of, format) {
@@ -1785,15 +1789,16 @@ un_idp_process <- function(as_of, format) {
     ) %>%
     group_by(`Country of origin (ISO)`) %>%
     mutate(
-      sd_refugees = sd(refugees, na.rm = T),
-      mean_refugees = mean(refugees, na.rm = T),
-      z_refugees = (refugees - mean_refugees) / sd(refugees),
-      refugees_fragile = case_when(
-        z_refugees > 1 ~ "Fragile",
-        z_refugees < 1 ~ "Not Fragile",
-        z_refugees == NaN ~ "Not Fragile",
-        TRUE ~ NA_character_
-      ),
+      # We aren't using refugee data, only IDPs
+      # sd_refugees = sd(refugees, na.rm = T),
+      # mean_refugees = mean(refugees, na.rm = T),
+      # z_refugees = (refugees - mean_refugees) / sd(refugees),
+      # refugees_fragile = case_when(
+      #   z_refugees > 1 ~ "Fragile",
+      #   z_refugees < 1 ~ "Not Fragile",
+      #   z_refugees == NaN ~ "Not Fragile",
+      #   TRUE ~ NA_character_
+      # ),
       mean_idps = mean(idps, na.rm = T),
       z_idps = case_when(
         sd(idps) != 0 ~ (idps - mean_idps) / sd(idps),
@@ -1806,32 +1811,29 @@ un_idp_process <- function(as_of, format) {
         TRUE ~ NA_character_
       )
     ) %>%
-    filter(Year == 2020) %>%
-    dplyr::select(`Country of origin (ISO)`, refugees, z_refugees, refugees_fragile, idps, z_idps, idps_fragile)
+    filter(Year == recent_year) %>%
+    # dplyr::select(`Country of origin (ISO)`, refugees, z_refugees, refugees_fragile, idps, z_idps, idps_fragile)
+    dplyr::select(`Country of origin (ISO)`, idps, z_idps, idps_fragile)
+
   
   # Normalise scores
-  idp <- normfuncpos(idp, 1, 0, "z_refugees")
+  # idp <- normfuncpos(idp, 1, 0, "z_refugees")
   idp <- normfuncpos(idp, 1, 0, "z_idps")
   
   # Correct for countries with 0
   idp <- idp %>%
     mutate(
-      z_refugees_norm = case_when(
-        z_refugees == NaN ~ 0,
-        TRUE ~ z_refugees_norm
-      ),
+      # z_refugees_norm = case_when(
+      #   z_refugees == NaN ~ 0,
+      #   TRUE ~ z_refugees_norm),
       z_idps_norm = case_when(
         z_idps == NaN ~ 0,
-        TRUE ~ z_idps_norm
-      ),
-      Country = countrycode(`Country of origin (ISO)`,
-                            origin = "country.name",
-                            destination = "iso3c",
-                            nomatch = NULL
-      )
-    ) %>%
-    dplyr::select(-`Country of origin (ISO)`) %>% 
-    rename(Displaced_UNHCR_Normalised = z_idps_norm)
+        TRUE ~ z_idps_norm)) %>%
+    # dplyr::select(-`Country of origin (ISO)`) %>% 
+    rename(
+      Country = `Country of origin (ISO)`,
+      Displaced_UNHCR_Normalised = z_idps_norm)
+
   return(idp)
 }
 
@@ -1866,26 +1868,34 @@ acled_collect <- function() {
   # # If I want to reduce file size, zipping takes ~10 seconds (unzipping: <1s)
   # # and reduces size from 40 MB to 4 MB
   # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
-  archiveInputs(acled, group_by = NULL)
+  archiveInputs(acled, group_by = "event_id_cnty")
   # zip("output/inputs-archive/acled.zip", "output/inputs-archive/acled.R") 
   # file.remove("output/inputs-archive/acled.R")
 }
 
 acled_process <- function(as_of, format) {
+  # Because we have no ACLED data from the past few months, and because ACLED data is also historic,
+  # use June 2022 as access_date for all earlier retroactive runs
+  effective_access_date <- if (as_of < as.Date("2022-06-06")) as.Date("2022-06-06") else as_of
+
   # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
-  acled <- loadInputs("acled", group_by = NULL) #158274
+  acled <- loadInputs("acled", group_by = "event_id_cnty", as_of = effective_access_date) #158274
   # file.remove("output/inputs-archive/acled.R")
   
+  # Select date as three years plus two month (date to retrieve ACLED data)
+  three_year <- as.yearmon(as_of - 45) - 3.2
+
   # Progress conflict data
   acled <- acled %>%
     mutate(
-      fatalities = as.numeric(as.character(fatalities)),
+    #   fatalities = as.numeric(as.character(fatalities)),
       date = as.Date(event_date),
       month_yr = as.yearmon(date)
     ) %>%
+    filter(month_yr >= three_year) %>%
     # Remove dates for the latest month (or month that falls under the prior 6 weeks)
     # Is there a way to still acknowledge countries with high fatalities in past 6 weeks?
-    filter(as.Date(as.yearmon(date)) <= as.Date(as.yearmon(as_of - 45))) %>% 
+    filter(month_yr <= as.yearmon(as_of - 45)) %>% 
     group_by(iso3, month_yr) %>%
     summarise(fatal_month = sum(fatalities, na.rm = T),
               fatal_month_log = log(fatal_month + 1)) %>%
@@ -1910,12 +1920,7 @@ acled_process <- function(as_of, format) {
         is.nan(fatal_z) ~ 0,
         TRUE ~ fatal_z_norm
       ),
-      Country = countrycode(
-        iso3,
-        origin = "country.name",
-        destination = "iso3c",
-        nomatch = NULL
-      ),
+      Country = iso3,
       fatal_z_norm = case_when(
         fatal_3_month_log == 0 ~ 0,
         (fatal_3_month_log <= log(25 + 1)) ~ 0,
@@ -1924,7 +1929,8 @@ acled_process <- function(as_of, format) {
     ) %>%
     ungroup() %>%
     dplyr::select(-iso3) %>% 
-    rename(BRD_Normalised = fatal_z_norm)
+    rename(BRD_Normalised = fatal_z_norm) %>%
+    relocate(Country, .before = 1)
   return(acled)
 }
 
@@ -1941,14 +1947,14 @@ acled_hdx_collect <- function() {
 
 acled_hdx_process <- function(as_of, format) {
   acled_hdx <- loadInputs("acled_hdx", group_by = c("Country", "Year", "Month"))
-  
+   
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.yearmon(as_of - 45) - 3.2
 
   # Progress conflict data
   acled <- acled_hdx %>%
     mutate(
-      iso3 = countrycode(Country, origin = "country.name", destination = "iso3c"),
+      iso3 = name2iso(Country),
       fatal_month = as.numeric(as.character(Fatalities)),
       month_yr = as.yearmon(paste(Month, Year))
     ) %>%
@@ -1980,12 +1986,7 @@ acled_hdx_process <- function(as_of, format) {
         is.nan(fatal_z) ~ 0,
         TRUE ~ fatal_z_norm
       ),
-      Country = countrycode(
-        iso3,
-        origin = "country.name",
-        destination = "iso3c",
-        nomatch = NULL
-      ),
+      Country = iso3,
       fatal_z_norm = case_when(
         fatal_3_month_log == 0 ~ 0,
         (fatal_3_month_log <= log(25 + 1)) ~ 0,
@@ -2102,6 +2103,10 @@ gic_collect <- function() {
                   col_types = "cdddddddc") %>%
     subset(year > 2020)
 
+  version_date <- gic$version[1] %>%
+    str_replace_all(c("\\." = "-", "V" = "")) %>%
+    as.Date()
+
   # The May 2022 update started including `ccode_gw` and `ccode_polity` columns; the latter
   # seems to relate to "correlates of war"
   # https://correlatesofwar.org/data-sets/downloadable-files/cow-country-codes/cow-country-codes/view
@@ -2111,12 +2116,15 @@ gic_collect <- function() {
   #   mutate(ccode_gw = NA_real_, ccode_polity = NA_real_, .after = country)
   # write.csv(prev, "output/inputs-archive/gic.csv", row.names = F)
 
-  archiveInputs(gic, group_by = NULL)
+  archiveInputs(gic, group_by = NULL, today = version_date)
 }
 
 gic_process <- function(as_of, format) {
   # coups_raw <- loadInputs("gic", group_by = NULL, as_of = as_of, format = format)
   # Not using loadInputs because I want to be able to include results from before an "access_date"
+  # (This is less because I may have retreived the dataset much later than the version, but because 
+  # the event occured before the version date; that though is true of literally every event in this monitor,
+  # and, in fact, true of all datasets that record events.
   coups_raw <- read_csv("output/inputs-archive/gic.csv", col_types = "cdddddddc")
 
   coups <- coups_raw %>%
@@ -2201,7 +2209,7 @@ ifes_process <- function(as_of, format) {
     subset(
         str_detect(election_type, "Head of")) %>%
     mutate(
-        Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
+        Country = name2iso(Countryname),
         .before = Countryname)
 
 filter_for_fcs <- function(data, country_column) {
