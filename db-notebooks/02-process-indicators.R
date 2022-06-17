@@ -5,11 +5,15 @@
 # COMMAND ----------
 
 as_of <- Sys.Date()
-format <- "csv" # or "spark" or "both"; format of how input archives are saved (in case I switch )
+# format <- "csv" # or "spark" or "both"; format of how input archives are saved (in case I switch )
 
 # if run is a job, save files to "output/scheduled"; if manually, save to "output/manual"
 run_type <- tryCatch(dbutils.widgets.get("run_type"), error = function(e) {return("manual")})
 output_directory <- paste0("output/", run_type)
+
+# COMMAND ----------
+
+error_delay <- tryCatch(dbutils.widgets.get("error_delay"), error = function(e) {return(F)})
 
 # COMMAND ----------
 
@@ -41,7 +45,7 @@ dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions", ret
 # COMMAND ----------
 
 # ACAPS
-# acaps_sheet <- acaps_process(as_of = as_of, format = format)
+# acaps_sheet <- acaps_process(as_of = as_of)
 
 # COMMAND ----------
 
@@ -49,14 +53,14 @@ dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions", ret
 # Writes sheet of health variables to output/risk-sheets/health-sheet.csv
 health_sheet <- aggregate_dimension(
   "Health", # Important for these dimension names to match the names to match what's in indicators-list.csv
-  # acaps_category_process(as_of, format, category = "health", prefix = "H_") %>%
-    # delay_error(return = NA),
-  ghsi_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  # oxford_openness_process(as_of = as_of, format = format),
-  owid_covid_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  # Oxres_process(as_of = as_of, format = format),
-  inform_covid_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  dons_process(as_of = as_of, format = format) %>% delay_error(return = NA))
+  # acaps_category_process(as_of, category = "health", prefix = "H_") %>%
+    # delay_error(return = NA, on = error_delay),
+  ghsi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  # oxford_openness_process(as_of = as_of),
+  owid_covid_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  # Oxres_process(as_of = as_of),
+  inform_covid_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  dons_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 # Does it make sense to move all output writing to the end, in one spot?
 # Write to a temporary directory, and then move everything to the intended spot?
 # (/output/scheduled/ or /output/manual/run-date/)
@@ -69,10 +73,10 @@ multi_write.csv(health_sheet, "health-sheet.csv", c(dim_path, dim_archive_path))
 # Writes sheet of food variables to output/risk-sheets/food-sheet.csv
 food_sheet <- aggregate_dimension(
   "Food Security",
-  proteus_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  fews_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  fpi_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  fao_wfp_process(as_of = as_of, format = format) %>% delay_error(return = NA))
+  proteus_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  fews_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  fpi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  fao_wfp_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(food_sheet, "food-sheet.csv", c(dim_path, dim_archive_path))
 
 # COMMAND ----------
@@ -81,7 +85,8 @@ multi_write.csv(food_sheet, "food-sheet.csv", c(dim_path, dim_archive_path))
 # Writes sheet of macro fiscal variables to output/risk-sheets/macro-sheet.csv
 macro_sheet <- aggregate_dimension(
   "Macro Fiscal",
-  eiu_process(as_of = as_of, format = format) %>% delay_error(return = NA))
+  eiu_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  macrofin_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(macro_sheet, "macro-sheet.csv", c(dim_path, dim_archive_path))
 
 # COMMAND ----------
@@ -90,13 +95,13 @@ multi_write.csv(macro_sheet, "macro-sheet.csv", c(dim_path, dim_archive_path))
 # Writes sheet of socio-economic variables to output/risk-sheets/socio-sheet.csv
 socio_sheet <- aggregate_dimension(
   "Socioeconomic Vulnerability",
-  inform_socio_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  income_support_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  mpo_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  macrofin_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  # phone_process(as_of = as_of, format = format),
+  inform_socio_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  # income_support_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  mpo_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  macrofin_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  # phone_process(as_of = as_of),
   # Fix warnings
-  imf_process(as_of = as_of, format = format) %>% delay_error(return = NA))
+  imf_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(socio_sheet, "socio-sheet.csv", c(dim_path, dim_archive_path))
 
 # COMMAND ----------
@@ -105,11 +110,11 @@ multi_write.csv(socio_sheet, "socio-sheet.csv", c(dim_path, dim_archive_path))
 # Writes sheet of natural hazard variables to output/risk-sheets/natural_hazards-sheet.csv
 natural_hazards_sheet <- aggregate_dimension(
   "Natural Hazard",
-  gdacs_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  inform_nathaz_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  iri_process(drop_geometry = T, as_of = as_of, format = format), # Rename iri_forecast)
-  locust_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  acaps_category_process(as_of, format, category = "natural", prefix = "NH_") %>% delay_error(return = NA))
+  gdacs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  inform_nathaz_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  iri_process(drop_geometry = T, as_of = as_of) %>% delay_error(return = NA, on = error_delay), # Rename iri_forecast)
+  locust_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  acaps_category_process(as_of, category = "natural", prefix = "NH_") %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
 
 # COMMAND ----------
@@ -117,17 +122,17 @@ multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, 
 # CONFLICT AND FRAGILITY
 # Writes sheet of conflict and fragility variables to output/risk-sheets/fragility-sheet.csv
 # REIGN uses fcs, so run it first to make it available
-fcs <- fcs_process(as_of = as_of, format = "csv") %>% delay_error(return = NA)
+fcs <- fcs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)
 
 fragility_sheet <- aggregate_dimension(
   "Conflict and Fragility",
   # Unlike other dimensions. conflict only uses emerging outlook to calculate overall
   overall_method = "emerging", 
   fcs,
-  un_idp_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  acled_process(as_of = as_of, format = format) %>% delay_error(return = NA),
-  # reign_process(as_of = as_of, format = format)),
-  pseudo_reign_process(as_of = as_of, format = format) %>% delay_error(return = NA))
+  un_idp_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  acled_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  # reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)),
+  pseudo_reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_path))
 
 # COMMAND ----------
@@ -182,7 +187,7 @@ multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, ar
 # Fix so that this uses dashboard_data instead of reading the CSV
 dashboard_crisis <- label_crises()
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
-write.csv(dashboard_crisis, "production/crm-dashboard-prod.csv")
+write.csv(dashboard_crisis, "production/crm-dashboard-prod.csv", row.names = F)
 
 # track_indicator_updates()
 # I've already written this. Do I still use it? My concern is that its reliance 

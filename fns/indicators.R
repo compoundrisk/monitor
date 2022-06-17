@@ -46,69 +46,70 @@ archiveInputs <- function(data,
                           # group_by defines the groups for which most recent data should be taken
                           group_by = "CountryCode",
                           today = Sys.Date(),
-                          return = F
+                          return = F,
+                          col_types = NULL
                           # large = F) 
-                          ){
+){
   if (newFile) {
     path <- path # Need to use path argument before we change `data` – otherwise path is changed
     data <- data %>% mutate(access_date = today) #%>%
-      # group_by(across(all_of(group_by))) # not needed for first save
+    # group_by(across(all_of(group_by))) # not needed for first save
     write.csv(data, path, row.names = F)
     if(return == T) return(data)
   } else {
-
-  # Read in the existing file for the input, which will be appended with new data
-  prev <- suppressMessages(read_csv(path)) %>%
-    mutate(access_date = as.Date(access_date))
-  
-  # Select the most recently added data for each unless group_by is set to false
-  if(is.null(group_by)) {
-    most_recent <- prev
-  } else {
-    most_recent <- prev %>%
-      group_by(across(all_of(group_by))) %>%
-      slice_max(order_by = access_date)
-  }
-
-  # Round all numeric columns to an excessive 10 places so that rows aren't counted as different
-  # just because of digit cropping (such as with MPO)
-  data <- mutate(data, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 10)))
-
-  # Add access_date for new data
-  data <- mutate(data, access_date = today)
-  
-  # Row bind `most_recent` and `data`, in order to make comparison (probably a better way)
-  # Could quicken a bit by only looking at columns that matter (ie. don't compare
-  # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
-  # new dates. Those automatically get added. 
-  # if(!large) {
+    
+    # Read in the existing file for the input, which will be appended with new data
+    prev <- suppressMessages(read_csv(path, col_types = col_types)) %>%
+      mutate(access_date = as.Date(access_date))
+    
+    # Select the most recently added data for each unless group_by is set to false
+    if(is.null(group_by)) {
+      most_recent <- prev
+    } else {
+      most_recent <- prev %>%
+        group_by(across(all_of(group_by))) %>%
+        slice_max(order_by = access_date)
+    }
+    
+    # Round all numeric columns to an excessive 10 places so that rows aren't counted as different
+    # just because of digit cropping (such as with MPO)
+    data <- mutate(data, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 10)))
+    
+    # Add access_date for new data
+    data <- mutate(data, access_date = today)
+    
+    # Row bind `most_recent` and `data`, in order to make comparison (probably a better way)
+    # Could quicken a bit by only looking at columns that matter (ie. don't compare
+    # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
+    # new dates. Those automatically get added. 
+    # if(!large) {
     bound <- bind_rows(most_recent, data)
     data_fresh <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
       filter(access_date == today) %>% 
       distinct()
-  # } else {
-  #   # (Other way) Paste all columns together in order to compare via %in%, and then select the
-  #   # data rows that aren't in 
-  #   # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
-  #   data_paste <- do.call(paste0, select(data, -access_date))
-  #   most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
-  #   data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
-  # }
-  # Append new data to CSV
-  combined <- bind_rows(prev, data_fresh) %>% distinct()
-  write.csv(combined, path, row.names = F)
-  if(return == T) return(combined)
+    # } else {
+    #   # (Other way) Paste all columns together in order to compare via %in%, and then select the
+    #   # data rows that aren't in 
+    #   # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
+    #   data_paste <- do.call(paste0, select(data, -access_date))
+    #   most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
+    #   data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
+    # }
+    # Append new data to CSV
+    combined <- bind_rows(prev, data_fresh) %>% distinct()
+    write.csv(combined, path, row.names = F)
+    if(return == T) return(combined)
   }
 }
 
 #--------------------FUNCTIONS TO LOAD INPUT DATA-----------------
 loadInputs <- function(
-                filename,
-                group_by = "CountryCode",
-                as_of = Sys.Date(),
-                format = "csv",
-                full = F,
-                col_types = NULL) {
+  filename,
+  group_by = "CountryCode",
+  as_of = Sys.Date(),
+  format = "csv",
+  full = F,
+  col_types = NULL) {
   # The as_of argument let's you run the function from a given historical date. Update indicators.R
   # to use this feature -- turning indicators.R into a function? with desired date as an argument
   
@@ -124,7 +125,7 @@ loadInputs <- function(
     data <- filter(data, access_date <= as_of)
   }
   if (full) return(data)
-
+  
   # Select the most recent access_date for each group, unless group_by = F
   if (is.null(group_by)) {
     most_recent <- data
@@ -146,7 +147,7 @@ add_dimension_prefix <- function(df, prefix) {
 add_new_input_cols <- function(df1, df2) {
   column_differences(df1, df2)
   combined <- bind_rows(df1, df2[0,]) %>%
-      relocate(access_date, .after = ncol(.))
+    relocate(access_date, .after = ncol(.))
   return(combined)
 }
 # Move external to functions file (is this still relevant?)
@@ -158,7 +159,6 @@ try_log <- function(expr) {
     write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
   })
 }
-
 
 #--------------------—INDICATOR SPECIFIC FUNCTIONS-----------------------------
 
@@ -181,39 +181,39 @@ acaps_collect <- function() {
 }
 
 ## Add in *_collect() function for ACAPS
-acaps_process <- function(as_of, format) {
+acaps_process <- function(as_of) {
   acaps <- read_most_recent("output/inputs-archive/acaps", FUN = read_html, as_of = as_of)
   
-# Scrape ACAPS website
-parent_nodes <- acaps %>% 
+  # Scrape ACAPS website
+  parent_nodes <- acaps %>% 
     html_nodes(".severity__country")
-
-# Scrape crisis data for each listed country
-acaps_list <- lapply(parent_nodes, function(node) {
+  
+  # Scrape crisis data for each listed country
+  acaps_list <- lapply(parent_nodes, function(node) {
     country <- node %>%
-        html_node(".severity__country__label") %>%
-        html_text()
+      html_node(".severity__country__label") %>%
+      html_text()
     country_level <- node %>%
-        html_node(".severity__country__value") %>%
-        html_text() %>%
-        as.numeric()
+      html_node(".severity__country__value") %>%
+      html_text() %>%
+      as.numeric()
     crises <- node %>%
-        html_nodes(".severity__country__crisis__label") %>%
-        html_text()
+      html_nodes(".severity__country__crisis__label") %>%
+      html_text()
     values <- node %>%
-        html_nodes(".severity__country__crisis__value") %>%
-        html_text() %>% 
-        as.numeric()
+      html_nodes(".severity__country__crisis__value") %>%
+      html_text() %>% 
+      as.numeric()
     if (length(crises) != length(values)) {
-        stop(paste("Node lengths for labels and values do not match for", country))
-        }
-
+      stop(paste("Node lengths for labels and values do not match for", country))
+    }
+    
     df <- data.frame(
-            Countryname = country,
-            crisis = crises,
-            value = values)
+      Countryname = country,
+      crisis = crises,
+      value = values)
     return(df)
-    }) %>%
+  }) %>%
     bind_rows() %>%
     subset(!str_detect(tolower(crisis), "country level")) %>%
     mutate(
@@ -229,63 +229,63 @@ acaps_list <- lapply(parent_nodes, function(node) {
       filter(value >= minimum) %>%
       group_by(Country) %>%
       summarise(
-          crisis = paste(paste0(crisis, " (", value, ")"), collapse = "; "),
-          value = max(value)) %>%
+        crisis = paste(paste0(crisis, " (", value, ")"), collapse = "; "),
+        value = max(value)) %>%
       mutate(category = category, .after = Country)
     return(selected)
   }
-
+  
   # Conflict countries
   conflict_list <- select_acaps_countries(
     acaps_list,
     string = "conflict|Crisis|crisis|Conflict|Refugees|refugees|Migration|migration|violence|violence|Boko Haram",
     minimum = 4,
     category = "conflict")
-    
+  
   # Food security countries
   food_list <- select_acaps_countries(
     acaps_list,
     string = "Food|food|famine|famine",
     minimum = 4,
     category = "food")
-    
+  
   # Natural hazard countries
   natural_list <- select_acaps_countries(
     acaps_list,
     string = "flood|drought|cyclone|landslide|earthquake",
     minimum = 3,
     category = "natural")
-    
+  
   # Epidemic countries
   health_list <- select_acaps_countries(
     acaps_list,
     string = "epidemic",
     minimum = 3,
     category = "health")
-
+  
   acaps_sheet <- bind_rows(conflict_list, food_list, natural_list, health_list) %>%
     mutate(acaps_risk = case_when(
       !is.na(value) ~ 10,
       TRUE ~ 0)) %>%
     rename(acaps_crisis = crisis)
-
+  
   return(acaps_sheet)
 }
 
-acaps_category_process <- function(as_of, format, category, prefix) {
-  acaps_sheet <- acaps_process(as_of = as_of, format = format)
-
-output <- acaps_sheet[which(acaps_sheet$category == category),] %>%
-right_join(countrylist) %>%
-mutate(acaps_risk = case_when(
-  is.na(acaps_risk) ~ 0,
-  TRUE ~ acaps_risk)) %>%
-  dplyr::select(Country, acaps_crisis, acaps_risk) %>%
-  rename_with(
-    .cols = -Country,
-    .fn = ~ paste0(prefix, .x)
-  )
-return(output)
+acaps_category_process <- function(as_of, category, prefix) {
+  acaps_sheet <- acaps_process(as_of = as_of)
+  
+  output <- acaps_sheet[which(acaps_sheet$category == category),] %>%
+    right_join(countrylist) %>%
+    mutate(acaps_risk = case_when(
+      is.na(acaps_risk) ~ 0,
+      TRUE ~ acaps_risk)) %>%
+    dplyr::select(Country, acaps_crisis, acaps_risk) %>%
+    rename_with(
+      .cols = -Country,
+      .fn = ~ paste0(prefix, .x)
+    )
+  return(output)
 }
 
 ##### HEALTH
@@ -299,12 +299,12 @@ ghsi_collect <- function() {
   archiveInputs(ghsi, group_by = "Country")
 }
 
-ghsi_process <- function(as_of, format) {
+ghsi_process <- function(as_of) {
   
   # OR instead of splitting, I could wrap everything above this (read.csv to archive) 
   # in an if statement, so you can run the script without this section if you're
   # trying to recreate data
-  ghsi <- loadInputs("ghsi", group_by = "Country", as_of = as_of, format = format)
+  ghsi <- loadInputs("ghsi", group_by = "Country", as_of = as_of, format = "csv")
   
   # Normalise scores
   # Rename HIS to ghsi *everywhere*
@@ -322,8 +322,8 @@ oxford_openness_collect <- function() {
 }
 
 # RENAME Oxrollback to oxford_openness_risk
-oxford_openness_process <- function(as_of, format) {
-  OXrollback <- loadInputs("oxford_openness_risk", group_by = c("CountryCode", "Date"), as_of = as_of, format = format)
+oxford_openness_process <- function(as_of) {
+  OXrollback <- loadInputs("oxford_openness_risk", group_by = c("CountryCode", "Date"), as_of = as_of, format = "csv")
   
   # Remove NAs and select columns
   # Risk of Openness is a time series; select most recent
@@ -373,7 +373,7 @@ owid_collect <- function() {
   write.csv(covidweb, "output/inputs-archive/owid_covid.csv", row.names = F)
 }
 
-owid_covid_process <- function(as_of, format) {
+owid_covid_process <- function(as_of) {
   # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
   # See warning
   # covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
@@ -398,7 +398,7 @@ owid_covid_process <- function(as_of, format) {
   # 
   # archiveInputs(owid_covid, group_by = c("iso_code", "date"))
   # # SPLIT: move above to inputs.R
-  # covidweb <- loadInputs("owid_covid", group_by = c("iso_code", "date"), as_of = as_of, format = format)
+  # covidweb <- loadInputs("owid_covid", group_by = c("iso_code", "date"), as_of = as_of, format = "csv")
   
   covid <- covidweb %>%
     mutate(date = as.Date(date)) %>%
@@ -434,31 +434,31 @@ owid_covid_process <- function(as_of, format) {
                              dplyr::select(iso_code))$iso_code) %>%
     filter(remove == TRUE) %>% 
     select(-remove)
-
-    # #############
-
-    # # Could go with one of these simpler methods (probably the second) but not necessary
-
-    # cg <- pivot_wider(covidgrowth, names_from = previous2week, values_from = c(meandeaths, meancase)) %>%
-    #   mutate(growthdeath = meandeaths_twoweek - meandeaths_lasttwoweek,
-    #         growthcase = meancase_twoweek - meancase_lasttwoweek
-    #         growthratedeaths = case_when(mean_deaths_lasttwoweek)
-    #   )
-
-    # cg <- covidgrowth %>% group_by(iso_code) %>%
-    #   summarize(
-    #     meandeaths = subset(meandeaths, previous2week == "twoweek"),
-    #     meandeaths_previous = subset(meandeaths, previous2week == "lasttwoweek"),
-    #     growthdeath = meandeaths - meandeaths_previous,
-    #     growthratedeaths = growthdeath / meandeaths_previous,
-
-    #     meancase = subset(meancase, previous2week == "twoweek"),
-    #     meancase_previous = subset(meancase, previous2week == "lasttwoweek"),
-    #     growthcase = meancase - meancase_previous,
-    #     growthratecase = growthcase / meancase_previous,
-    #   )
-    # #############
-
+  
+  # #############
+  
+  # # Could go with one of these simpler methods (probably the second) but not necessary
+  
+  # cg <- pivot_wider(covidgrowth, names_from = previous2week, values_from = c(meandeaths, meancase)) %>%
+  #   mutate(growthdeath = meandeaths_twoweek - meandeaths_lasttwoweek,
+  #         growthcase = meancase_twoweek - meancase_lasttwoweek
+  #         growthratedeaths = case_when(mean_deaths_lasttwoweek)
+  #   )
+  
+  # cg <- covidgrowth %>% group_by(iso_code) %>%
+  #   summarize(
+  #     meandeaths = subset(meandeaths, previous2week == "twoweek"),
+  #     meandeaths_previous = subset(meandeaths, previous2week == "lasttwoweek"),
+  #     growthdeath = meandeaths - meandeaths_previous,
+  #     growthratedeaths = growthdeath / meandeaths_previous,
+  
+  #     meancase = subset(meancase, previous2week == "twoweek"),
+  #     meancase_previous = subset(meancase, previous2week == "lasttwoweek"),
+  #     growthcase = meancase - meancase_previous,
+  #     growthratecase = growthcase / meancase_previous,
+  #   )
+  # #############
+  
   # Calculate variables of interest
   covidgrowth <- covidgrowth %>%
     mutate(
@@ -521,9 +521,9 @@ owid_covid_process <- function(as_of, format) {
   #                              destination = "iso3c",
   #                              warn = F),
   #        population = population / 1000)
-
+  
   # owid <- left_join(owid, pop)
-
+  
   # owid[which(owid$Country == "LIE"), "population"] <- 0.0387
   # owid[which(owid$Country == "DMA"), "population"] <- 0.0720
   # owid[which(owid$Country == "KNA"), "population"] <- 0.0532
@@ -531,28 +531,28 @@ owid_covid_process <- function(as_of, format) {
   # # owid[which(owid$Country == "NRU"), "population"] <- 0.0108
   # owid[which(owid$Country == "PLW"), "population"] <- 0.0181
   # # owid[which(owid$Country == "TUV"), "population"] <- 0.0118
-
+  
   # owid <- owid %>%
   #   mutate(death_count = population * meandeaths_current)
-
+  
   owid <- mutate(owid,
-    H_Covidgrowth_deathsnorm = case_when(
-      H_Covidgrowth_deathsnorm > 7 & 
-      H_new_deaths_smoothed_per_million < 0.15
-      ~ 7,
-    TRUE ~ H_Covidgrowth_deathsnorm),
-    H_Covidgrowth_casesnorm = case_when(
-      H_Covidgrowth_casesnorm > 7 & 
-      H_new_cases_smoothed_per_million < 10 ~ 7,
-    TRUE ~ H_Covidgrowth_casesnorm)) %>%
+                 H_Covidgrowth_deathsnorm = case_when(
+                   H_Covidgrowth_deathsnorm > 7 & 
+                     H_new_deaths_smoothed_per_million < 0.15
+                   ~ 7,
+                   TRUE ~ H_Covidgrowth_deathsnorm),
+                 H_Covidgrowth_casesnorm = case_when(
+                   H_Covidgrowth_casesnorm > 7 & 
+                     H_new_cases_smoothed_per_million < 10 ~ 7,
+                   TRUE ~ H_Covidgrowth_casesnorm)) %>%
     select(Country, starts_with("H_"))
-
+  
   return(owid)
 }
 
 #--------------------------—Oxford Response Tracker----------------------------
 # _Add in *_collect() function_
-Oxres_process <- function(as_of, format) {
+Oxres_process <- function(as_of) {
   # SLOW: 10 seconds with w/ `read.csv`, 5 with `read_csv`
   # see warning
   Oxres <- read_csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv",
@@ -651,8 +651,8 @@ inform_covid_collect <- function() {
   archiveInputs(inform_covid, group_by = c("Country"))
 }
 
-inform_covid_process <- function(as_of, format) {
-  inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"), as_of = as_of, format = format)
+inform_covid_process <- function(as_of) {
+  inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"), as_of = as_of, format = "csv")
   inform_covid_warning <- normfuncpos(inform_covid_warning, 6, 2, "H_INFORM_rating.Value")
   return(inform_covid_warning)
 }
@@ -673,30 +673,30 @@ dons_collect <- function() {
   dons_text <- dons_select %>%
     html_nodes(".trimmed") %>%
     html_text()
-
+  
   dons_urls <- dons_raw %>%
     html_nodes(".sf-list-vertical") %>%
     html_nodes("a") %>%
     html_attr("href")
-
+  
   # Check if notification is announcing *end* of outbreak
   first_sentences <- sapply(dons_urls, function(url) {
     p <- read_html(url) %>% 
-        html_nodes("article")  %>%
-        html_node("div:first-child") %>%
-        html_node("p:first-child") %>%
-        html_text()
+      html_nodes("article")  %>%
+      html_node("div:first-child") %>%
+      html_node("p:first-child") %>%
+      html_text()
     sentence <- sub("(.*?\\.) [A-Z].*", "\\1", p)
     return(sentence)
   })
   declared_over <- grepl("declared the end of|declared over", first_sentences, ignore.case = T)
-
+  
   who_dons <- data.frame(
-                    text = dons_text,
-                    date = dons_date,
-                    url = dons_urls,
-                    declared_over
-                    ) %>%
+    text = dons_text,
+    date = dons_date,
+    url = dons_urls,
+    declared_over
+  ) %>%
     mutate(disease = trimws(sub("\\s[-——ｰ].*", "", text)),
            country = trimws(sub(".*[-——ｰ]", "", text)),
            country = trimws(sub(".*-", "", country)),
@@ -707,13 +707,13 @@ dons_collect <- function() {
                                            destination = "iso3c",
                                            nomatch = NULL
     ))
-
+  
   archiveInputs(who_dons, group_by = NULL)
 }
 #----------------------------------—WHO DONs--------------------------------------------------------------
 
-dons_process <- function(as_of, format) {
-  who_dons <- loadInputs("who_dons", group_by = NULL, as_of = as_of, format = format)
+dons_process <- function(as_of) {
+  who_dons <- loadInputs("who_dons", group_by = NULL, as_of = as_of, format = "csv")
   # Only include DONs alerts from the past 3 months and not declared over
   # (more robust version would filter out outbreaks if they were later declared over)
   who_dons_current <- who_dons %>%
@@ -722,33 +722,33 @@ dons_process <- function(as_of, format) {
     rename(Country = who_country_alert) %>%
     select(Country, date, disease, who_dons_text, declared_over, url, access_date)
   
-# Remove diseases that have been declared over
-over <- subset(who_dons_current, declared_over)  
-
-for (i in seq_len(nrow(over))) {
-  o <- over[i,]
-  who_dons_current <- who_dons_current %>% mutate(
-    declared_over = case_when(
-      Country == o$Country & date < o$date & disease == o$disease ~ T,
-      TRUE ~ declared_over
+  # Remove diseases that have been declared over
+  over <- subset(who_dons_current, declared_over)  
+  
+  for (i in seq_len(nrow(over))) {
+    o <- over[i,]
+    who_dons_current <- who_dons_current %>% mutate(
+      declared_over = case_when(
+        Country == o$Country & date < o$date & disease == o$disease ~ T,
+        TRUE ~ declared_over
+      )
     )
-  )
-}
+  }
   
   who_dons <- who_dons_current %>%
-  subset(!declared_over) %>%
+    subset(!declared_over) %>%
     group_by(Country) %>%
     summarize(
       who_dons_text = paste(who_dons_text, collapse = "; "),
       events = n())
-
+  
   who_dons <- left_join(countrylist, who_dons, by = c("Country" = "Country")) %>%
     mutate(who_dons_alert = case_when(
       !is.na(who_dons_text) ~ 10,
       TRUE ~ 0)) %>%
-      select(Country, who_dons_alert, who_dons_text) %>%
-      add_dimension_prefix("H_")
-
+    select(Country, who_dons_alert, who_dons_text) %>%
+    add_dimension_prefix("H_")
+  
   return(who_dons)
 }
 
@@ -773,9 +773,9 @@ proteus_collect <- function() {
   archiveInputs(proteus, group_by = c("Country"))
 }
 
-proteus_process <- function(as_of, format) {
+proteus_process <- function(as_of) {
   
-  proteus <- loadInputs("proteus", group_by = c("Country"), as_of = as_of, format = format)
+  proteus <- loadInputs("proteus", group_by = c("Country"), as_of = as_of, format = "csv")
   
   upperrisk <- quantile(proteus$F_Proteus_Score, probs = c(0.90), na.rm = T)
   lowerrisk <- quantile(proteus$F_Proteus_Score, probs = c(0.10), na.rm = T)
@@ -791,8 +791,8 @@ fews_collect <- function() {
   archiveInputs(fewsnet, group_by = c("admin_code", "year_month"))
 }
 
-fews_process <- function(as_of, format) {
-  fewswb <- loadInputs("fewsnet", group_by = c("admin_code", "year_month"), as_of = as_of, format = format) %>%
+fews_process <- function(as_of) {
+  fewswb <- loadInputs("fewsnet", group_by = c("admin_code", "year_month"), as_of = as_of, format = "csv") %>%
     mutate(year_month = as.yearmon(year_month, "%Y_%m"))
   
   #Calculate country totals
@@ -866,7 +866,7 @@ fews_process <- function(as_of, format) {
     group_by(country) %>%
     slice_max(year_month) %>%
     ungroup()
-    # filter(year_month == "2021_10")
+  # filter(year_month == "2021_10")
   
   # Find max ipc for any region in the country
   fews_summary <- fewsg %>%
@@ -916,17 +916,17 @@ fews_process <- function(as_of, format) {
 fpi_collect <- function(as_of = Sys.Date()) {
   most_recent <- read_most_recent("restricted-data/food-price-inflation", FUN = read_csv, col_types = "dddddccD", as_of = as_of, return_date = T)
   file_date <- most_recent[[2]]
-
+  
   wb_fpi <- most_recent[[1]] %>%
     subset(date > as_of - 365)
   archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = file_date)
 }
 
-fpi_collect_many <- function() {
-    oldest_date <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = as_of, format = format) %>% .$access_date %>% max()
-    new_dates <- read_most_recent("restricted-data/food-price-inflation", n = "all", FUN = paste, as_of = Sys.Date(), return_date = T)$date %>%
-        .[. > oldest_date]
-    lapply(new_dates, fpi_collect)
+fpi_collect_many <- function(as_of = Sys.Date()) {
+  oldest_date <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = Sys.Date(), format = "csv") %>% .$access_date %>% max()
+  new_dates <- read_most_recent("restricted-data/food-price-inflation", n = "all", FUN = paste, as_of = Sys.Date(), return_date = T)$date %>%
+    .[. > oldest_date]
+  lapply(new_dates, fpi_collect)
 }
 
 # dates <- list.files("restricted-data/food-price-inflation") %>%
@@ -949,24 +949,24 @@ fpi_collect_many <- function() {
 #   archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = file_date)
 # })
 
-fpi_process <- function (as_of, format) {
-  fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = as_of, format = format) %>%
+fpi_process <- function (as_of) {
+  fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = as_of, format = "csv") %>%
     group_by(ISO3) %>%
     slice_max(order_by = date) %>%
     # in case any country's newest data is old, don't use
     subset(date > as_of - 92 & date <= as_of) %>%
     select(Country = ISO3, Inflation)
-
+  
   fpi <- mutate(fpi,
-    fpv_rating = case_when(
-      Inflation <= 2 ~ 1,
-      Inflation > 2 & Inflation <= 5 ~ 3,
-      Inflation > 5 & Inflation <= 30 ~ 5,
-      Inflation >= 30 ~ 7,
-      TRUE ~ NA_real_
-    )) %>%
-  add_dimension_prefix("F_")
- return(fpi) 
+                fpv_rating = case_when(
+                  Inflation <= 2 ~ 1,
+                  Inflation > 2 & Inflation <= 5 ~ 3,
+                  Inflation > 5 & Inflation <= 30 ~ 5,
+                  Inflation >= 30 ~ 7,
+                  TRUE ~ NA_real_
+                )) %>%
+    add_dimension_prefix("F_")
+  return(fpi) 
 }
 
 #-------------------------—FAO/WFP HOTSPOTS----------------------------
@@ -977,7 +977,7 @@ fao_wfp_collect <- function() {
                                  origin = "country.name",
                                  destination = "iso3c",
                                  nomatch = NULL))
-    
+  
   fao_all <- countrylist
   fao_all[fao_all$Country %in% fao_wfp$Country,"F_fao_wfp_warning"] <- 10
   fao_all$Forecast_End <- max(fao_wfp$Forecast_End, na.rm = T)
@@ -987,9 +987,9 @@ fao_wfp_collect <- function() {
   archiveInputs(fao_wfp, group_by = c("Country"))
 }
 
-fao_wfp_process <- function(as_of, format) {
+fao_wfp_process <- function(as_of) {
   # Kind of unnecessary
-  fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"), as_of = as_of, format = format) %>%
+  fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"), as_of = as_of, format = "csv") %>%
     select(-Countryname) %>%
     filter(Forecast_End >= as_of)
   return(fao_wfp)
@@ -1004,55 +1004,55 @@ eiu_collect <- function() {
   curl::curl_download(url, destfile)
   eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
   file.remove("RBTracker.xls")
-
+  
   first_of_month <- str_replace(Sys.Date(), "\\d\\d$", "01") %>% as.Date()
-
+  
   # eiu <- read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
   
   archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"), today = first_of_month)
 }
 
-eiu_process <- function(as_of, format) {
-eiu_data <- loadInputs("eiu", group_by = c("SERIES NAME", "MONTH"), as_of = as_of) %>%
+eiu_process <- function(as_of) {
+  eiu_data <- loadInputs("eiu", group_by = c("SERIES NAME", "MONTH"), as_of = as_of) %>%
     select(-access_date) %>%
     subset(MONTH <= as_of)
-
-eiu_data_long <- eiu_data %>%
+  
+  eiu_data_long <- eiu_data %>%
     select(-`SERIES CODE`) %>%
     subset(`SERIES NAME` %in% c("Macroeconomic risk", "Financial risk", "Foreign trade & payments risk")) %>%
     pivot_longer(-c(`SERIES NAME`, MONTH), names_to = "Country", values_to = "Values") %>%
     pivot_wider(names_from = `SERIES NAME`, values_from = Values) %>%
     mutate(Macroeconomic_risk = (`Financial risk` + `Macroeconomic risk` + `Foreign trade & payments risk`) / 3,
-        .keep = "unused")
-
-eiu_latest_month <- eiu_data_long %>%
+           .keep = "unused")
+  
+  eiu_latest_month <- eiu_data_long %>%
     group_by(Country) %>%
     slice_max(MONTH, n = 1) %>%
     summarize(Macroeconomic_risk = mean(Macroeconomic_risk))
-eiu_one_year <- eiu_data_long %>%
+  eiu_one_year <- eiu_data_long %>%
     group_by(Country) %>%
     slice_max(MONTH, n = 13) %>%
     slice_min(MONTH, n = 12) %>%
     summarize(Macroeconomic_risk_12 = mean(Macroeconomic_risk))
-# eiu_three_month <- eiu_data_long %>%
-#     group_by(Country) %>%
-#     slice_max(MONTH, n = 4) %>%
-#     slice_min(MONTH, n = 3) %>%
-#     summarize(Macroeconomic_risk_3 = mean(Macroeconomic_risk))
-
-eiu_joint <-
+  # eiu_three_month <- eiu_data_long %>%
+  #     group_by(Country) %>%
+  #     slice_max(MONTH, n = 4) %>%
+  #     slice_min(MONTH, n = 3) %>%
+  #     summarize(Macroeconomic_risk_3 = mean(Macroeconomic_risk))
+  
+  eiu_joint <-
     reduce(list(eiu_latest_month, eiu_one_year),#, eiu_three_month),
-            full_join, by = "Country") %>%
+           full_join, by = "Country") %>%
     mutate(
       EIU_12m_change = Macroeconomic_risk - Macroeconomic_risk_12
-    #   EIU_3m_change = Macroeconomic_risk - Macroeconomic_risk_3
+      #   EIU_3m_change = Macroeconomic_risk - Macroeconomic_risk_3
     ) %>%
     rename(EIU_Score = `Macroeconomic_risk`,
            EIU_Score_12m = `Macroeconomic_risk_12`) %>%
     rename_with(.col = -Country, .fn = ~ paste0("M_", .)) %>%
     mutate(Country = name2iso(Country))
-
-#   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
+  
+  #   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_12m_change, 0.95), quantile(eiu_joint$M_EIU_12m_change, 0.10), "M_EIU_12m_change")
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score_12m, 0.95), quantile(eiu_joint$M_EIU_Score_12m, 0.10), "M_EIU_Score_12m")
   return(eiu_joint)
@@ -1060,21 +1060,21 @@ eiu_joint <-
 
 #### SOCIO-ECONOMIC
 #---------------------------—Alternative socio-economic data (based on INFORM) - INFORM Income Support
-inform_socio_process <- function(as_of, format = format) {
-  inform_risk <- loadInputs("inform_risk", group_by = c("Country"), as_of = as_of, format = format)
-
+inform_socio_process <- function(as_of) {
+  inform_risk <- loadInputs("inform_risk", group_by = c("Country"), as_of = as_of, format = "csv")
+  
   inform_data <- inform_risk %>%
     dplyr::select(Country, "Socio-Economic Vulnerability") %>%
     rename(S_INFORM_vul = "Socio-Economic Vulnerability")
-
+  
   inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
   inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
   return(inform_data)
 }
 
-income_support_process <- function(as_of, format) {
+income_support_process <- function(as_of) {
   #------------------------—Forward-looking socio-economic variables from INFORM---------------------------
-  inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"), as_of = as_of, format = format)
+  inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"), as_of = as_of, format = "csv")
   socio_forward <- inform_covid_warning %>%
     dplyr::select(
       Country, H_gdp_change.Value,H_gdp_change.Rating, H_unemployment.Value,
@@ -1091,7 +1091,7 @@ income_support_process <- function(as_of, format) {
         .x == "Medium" ~ 7,
         .x == "Low" ~ 0,
         TRUE ~ NA_real_
-),
+      ),
       .names = "{.col}_norm")) %>%
     mutate(
       S_income_support.Rating_crm_norm = case_when(
@@ -1109,21 +1109,21 @@ mpo_collect <- function() {
   file_date <- most_recent[[2]]
   # mpo <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/mpo.csv")))
   # archiveInputs(mpo, group_by = c("Country"))
-
-
+  
+  
   # FIX: Ideally most of this would be in the mpo_process() function, rather than the collect
   # function, but doing so would conflict with the current mpo archive structure
   mpo <- most_recent[[1]]
-
+  
   # Add population
   pop <- wpp.by.year(wpp.indicator("tpop"), 2020)
-
+  
   pop$charcode <- suppressWarnings(countrycode(pop$charcode,
-                                              origin = "iso2c",
-                                              destination = "iso3c"))
-
+                                               origin = "iso2c",
+                                               destination = "iso3c"))
+  
   colnames(pop) <- c("Country", "Population")
-
+  
   mpo_data <- mpo %>%
     rename(Country = Code) %>%
     left_join(., pop, by= "Country")  %>%
@@ -1136,13 +1136,13 @@ mpo_collect <- function() {
       pov_prop_22_21 = y2022 - y2021,
       # pov_prop_21_20 = y2021 - y2020,
       # pov_prop_20_19 = y2020 - y2019,
-      ) %>%
+    ) %>%
     filter(Label == "International poverty rate ($1.9 in 2011 PPP)") %>%
     rename_with(
       .fn = ~ paste0("S_", .),
       .cols = colnames(.)[!colnames(.) %in% c("Country")]
     )
-
+  
   # Normalise based on percentiles
   mpo_data <- normfuncpos(mpo_data,
                           quantile(mpo_data$S_pov_prop_23_22, 0.95,  na.rm = T),
@@ -1156,46 +1156,46 @@ mpo_collect <- function() {
   #                         quantile(mpo_data$S_pov_prop_21_20, 0.95,  na.rm = T),
   #                         quantile(mpo_data$S_pov_prop_21_20, 0.05,  na.rm = T),
   #                         "S_pov_prop_21_20")
-
+  
   mpo_data <- mpo_data %>%
     mutate(
       S_pov_comb_norm = rowMaxs(as.matrix(dplyr::select(.,
                                                         S_pov_prop_23_22_norm,
                                                         S_pov_prop_22_21_norm
                                                         # S_pov_prop_21_20_norm
-                                                        )),
-                                na.rm = T)) %>%
-          dplyr::select(Country,
-                        S_pov_comb_norm, 
-                        S_pov_prop_23_22_norm,
-                        S_pov_prop_22_21_norm,
-                        # S_pov_prop_21_20_norm, 
-                        S_pov_prop_23_22,
-                        S_pov_prop_22_21
-                        # S_pov_prop_21_20
-                        )
-
+      )),
+      na.rm = T)) %>%
+    dplyr::select(Country,
+                  S_pov_comb_norm, 
+                  S_pov_prop_23_22_norm,
+                  S_pov_prop_22_21_norm,
+                  # S_pov_prop_21_20_norm, 
+                  S_pov_prop_23_22,
+                  S_pov_prop_22_21
+                  # S_pov_prop_21_20
+    )
+  
   # write_csv(mpo_data, "Indicator_dataset/mpo.csv")
   mpo <- mpo_data
   archiveInputs(mpo, group_by = c("Country"), today = file_date)
 }
 
-mpo_process <- function(as_of, format) {
+mpo_process <- function(as_of) {
   # Specify the expected types for each column; I should do this everywhere.
   col_types <- cols(
-                  Country = "c",
-                  S_pov_comb_norm = "d",
-                  S_pov_prop_22_21_norm = "d",
-                  S_pov_prop_21_20_norm = "d",
-                  S_pov_prop_20_19_norm = "d",
-                  S_pov_prop_22_21 = "d",
-                  S_pov_prop_21_20 = "d",
-                  S_pov_prop_20_19 = "d",
-                  S_pov_prop_23_22_norm = "d",
-                  S_pov_prop_23_22 = "d",
-                  access_date = "D")
-  mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = format, col_types = col_types)
-  return(mpo)
+    Country = "c",
+    S_pov_comb_norm = "d",
+    S_pov_prop_22_21_norm = "d",
+    S_pov_prop_21_20_norm = "d",
+    S_pov_prop_20_19_norm = "d",
+    S_pov_prop_22_21 = "d",
+    S_pov_prop_21_20 = "d",
+    S_pov_prop_20_19 = "d",
+    S_pov_prop_23_22_norm = "d",
+    S_pov_prop_23_22 = "d",
+    access_date = "D")
+  mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = "csv", col_types = col_types)
+return(mpo)
 }
 
 ## MACROFIN / EFI Macro Financial Review Household Level Risk
@@ -1204,21 +1204,27 @@ mfr_collect <- function() {
   archiveInputs(macrofin, group_by = c("ISO3"))
 }
 
-macrofin_process <- function(as_of, format) {
-  macrofin <- loadInputs("macrofin", group_by = c("ISO3"), as_of = as_of, format = format)
+macrofin_process <- function(as_of) {
+  macrofin <- loadInputs("macrofin", group_by = c("ISO3"), as_of = as_of, format = "csv")
   
-  household_risk <- macrofin %>%
-    dplyr::select(Country = ISO3, Household.risks) %>%
-    mutate(Household.risks_raw = Household.risks,
-           Household.risks = case_when(
+  macrofin <- macrofin %>%
+    dplyr::select(Country = ISO3, Household.risks, Macroeconomic.risks, Monetary.and.financial.conditions, Risk.appetite) %>%
+    mutate(S_Household.risks_raw = Household.risks,
+           S_Household.risks = case_when(
              Household.risks == "Low" ~ 0,
              Household.risks == "Medium" ~ 7,
              Household.risks == "High" ~ 10,
-             TRUE ~ NA_real_
-           )) %>%
-    rename(S_Household.risks = Household.risks,
-           S_Household.risks_raw = Household.risks_raw)
-  return(household_risk)
+             TRUE ~ NA_real_),
+           M_MFR_raw = paste0("Macro: ", Macroeconomic.risks,
+                              "; Monetary and Financial: ", Monetary.and.financial.conditions,
+                              "; Risk Appetite: ",  Risk.appetite),
+           M_MFR = case_when(
+            Macroeconomic.risks == "High" | Monetary.and.financial.conditions == "High" | Risk.appetite == "High" ~ 10,
+            Macroeconomic.risks == "Medium" | Monetary.and.financial.conditions == "Medium" | Risk.appetite == "Medium" ~ 7,
+            Macroeconomic.risks == "Low" | Monetary.and.financial.conditions == "Low" | Risk.appetite == "Low" ~ 0,
+             TRUE ~ NA_real_)) %>%
+             select(Country, starts_with("M_"), starts_with("S_"))
+  return(macrofin)
 }
 
 #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
@@ -1229,22 +1235,22 @@ phone_collect <- function() {
   archiveInputs(wb_phone , group_by = c("Country"))
 }
 
-phone_process <- function(as_of, format) {
-  wb_phone  <- loadInputs("wb_phone", group_by = c("Country"), as_of = as_of, format = format)
+phone_process <- function(as_of) {
+  wb_phone  <- loadInputs("wb_phone", group_by = c("Country"), as_of = as_of, format = "csv")
 }
 #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
 imf_collect <- function() {
   imf_unemployment <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/imf_unemployment.csv")))
-
-# imf_archive <- read_csv("output/inputs-archive/imf_unemployment.csv") %>%
-#   mutate(`2027` = NA, .after = `2026`)
-# write.csv(imf_archive, "output/inputs-archive/imf_unemployment.csv")
-
+  
+  # imf_archive <- read_csv("output/inputs-archive/imf_unemployment.csv") %>%
+  #   mutate(`2027` = NA, .after = `2026`)
+  # write.csv(imf_archive, "output/inputs-archive/imf_unemployment.csv")
+  
   archiveInputs(imf_unemployment, group_by = c("Country"))
 }
 
-imf_process <- function(as_of, format) {
-  imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"), as_of = as_of, format = format)
+imf_process <- function(as_of) {
+  imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"), as_of = as_of, format = "csv")
   # FIX
   
   imf_un <- imf_unemployment %>%
@@ -1255,10 +1261,10 @@ imf_process <- function(as_of, format) {
     ) %>%
     # Warnings. Introduces NAs … because there are NAs.
     mutate(
-           change_unemp_22 = `2022` - `2021`,
-           change_unemp_21 = `2021` - `2020`,
-          #  change_unemp_20 = `2020` - `2019`
-           ) %>%
+      change_unemp_22 = `2022` - `2021`,
+      change_unemp_21 = `2021` - `2020`,
+      #  change_unemp_20 = `2020` - `2019`
+    ) %>%
     rename(
       Countryname = Country,
       Country = ISO3
@@ -1431,17 +1437,17 @@ gdacs_collect <- function() {
   # gdacs <- rbind(gdacs, gdacs_changed, gdacs_prev) %>% distinct()
 }
 
-gdacs_process <- function(as_of, format) {
-  if (format == "csv") {
+gdacs_process <- function(as_of) {
+  # if (format == "csv") {
     # Read in CSV
     gdacs <- suppressMessages(read_csv("output/inputs-archive/gdacs.csv")) %>%
       mutate(access_date = as.Date(access_date)) %>%
       filter(access_date <= as_of) %>%
       filter(access_date == max(access_date))
-  }
-  if (format == "spark") {
-    # Read from Spark DataFrame
-  }
+  # }
+  # if (format == "spark") {
+  #   # Read from Spark DataFrame
+  # }
   
   gdaclist <- gdacs
   
@@ -1493,8 +1499,8 @@ inform_risk_collect <- function() {
   archiveInputs(inform_risk, group_by = c("Country"))
 }
 
-inform_nathaz_process <- function(as_of, format) {
-  inform_risk <- loadInputs("inform_risk", group_by = c("Country"), as_of = as_of, format = format)
+inform_nathaz_process <- function(as_of) {
+  inform_risk <- loadInputs("inform_risk", group_by = c("Country"), as_of = as_of, format = "csv")
   # Rename country
   informnathaz <- inform_risk %>%
     dplyr::select(Country, Natural) %>%
@@ -1508,92 +1514,92 @@ inform_nathaz_process <- function(as_of, format) {
 
 #----------------------------------—IRI Seasonal Forecast ------------------------------------------
 iri_collect <- function(as_of = Sys.Date()) {
-
+  
   # library(raster)
   # library(rgdal)
   # library(sf)
   # # library(dplyr)
   # # library(RColorBrewer)
   # library(exactextractr)
-
+  
   is_diff_month <- function(s) {
-        m <- str_replace(s, ".*20..-(..)-...tif.*", "\\1")
-        return(m != format(Sys.Date(), "%m"))
+    m <- str_replace(s, ".*20..-(..)-...tif.*", "\\1")
+    return(m != format(Sys.Date(), "%m"))
   }
   expect_new <- 
-      read_most_recent("output/inputs-archive/iri/forecast", FUN = is_diff_month, as_of = as_of) &
-      as.numeric(format(as_of, "%d")) >= 15
-
+    read_most_recent("output/inputs-archive/iri/forecast", FUN = is_diff_month, as_of = as_of) &
+    as.numeric(format(as_of, "%d")) >= 15
+  
   if (expect_new) {
-
-      iri_urls <- list(c('forecast', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.FD/.NMME_Seasonal_Forecast/.Precipitation_ELR/Y/-85/85/RANGE/X/-180/180/RANGEEDGES/a:/.dominant/:a:/.target_date/:a/X/Y/fig-/colors/plotlabel/black/thin/coasts_gaz/thin/countries_gaz/-fig/(L)cvn/1.0/plotvalue/(F)cvn/last/plotvalue/(antialias)cvn/true/psdef/(framelabel)cvn/(%=[target_date]%20IRI%20Seasonal%20Precipitation%20Forecast%20issued%20%=[F])psdef/(dominant)cvn/-100.0/100.0/plotrange/(plotaxislength)cvn/590/psdef/(plotborderbottom)cvn/40/psdef/(plotbordertop)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'),
-                  c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
-
-      curl_iri <- function(x) {
-          iri_date <- paste0('?F=', format(as_of, "%b%%20%Y"))
-          dest_file <- x[[1]]
-          iri_curl <- paste0('curl -g -k -b ".access/iri-access.txt" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
-          system(iri_curl)
-          iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
-          return(T)
-      }
-
-      lapply(iri_urls, curl_iri)
-
-      # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
-      continuity_new <- raster("tmp-continuity.tiff")
-      continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = as_of)
-      if(!identical(values(continuity_new), values(continuity_old))) {
-        file.rename("tmp-continuity.tiff", paste0("output/inputs-archive/iri/continuity/iri-continuity-", as_of, ".tiff"))
-      }
-      
-      forecast_new <- raster("tmp-forecast.tiff")
-      forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = as_of)
-      if(!identical(values(forecast_new), values(forecast_old))) {
-        file.rename("tmp-forecast.tiff", paste0("output/inputs-archive/iri/forecast/iri-forecast-", as_of, ".tiff"))
-      }
+    
+    iri_urls <- list(c('forecast', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.FD/.NMME_Seasonal_Forecast/.Precipitation_ELR/Y/-85/85/RANGE/X/-180/180/RANGEEDGES/a:/.dominant/:a:/.target_date/:a/X/Y/fig-/colors/plotlabel/black/thin/coasts_gaz/thin/countries_gaz/-fig/(L)cvn/1.0/plotvalue/(F)cvn/last/plotvalue/(antialias)cvn/true/psdef/(framelabel)cvn/(%=[target_date]%20IRI%20Seasonal%20Precipitation%20Forecast%20issued%20%=[F])psdef/(dominant)cvn/-100.0/100.0/plotrange/(plotaxislength)cvn/590/psdef/(plotborderbottom)cvn/40/psdef/(plotbordertop)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'),
+                     c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
+    
+    curl_iri <- function(x) {
+      iri_date <- paste0('?F=', format(as_of, "%b%%20%Y"))
+      dest_file <- x[[1]]
+      iri_curl <- paste0('curl -g -k -b ".access/iri-access.txt" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
+      system(iri_curl)
+      iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
+      return(T)
+    }
+    
+    lapply(iri_urls, curl_iri)
+    
+    # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
+    continuity_new <- raster("tmp-continuity.tiff")
+    continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = as_of)
+    if(!identical(values(continuity_new), values(continuity_old))) {
+      file.rename("tmp-continuity.tiff", paste0("output/inputs-archive/iri/continuity/iri-continuity-", as_of, ".tiff"))
+    }
+    
+    forecast_new <- raster("tmp-forecast.tiff")
+    forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = as_of)
+    if(!identical(values(forecast_new), values(forecast_old))) {
+      file.rename("tmp-forecast.tiff", paste0("output/inputs-archive/iri/forecast/iri-forecast-", as_of, ".tiff"))
+    }
   }
 }
 
 iri_process <- function(
-    sp_path = read_most_recent("output/inputs-archive/iri/forecast", FUN = paste, as_of = as_of) ,
-    continuity_path = read_most_recent("output/inputs-archive/iri/continuity", FUN = paste, as_of = as_of) ,
-    include_area = F,
-    drop_geometry = F,
-    country_list = F,
-    probability_threshold = 50,
-    full_output = F,
-    pop_threshold = 25,
-    agri_threshold = 0.35,
-    as_of,
-    format) {
+  sp_path = read_most_recent("output/inputs-archive/iri/forecast", FUN = paste, as_of = as_of) ,
+  continuity_path = read_most_recent("output/inputs-archive/iri/continuity", FUN = paste, as_of = as_of) ,
+  include_area = F,
+  drop_geometry = F,
+  country_list = F,
+  probability_threshold = 50,
+  full_output = F,
+  pop_threshold = 25,
+  agri_threshold = 0.35,
+  as_of,
+  format) {
   
   classify_country_size <- function(areas) {
-   classes <- sapply(areas, function(area) {
+    classes <- sapply(areas, function(area) {
       if (area <= quantile(areas, 0.2)) {
-         class <- 1
+        class <- 1
       } else {
-      if (area <= quantile(areas, 0.4)) {
-         class <- 2
-      } else {
-      if (area <= quantile(areas, 0.6)) {
-         class <- 3
-      } else {
-      if (area <= quantile(areas, 0.8)) {
-         class <- 4
-      } else {
-      if (area <= quantile(areas, 1)) {
-         class <- 5
-      } else {
-         class <- NA
-      }}}}}
+        if (area <= quantile(areas, 0.4)) {
+          class <- 2
+        } else {
+          if (area <= quantile(areas, 0.6)) {
+            class <- 3
+          } else {
+            if (area <= quantile(areas, 0.8)) {
+              class <- 4
+            } else {
+              if (area <= quantile(areas, 1)) {
+                class <- 5
+              } else {
+                class <- NA
+              }}}}}
       return(class)
-   })
-   return(classes)
+    })
+    return(classes)
   }
-
+  
   proportion_thresholds <- data.frame(class = 1:5, proportion_threshold = c(1, 0.666, 0.5, 0.333, 0.333))
-
+  
   s <- stack(list(
     # Selected precipitation forecasts issued
     sp = crop(raster(sp_path), extent(-180.5, 180.5, -65.5, 75.5)),
@@ -1603,89 +1609,89 @@ iri_process <- function(
     pop_density = raster("output/inputs-archive/iri/pop-density.tiff"),
     # Proportino crop+pasture, resampled to same grid as forecast
     agri_density = raster("output/inputs-archive/iri/crop-pasture-density.tiff")))
-
+  
   countries <- st_read("output/inputs-archive/world-borders/TM_WORLD_BORDERS-0.3.shp") %>%
     dplyr::select(-fips, -iso2, -un, -area, -pop2005, -lon, -lat, -Pixelcount)
   st_crs(countries) <- st_crs(s)
-
+  
   # Filter sp layer for population density and crop + pasture density
   s$sp[(s$pop_density < 25 | is.na(s$pop_density)) & (s$agri_density < 0.35 | is.na(s$agri_density))] <- NA
   # IRI does not do this, but not doing so means a country can have more dry pixels than total pixels
   s$continuity[(s$pop_density < 25 | is.na(s$pop_density)) & (s$agri_density < 0.35 | is.na(s$agri_density))] <- NA
-
+  
   s$wet <- ifelse(values(s$sp) > probability_threshold, 1, NA)
   # Continuity of 2 means 40–505 probability of below normal precipation and a dry past 3 months
   s$dry <- ifelse(values(s$sp) < -probability_threshold | values(s$continuity) == 2, 1, NA)
-
+  
   country_extract <- function(x, include_area) {
     output <- exact_extract(
-            x = x,
-            y = countries,
-            include_area = include_area) %>%
-        sapply(function(x) {
-            x <- as_tibble(x) %>%
-            tidyr::drop_na()
-            if(include_area) {
-                x <- mutate(x, area_scaled = area / 1e+10)
-                return(sum(x$area_scaled))
-            }
-            return(nrow(x))
-        })
+      x = x,
+      y = countries,
+      include_area = include_area) %>%
+      sapply(function(x) {
+        x <- as_tibble(x) %>%
+          tidyr::drop_na()
+        if(include_area) {
+          x <- mutate(x, area_scaled = area / 1e+10)
+          return(sum(x$area_scaled))
+        }
+        return(nrow(x))
+      })
     return(output)
   }
-
+  
   if (country_list) {
-  countries <- subset(countries, iso3 %in% countrylist$Country)
+    countries <- subset(countries, iso3 %in% countrylist$Country)
   }
-
+  
   if (include_area) {
     # Separate out countries with 0 pixels because you can't `include_area` for features with no pixels
     countries$pixels <- country_extract(x = s$sp, include_area = F)
     zeros <- subset(countries, pixels == 0) %>% 
-        mutate(wet = NA, dry = NA)
+      mutate(wet = NA, dry = NA)
     countries <- subset(countries, pixels > 0)
   }
-
+  
   countries$pixels <- country_extract(x = s$sp, include_area = include_area)
   countries$wet <- country_extract(x = s$wet, include_area = include_area)
   countries$dry <- country_extract(x = s$dry, include_area = include_area)
-
+  
   if (include_area) {
-  countries <- rbind(zeros, countries)
+    countries <- rbind(zeros, countries)
   }
-
+  
   if(drop_geometry) {
-  countries <- countries %>% st_drop_geometry()
+    countries <- countries %>% st_drop_geometry()
   }
-
+  
   countries <- mutate(countries,
-    size_class = classify_country_size(pixels))
+                      size_class = classify_country_size(pixels))
   countries <- left_join(countries, proportion_thresholds, by = c("size_class" = "class"))
-
+  
   countries <- mutate(countries,
-    anomalous = wet + dry,
-    proportion_wet = wet/pixels,
-    proportion_dry = dry/pixels,
-    proportion_anomalous = anomalous/pixels,
-    wet_flag = case_when(
-        proportion_wet >= proportion_threshold ~ T,
-        is.na(proportion_wet) ~ NA,
-        TRUE ~ F),
-    dry_flag = case_when(
-        proportion_dry >= proportion_threshold ~ T,
-        is.na(proportion_dry) ~ NA,
-        TRUE ~ F),
-    anomalous_flag = case_when(
-        proportion_anomalous >= proportion_threshold ~ T,
-        is.na(proportion_anomalous) ~ NA,        
-        TRUE ~ F),
-    flag = wet_flag | dry_flag) %>% 
+                      anomalous = wet + dry,
+                      proportion_wet = wet/pixels,
+                      proportion_dry = dry/pixels,
+                      proportion_anomalous = anomalous/pixels,
+                      wet_flag = case_when(
+                        proportion_wet >= proportion_threshold ~ T,
+                        is.na(proportion_wet) ~ NA,
+                        TRUE ~ F),
+                      dry_flag = case_when(
+                        proportion_dry >= proportion_threshold ~ T,
+                        is.na(proportion_dry) ~ NA,
+                        TRUE ~ F),
+                      anomalous_flag = case_when(
+                        proportion_anomalous >= proportion_threshold ~ T,
+                        is.na(proportion_anomalous) ~ NA,        
+                        TRUE ~ F),
+                      flag = wet_flag | dry_flag) %>% 
     rename(Country = iso3)
-
-if(full_output) {
-  return(countries)
-}
-
+  
+  if(full_output) {
+    return(countries)
+  }
+  
   output <- countries %>%
     mutate(
       NH_seasonal_risk_norm = case_when(
@@ -1694,17 +1700,17 @@ if(full_output) {
         T ~ 0),
       NH_seasonal_proportion_anomalous = proportion_anomalous) %>%
     dplyr::select(Country, contains("NH"))
-
+  
   return(output)
 }
 
 # # For temporarily generating file locally,
-# iri <- iri_process(drop_geometry = T, as_of = as_of, format = format)
+# iri <- iri_process(drop_geometry = T, as_of = as_of)
 # write.csv(iri, "~/Documents/world-bank/crm/compoundriskdata/Indicator_dataset/iri-precipitation-temp.csv")
 
 iri_process_temp <- function() {
- iri <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/iri-precipitation-temp.csv"), col_types = cols())) 
- return(iri)
+  iri <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/iri-precipitation-temp.csv"), col_types = cols())) 
+  return(iri)
 }
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
@@ -1719,8 +1725,8 @@ locust_collect <- function() {
   archiveInputs(fao_locust, group_by = c("Country"))
 }
 
-locust_process <- function(as_of, format) {
-  fao_locust <- loadInputs("fao_locust", group_by = c("Country"), as_of = as_of, format = format)
+locust_process <- function(as_of) {
+  fao_locust <- loadInputs("fao_locust", group_by = c("Country"), as_of = as_of, format = "csv")
   return(fao_locust)
 }
 
@@ -1752,8 +1758,8 @@ fcs_collect <- function() {
   archiveInputs(fcs, group_by = c("Country"))
 }
 
-fcs_process <- function(as_of, format) {
-  fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = format)
+fcs_process <- function(as_of) {
+  fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = "csv")
   return(fcs)
 }
 
@@ -1763,22 +1769,21 @@ idp_collect <- function() {
                                         col_types = cols(
                                           `IDPs of concern to UNHCR` = col_number(),
                                           `Refugees under UNHCR mandate` = col_number(),
-                                          Year = col_number()
-                                        ), skip = 14
-  ))
+                                          Year = col_number()),
+                                        skip = 14))
   
   update_date <- readLines(paste0(github, "Indicator_dataset/population.csv"), 3)[3] %>%
     str_extract("\\d+ [[:alpha:]]+ 20\\d\\d") %>%
-    as.Date(format = "%d %B %y")
-
+    as.Date(format = "%d %B %Y")
+  
   un_idp <- idp_data
   archiveInputs(un_idp, group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"), today = update_date)
 }
 
-un_idp_process <- function(as_of, format) {
-  un_idp <- loadInputs("un_idp", group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"), as_of = as_of, format = format)
+un_idp_process <- function(as_of) {
+  un_idp <- loadInputs("un_idp", group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"), as_of = as_of, format = "csv")
   recent_year <- max(un_idp$Year)
-
+  
   # Calculate metrics
   idp <- un_idp %>%
     subset(Year > recent_year - 5) %>%
@@ -1814,7 +1819,7 @@ un_idp_process <- function(as_of, format) {
     filter(Year == recent_year) %>%
     # dplyr::select(`Country of origin (ISO)`, refugees, z_refugees, refugees_fragile, idps, z_idps, idps_fragile)
     dplyr::select(`Country of origin (ISO)`, idps, z_idps, idps_fragile)
-
+  
   
   # Normalise scores
   # idp <- normfuncpos(idp, 1, 0, "z_refugees")
@@ -1833,7 +1838,7 @@ un_idp_process <- function(as_of, format) {
     rename(
       Country = `Country of origin (ISO)`,
       Displaced_UNHCR_Normalised = z_idps_norm)
-
+  
   return(idp)
 }
 
@@ -1859,36 +1864,46 @@ acled_collect <- function() {
   # Retrieve information
   acled_data <- fromJSON(acled_url)
   
-  acled <- acled_data$data
+  acled <- acled_data$data %>%
+    mutate(iso = as.numeric(iso),
+        fatalities = as.numeric(fatalities),
+        event_date = as.Date(event_date)) %>%
+    subset(fatalities > 0)
   
   # # DELETE for first time only
-  # acled <- mutate(acled, access_date = Sys.Date())
-  # write.csv(acled, "inputs-archive/acled.csv", row.names = F)
+  # Actually no:
+  # ACLED includes historical data, it takes forever to archive, and I don't
+  # understand why the dataset differs each day, so for now I'm just writing 
+  # it fresh each time (like OWID COVID)
+  acled <- mutate(acled, access_date = Sys.Date())
+  write.csv(acled, "output/inputs-archive/acled.csv", row.names = F)
   
   # # If I want to reduce file size, zipping takes ~10 seconds (unzipping: <1s)
   # # and reduces size from 40 MB to 4 MB
   # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
-  archiveInputs(acled, group_by = "event_id_cnty")
+  # archiveInputs(acled, group_by = "event_id_cnty", col_types = "cddDcD")
   # zip("output/inputs-archive/acled.zip", "output/inputs-archive/acled.R") 
   # file.remove("output/inputs-archive/acled.R")
 }
 
-acled_process <- function(as_of, format) {
+acled_process <- function(as_of) {
   # Because we have no ACLED data from the past few months, and because ACLED data is also historic,
   # use June 2022 as access_date for all earlier retroactive runs
-  effective_access_date <- if (as_of < as.Date("2022-06-06")) as.Date("2022-06-06") else as_of
-
-  # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
-  acled <- loadInputs("acled", group_by = "event_id_cnty", as_of = effective_access_date) #158274
-  # file.remove("output/inputs-archive/acled.R")
+  # effective_access_date <- if (as_of < as.Date("2022-06-06")) as.Date("2022-06-06") else as_of
   
+  # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
+  # acled <- loadInputs("acled", group_by = "event_id_cnty", as_of = effective_access_date, col_types = "cddDc") #158274
+  # file.remove("output/inputs-archive/acled.R")
+  acled <- read_csv("output/inputs-archive/acled.csv", col_types = "cddDcD")
+
+
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.yearmon(as_of - 45) - 3.2
-
+  
   # Progress conflict data
   acled <- acled %>%
     mutate(
-    #   fatalities = as.numeric(as.character(fatalities)),
+      #   fatalities = as.numeric(as.character(fatalities)),
       date = as.Date(event_date),
       month_yr = as.yearmon(date)
     ) %>%
@@ -1940,17 +1955,17 @@ acled_hdx_collect <- function() {
     rhdx::get_resource(1) %>%
     rhdx::read_resource(sheet = 2) %>%
     subset(Year >= as.numeric(format(Sys.Date(), format = "%Y")) - 4)
-
-    # write.csv(acled_hdx, "output/inputs-archive/acled_hdx.csv", row.names = F)
-    archiveInputs(acled_hdx, group_by = c("Country", "Year", "Month"))
+  
+  # write.csv(acled_hdx, "output/inputs-archive/acled_hdx.csv", row.names = F)
+  archiveInputs(acled_hdx, group_by = c("Country", "Year", "Month"))
 }
 
-acled_hdx_process <- function(as_of, format) {
+acled_hdx_process <- function(as_of) {
   acled_hdx <- loadInputs("acled_hdx", group_by = c("Country", "Year", "Month"))
-   
+  
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.yearmon(as_of - 45) - 3.2
-
+  
   # Progress conflict data
   acled <- acled_hdx %>%
     mutate(
@@ -2052,8 +2067,8 @@ reign_collect <- function() {
 
 # Note that the file-loaded data set is one fewer than the downloaded dataset because Maia Sandu is duplicated.
 # Going forward, I need to fix this so that back-and-forths in leadership are acknowledged
-reign_process <- function(as_of, format) {
-  reign <- loadInputs("reign", group_by = c("country", "leader", "year", "month"), as_of = as_of, format = format)
+reign_process <- function(as_of) {
+  reign <- loadInputs("reign", group_by = c("country", "leader", "year", "month"), as_of = as_of, format = "csv")
   
   reign_start <- reign %>%
     filter(year == max(year, na.rm= T)) %>%
@@ -2102,11 +2117,11 @@ gic_collect <- function() {
   gic <- read_tsv("http://www.uky.edu/~clthyn2/coup_data/powell_thyne_coups_final.txt",
                   col_types = "cdddddddc") %>%
     subset(year > 2020)
-
+  
   version_date <- gic$version[1] %>%
     str_replace_all(c("\\." = "-", "V" = "")) %>%
     as.Date()
-
+  
   # The May 2022 update started including `ccode_gw` and `ccode_polity` columns; the latter
   # seems to relate to "correlates of war"
   # https://correlatesofwar.org/data-sets/downloadable-files/cow-country-codes/cow-country-codes/view
@@ -2115,18 +2130,18 @@ gic_collect <- function() {
   #   mutate(access_date = as.Date(access_date)) %>%
   #   mutate(ccode_gw = NA_real_, ccode_polity = NA_real_, .after = country)
   # write.csv(prev, "output/inputs-archive/gic.csv", row.names = F)
-
+  
   archiveInputs(gic, group_by = NULL, today = version_date)
 }
 
-gic_process <- function(as_of, format) {
-  # coups_raw <- loadInputs("gic", group_by = NULL, as_of = as_of, format = format)
+gic_process <- function(as_of) {
+  # coups_raw <- loadInputs("gic", group_by = NULL, as_of = as_of, format = "csv")
   # Not using loadInputs because I want to be able to include results from before an "access_date"
   # (This is less because I may have retreived the dataset much later than the version, but because 
   # the event occured before the version date; that though is true of literally every event in this monitor,
   # and, in fact, true of all datasets that record events.
   coups_raw <- read_csv("output/inputs-archive/gic.csv", col_types = "cdddddddc")
-
+  
   coups <- coups_raw %>%
     mutate(
       date = as.Date(paste(year, month, day, sep = "-")),
@@ -2137,144 +2152,163 @@ gic_process <- function(as_of, format) {
     group_by(Country, date) %>%
     slice_max(version) %>%
     select(Country, Countryname, date, coup)
-
+  
   coups_recent <- coups %>%
     # subset(date >= as_of - 365) %>%
     group_by(Country) %>%
     mutate(coup_text = case_when(
-        coup == 1 ~ "failed",
-        coup == 2 ~ "successful"
+      coup == 1 ~ "failed",
+      coup == 2 ~ "successful"
     )) %>%
     summarize(
-        coup_text = paste(paste(date, coup_text), collapse = "; "),
-        coup = max(coup))
-
+      coup_text = paste(paste(date, coup_text), collapse = "; "),
+      coup = max(coup))
+  
   return(coups_recent)
 }
 
 #--------------------------IFES Inter. Foundation for Electoral Systems -------
 ifes_collect <- function() {
-  string <- read_html("https://www.electionguide.org/ajax/election/?sEcho=1&iColumns=5&sColumns=&iDisplayStart=0&iDisplayLength=2000&iSortCol_0=3&sSortDir_0=desc&iSortingCols=1") %>%
-    html_text()
+  # string <- read_html("https://www.electionguide.org/ajax/election/?sEcho=1&iColumns=5&sColumns=&iDisplayStart=0&iDisplayLength=2000&iSortCol_0=3&sSortDir_0=desc&iSortingCols=1") %>%
+  #   html_text()
   
-  ifes <- string %>%     
-    str_replace_all(c(
-        ',\\s\\["https.*?",' = "\n",
-        '\\[' = '',
-        '\\]' = '',
-        '\\}' = ''
-    )) %>%
-    str_replace(".*?\\n", "") %>%
-    str_replace_all(', "', ',"') %>%
-    str_replace_all('\\n "', '\n"') %>%
-    str_replace(',"iTotal.*', '') %>%
-    read_csv(
-      col_names = c(
-        "Countryname",
-        "country_slug",
-        "office",
-        "election_slug",
-        "date",
-        "status",
-        "election_id",
-        "text",
-        "election_type",
-        "country_id"),
-      col_types = cols_only(
-        Countryname = 'c',
-        country_slug = 'c',
-        office = 'c',
-        election_slug = "c",
-        date = 'D',
-        status = 'c',
-        election_id = 'd',
-        text = 'c',
-        election_type = 'c',
-        country_id = 'd'))
+  # ifes <- string %>%     
+  #   str_replace_all(c(
+  #     ',\\s\\["https.*?",' = "\n",
+  #     '\\[' = '',
+  #     '\\]' = '',
+  #     '\\}' = ''
+  #   )) %>%
+  #   str_replace(".*?\\n", "") %>%
+  #   str_replace_all(', "', ',"') %>%
+  #   str_replace_all('\\n "', '\n"') %>%
+  #   str_replace(',"iTotal.*', '') %>%
+  #   read_csv(
+  #     col_names = c(
+  #       "Countryname",
+  #       "country_slug",
+  #       "office",
+  #       "election_slug",
+  #       "date",
+  #       "status",
+  #       "election_id",
+  #       "text",
+  #       "election_type",
+  #       "country_id"),
+  #     col_types = cols_only(
+  #       Countryname = 'c',
+  #       country_slug = 'c',
+  #       office = 'c',
+  #       election_slug = "c",
+  #       date = 'D',
+  #       status = 'c',
+  #       election_id = 'd',
+  #       text = 'c',
+  #       election_type = 'c',
+  #       country_id = 'd'))
+  
+  ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
+    html_nodes("table") %>%
+    html_table() %>% .[[1]]
 
-    archiveInputs(ifes, group_by = NULL)
+  ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
+    html_nodes("table") %>%
+    html_table() %>% .[[1]]
+
+ifes <- bind_rows(ifes_upcoming, ifes_past) %>% 
+    mutate(Countryname = Country,
+            office = `Election for`,
+            date = str_extract(`Date*`, ".*\\d\\d\\d\\d"),
+            date = as.Date(date, format = "%b %d, %Y"),
+            status = Status,
+            election_type = NULL,
+            # Last_Held = as.Date(`Last Held*`, format = "%b %d, %Y"),
+            .keep = "none")
+
+  archiveInputs(ifes, group_by = NULL)
 }
 
-ifes_process <- function(as_of, format) {
-  # elections_all <- loadInputs("ifes", group_by = NULL, as_of = as_of, format = format)
+ifes_process <- function(as_of) {
+  # elections_all <- loadInputs("ifes", group_by = NULL, as_of = as_of, format = "csv")
   elections_all <- read_csv("output/inputs-archive/ifes.csv", col_types = "ccccDcdccdD") %>% 
     subset(date >= as_of & date <= as_of + 182)
- 
- elections <- elections_all %>% 
+  
+  elections <- elections_all %>% 
     mutate(
-        election_type = case_when(
-            # election_type == "null" & grepl("president", tolower(text)) ~ "Head of Government (coded as null)",
-            election_type == "null" & str_detect(tolower(text), "president") ~ "Head of Government (coded as null)",
-            TRUE ~ election_type)) %>%
+      election_type = case_when(
+        # election_type == "null" & grepl("president", tolower(text)) ~ "Head of Government (coded as null)",
+        election_type == "null" & str_detect(text, " pre|^pre|Pre") ~ "Head of Government (coded as null)",
+        election_type == "null" & str_detect(office, " pre|^pre|Pre") ~ "Head of Government (coded as null)",
+        TRUE ~ election_type)) %>%
     subset(
-        str_detect(election_type, "Head of")) %>%
+      str_detect(election_type, "Head of")) %>%
     mutate(
-        Country = name2iso(Countryname),
-        .before = Countryname)
-
-filter_for_fcs <- function(data, country_column) {
-    on_fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = format) %>%
-        subset(FCS_normalised == 10, select = Country)
-
+      Country = name2iso(Countryname),
+      .before = Countryname)
+  
+  filter_for_fcs <- function(data, country_column) {
+    on_fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = "csv") %>%
+      subset(FCS_normalised == 10, select = Country)
+    
     filtered <- subset(data, get(country_column) %in% on_fcs$Country)
     # filtered <- data[which(data[, country_column] %in% on_fcs[, "Country"]),]
     return(filtered)
-}
- 
-# anticipation: Is there an election in the next 6 months?
-# elections_next_6_months <- 
-elections_next_6m <- elections %>%
+  }
+  
+  # anticipation: Is there an election in the next 6 months?
+  # elections_next_6_months <- 
+  elections_next_6m <- elections %>%
     subset(date >= as_of) %>%
     group_by(Country) %>%
     summarize(
-        election_6m_text = paste(paste(date, text), collapse = "; "),
-        election_6m = 1) %>% 
+      election_6m_text = paste(paste(date, text), collapse = "; "),
+      election_6m = 1) %>% 
     filter_for_fcs("Country")
-
-delayed <- elections %>%
+  
+  delayed <- elections %>%
     subset(
-    # looking for delayed elections within 6 months in either direction
-    # (date > as_of - 182 & date < as_of + 182) &
-    (status == "Postponed" | status == "Cancelled")) %>%
+      # looking for delayed elections within 6 months in either direction
+      # (date > as_of - 182 & date < as_of + 182) &
+      (status == "Postponed" | status == "Cancelled")) %>%
     group_by(Country) %>%
     summarize(
-        delayed_text = paste(paste(date, status), collapse = "; "),
-        delayed = 1) %>%
+      delayed_text = paste(paste(date, status), collapse = "; "),
+      delayed = 1) %>%
     filter_for_fcs("Country")
-
-irregular <- elections %>%
+  
+  irregular <- elections %>%
     subset(
-    # looking for delayed elections within 6 months in either direction
-    # (date >= as_of & date < as_of + 182) &
-    (str_detect(status, "Snap") | str_detect(status, "Moved"))) %>%
+      # looking for delayed elections within 6 months in either direction
+      # (date >= as_of & date < as_of + 182) &
+      (str_detect(status, "Snap") | str_detect(status, "Moved"))) %>%
     group_by(Country) %>%
     summarize(
-        irregular_text = paste(paste(date, status), collapse = "; "),
-        irregular = 1) %>%
+      irregular_text = paste(paste(date, status), collapse = "; "),
+      irregular = 1) %>%
     filter_for_fcs("Country")
-
-ifes <- merge_indicators(elections_next_6m, delayed, irregular)
-
-return(ifes)
+  
+  ifes <- merge_indicators(elections_next_6m, delayed, irregular)
+  
+  return(ifes)
 }
 
-pseudo_reign_process <- function(as_of, format) {
-  gic <- gic_process(as_of = as_of, format = format)
-  ifes <- ifes_process(as_of = as_of, format = format)
-
-pseudo_reign <- merge_indicators(gic, ifes) %>%
+pseudo_reign_process <- function(as_of) {
+  gic <- gic_process(as_of = as_of)
+  ifes <- ifes_process(as_of = as_of)
+  
+  pseudo_reign <- merge_indicators(gic, ifes) %>%
     replace_NAs_0(c("delayed", "irregular", "election_6m", "coup")) %>%
     mutate(
-        Fr_coup_election_count = rowSums(select(. , delayed, irregular, election_6m, coup)),
-        Fr_pseudo_reign_norm = ifelse(Fr_coup_election_count > 0, 10, 0)) %>%
+      Fr_coup_election_count = rowSums(select(. , delayed, irregular, election_6m, coup)),
+      Fr_pseudo_reign_norm = ifelse(Fr_coup_election_count > 0, 10, 0)) %>%
     as_tibble() %>%
     mutate(Fr_coup_election_text = case_when(
       Fr_coup_election_count > 0 ~ paste0(
-          ifelse(!is.na(coup_text), paste0("coup: ", coup_text, "; "), ""),
-          ifelse(Fr_coup_election_count - coup > 0,
-            paste("election: ",
-              ifelse(!is.na(election_6m_text), election_6m_text, ""),
-              ifelse(!is.na(delayed_text), delayed_text, ""),
-              ifelse(!is.na(irregular_text), irregular_text, "")), ""))))
-return(pseudo_reign)
+        ifelse(!is.na(coup_text), paste0("coup: ", coup_text, "; "), ""),
+        ifelse(Fr_coup_election_count - coup > 0,
+               paste("election: ",
+                     ifelse(!is.na(election_6m_text), election_6m_text, ""),
+                     ifelse(!is.na(delayed_text), delayed_text, ""),
+                     ifelse(!is.na(irregular_text), irregular_text, "")), ""))))
+  return(pseudo_reign)
 }

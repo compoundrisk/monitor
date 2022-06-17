@@ -19,6 +19,11 @@ source("fns/indicators.R")
 
 # COMMAND ----------
 
+error_delay <- tryCatch(dbutils.widgets.get("error_delay"), error = function(e) {return(F)})
+error_delay <- if (error_delay) T else F
+
+# COMMAND ----------
+
 # source("libraries.R")
 
 # COMMAND ----------
@@ -42,49 +47,49 @@ source("fns/indicators.R")
 # COMMAND ----------
 
 # HEALTH
-acaps_collect() %>% delay_error(return = NA)
+acaps_collect() %>% delay_error(return = NA, on = error_delay)
 # Add in OWID
-owid_collect() %>% delay_error(return = NA)
+owid_collect() %>% delay_error(return = NA, on = error_delay)
 # Add in Oxford Response Tracker
-ghsi_collect() %>% delay_error(return = NA)
+ghsi_collect() %>% delay_error(return = NA, on = error_delay)
 # oxford_openness_collect()
-inform_covid_collect() %>% delay_error(return = NA)
-dons_collect() %>% delay_error(return = NA)
+inform_covid_collect() %>% delay_error(return = NA, on = error_delay)
+dons_collect() %>% delay_error(return = NA, on = error_delay)
 
 # COMMAND ----------
 
 # FOOD
-fpi_collect_many() %>% delay_error(return = NA)
-proteus_collect() %>% delay_error(return = NA)
-fews_collect() %>% delay_error(return = NA)
-fao_wfp_collect() %>% delay_error(return = NA)
+fpi_collect_many() %>% delay_error(return = NA, on = error_delay)
+proteus_collect() %>% delay_error(return = NA, on = error_delay)
+fews_collect() %>% delay_error(return = NA, on = error_delay)
+fao_wfp_collect() %>% delay_error(return = NA, on = error_delay)
 
 # COMMAND ----------
 
 # MACRO FISCAL
-eiu_collect() %>% delay_error(return = NA)
+eiu_collect() %>% delay_error(return = NA, on = error_delay)
 
 # COMMAND ----------
 
 # SOCIO-ECONOMIC
-mpo_collect() %>% delay_error(return = NA)
-mfr_collect() %>% delay_error(return = NA)
-imf_collect() %>% delay_error(return = NA)
+mpo_collect() %>% delay_error(return = NA, on = error_delay)
+mfr_collect() %>% delay_error(return = NA, on = error_delay)
+imf_collect() %>% delay_error(return = NA, on = error_delay)
 
 # COMMAND ----------
 
 # NATURAL HAZARDS
-gdacs_collect()  %>% delay_error(return = NA)
-inform_risk_collect()  %>% delay_error(return = NA)
-iri_collect() %>% delay_error(return = NA)
-locust_collect()  %>% delay_error(return = NA)
+gdacs_collect()  %>% delay_error(return = NA, on = error_delay)
+inform_risk_collect()  %>% delay_error(return = NA, on = error_delay)
+iri_collect() %>% delay_error(return = NA, on = error_delay)
+locust_collect()  %>% delay_error(return = NA, on = error_delay)
 
 # COMMAND ----------
 
 # FRAGILITY AND CONFLICT
-fcs_collect() %>% delay_error(return = NA)
-idp_collect() %>% delay_error(return = NA)
-acled_collect() %>% delay_error(return = NA)
+fcs_collect() %>% delay_error(return = NA, on = error_delay)
+idp_collect() %>% delay_error(return = NA, on = error_delay)
+acled_collect() %>% delay_error(return = NA, on = error_delay)
 # reign_collect()
-gic_collect() %>% delay_error(return = NA)
-ifes_collect() %>% delay_error(return = NA)
+gic_collect() %>% delay_error(return = NA, on = error_delay)
+ifes_collect() %>% delay_error(return = NA, on = error_delay)

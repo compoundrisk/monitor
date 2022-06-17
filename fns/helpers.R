@@ -134,6 +134,7 @@ iso2name <- function(v) {
 name2iso <- function(v) {
   names <- countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c(
     "Kosovo" = "XKX",
+    "Micronesia" = "FSM",
     "Türkiye" = "TUR",
     "Turkiye" = "TUR"))
   return(names)
@@ -202,25 +203,30 @@ expr2text <- function(x) {
 }
 
 
-delay_error <- function(expr, return = NULL, no_stop = F) {
+delay_error <- function(expr, return = NULL, no_stop = F, on = T) {
+  # no_stop=T means that a delayed_error variable will be created which will err when release_delayed_errors() is run
+  # on means to delay errors, !on means to ignore the function; this is useful so that I can turn off all delays when debugging
   # fun <- sub("\\(.*", "", deparse(substitute(expr)))
   fun <- expr2text(expr)
-  tryCatch({
-    expr
-  },
-    error = function(e) {
-      if (!no_stop) {
-        if (!exists("delayed_error")) {
-          assign("delayed_error", fun, envir = .GlobalEnv)
-        } else {
-          assign("delayed_error", c(delayed_error, fun), envir = .GlobalEnv)
+
+  if (on) {
+    tryCatch({
+      expr
+    },
+      error = function(e) {
+        if (!no_stop) {
+          if (!exists("delayed_error")) {
+            assign("delayed_error", fun, envir = .GlobalEnv)
+          } else {
+            assign("delayed_error", c(delayed_error, fun), envir = .GlobalEnv)
+          }
         }
-      }
-      write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
-      if (!is.null(return)) {
-        return(return)
-      }
-    })
+        write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
+        if (!is.null(return)) {
+          return(return)
+        }
+      })
+  } else { expr }
 }
 
 release_delayed_errors <- function() {
