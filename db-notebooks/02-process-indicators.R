@@ -126,8 +126,8 @@ fcs <- fcs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)
 
 fragility_sheet <- aggregate_dimension(
   "Conflict and Fragility",
-  # Unlike other dimensions. conflict only uses emerging outlook to calculate overall
-  overall_method = "emerging", 
+  # # Unlike other dimensions. conflict only uses emerging outlook to calculate overall
+  # overall_method = "emerging", 
   fcs,
   un_idp_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acled_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),

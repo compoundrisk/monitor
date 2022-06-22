@@ -184,6 +184,7 @@ first_ordered_instance <- function(v, na.eq = T) {
     if (na.eq){
         l <- !(v == lag(v) | (is.na(v) & is.na(lag(v))))
         l[is.na(l)] <- T
+        l[1] <- T # Should this be for na.eq = F as well?
     } else {
         l <- v != lag(v)
         l[!is.na(v) & is.na(l)] <- T

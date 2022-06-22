@@ -984,7 +984,11 @@ fao_wfp_collect <- function() {
   
   fao_wfp <- fao_all
   
-  archiveInputs(fao_wfp, group_by = c("Country"))
+  y <- fao_all$Forecast_End[1] %>% str_extract("^\\d\\d\\d\\d")
+  m <- fao_all$Forecast_End[1] %>% str_extract("-\\d\\d-") %>% str_sub(2,3) %>% as.numeric() - 3 
+  start_date <- min(as.Date(paste(y, leading_zeros(m, 2), "01", sep = "-")), Sys.Date())
+  
+  archiveInputs(fao_wfp, group_by = c("Country"), today = start_date)
 }
 
 fao_wfp_process <- function(as_of) {
@@ -1145,11 +1149,11 @@ mpo_collect <- function() {
   
   # Normalise based on percentiles
   mpo_data <- normfuncpos(mpo_data,
-                          quantile(mpo_data$S_pov_prop_23_22, 0.95,  na.rm = T),
+                          quantile(mpo_data$S_pov_prop_23_22, 0.98,  na.rm = T),
                           quantile(mpo_data$S_pov_prop_23_22, 0.05,  na.rm = T),
                           "S_pov_prop_23_22")
   mpo_data <- normfuncpos(mpo_data,
-                          quantile(mpo_data$S_pov_prop_22_21, 0.95,  na.rm = T),
+                          quantile(mpo_data$S_pov_prop_22_21, 0.98,  na.rm = T),
                           quantile(mpo_data$S_pov_prop_22_21, 0.05,  na.rm = T),
                           "S_pov_prop_22_21")
   # mpo_data <- normfuncpos(mpo_data,
@@ -2226,6 +2230,21 @@ ifes <- bind_rows(ifes_upcoming, ifes_past) %>%
             .keep = "none")
 
   archiveInputs(ifes, group_by = NULL)
+
+  #   # Using the API
+  # ifes_data <- system("curl -X GET https://electionguide.org/api/v1/elections_demo/ -H 'Authorization: Token 6233e188716a27eb8d26668fea3a068d4c067b85'",
+  #  intern = T) %>%
+  #  fromJSON()
+
+  # ifes_meta <- system("curl -X GET https://electionguide.org/api/v1/metadata/ -H 'Authorization: Token 6233e188716a27eb8d26668fea3a068d4c067b85'",
+  #  intern = T) %>%
+  #  fromJSON()
+
+  # ifes_data2 <- system("curl -X GET https://electionguide.org/api/v1/api_elections/ -H 'Authorization: Token 6233e188716a27eb8d26668fea3a068d4c067b85'",
+  #  intern = T) %>%
+  #  fromJSON()
+
+  # str(ifes_data2)
 }
 
 ifes_process <- function(as_of) {
