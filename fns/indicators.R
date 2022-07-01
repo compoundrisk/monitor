@@ -73,7 +73,8 @@ archiveInputs <- function(data,
     
     # Round all numeric columns to an excessive 10 places so that rows aren't counted as different
     # just because of digit cropping (such as with MPO)
-    data <- mutate(data, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 10)))
+    most_recent <- mutate(most_recent, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 8)))
+    data <- mutate(data, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 8)))
     
     # Add access_date for new data
     data <- mutate(data, access_date = today)
@@ -1148,13 +1149,13 @@ mpo_collect <- function() {
     )
   
   # Normalise based on percentiles
-  mpo_data <- normfuncpos(mpo_data,
-                          quantile(mpo_data$S_pov_prop_23_22, 0.98,  na.rm = T),
-                          quantile(mpo_data$S_pov_prop_23_22, 0.05,  na.rm = T),
+  mpo_data <- normfuncpos(mpo_data, .5, 0,
+                          # quantile(mpo_data$S_pov_prop_23_22, 0.98,  na.rm = T),
+                          # quantile(mpo_data$S_pov_prop_23_22, 0.05,  na.rm = T),
                           "S_pov_prop_23_22")
-  mpo_data <- normfuncpos(mpo_data,
-                          quantile(mpo_data$S_pov_prop_22_21, 0.98,  na.rm = T),
-                          quantile(mpo_data$S_pov_prop_22_21, 0.05,  na.rm = T),
+  mpo_data <- normfuncpos(mpo_data, .5, 0,
+                          # quantile(mpo_data$S_pov_prop_22_21, 0.98,  na.rm = T),
+                          # quantile(mpo_data$S_pov_prop_22_21, 0.05,  na.rm = T),
                           "S_pov_prop_22_21")
   # mpo_data <- normfuncpos(mpo_data,
   #                         quantile(mpo_data$S_pov_prop_21_20, 0.95,  na.rm = T),
@@ -1182,23 +1183,27 @@ mpo_collect <- function() {
   # write_csv(mpo_data, "Indicator_dataset/mpo.csv")
   mpo <- mpo_data
   archiveInputs(mpo, group_by = c("Country"), today = file_date)
+  write.csv(mpo_data, "output/inputs-archive/mpo-alt.csv", row.names = F)
 }
 
 mpo_process <- function(as_of) {
   # Specify the expected types for each column; I should do this everywhere.
-  col_types <- cols(
-    Country = "c",
-    S_pov_comb_norm = "d",
-    S_pov_prop_22_21_norm = "d",
-    S_pov_prop_21_20_norm = "d",
-    S_pov_prop_20_19_norm = "d",
-    S_pov_prop_22_21 = "d",
-    S_pov_prop_21_20 = "d",
-    S_pov_prop_20_19 = "d",
-    S_pov_prop_23_22_norm = "d",
-    S_pov_prop_23_22 = "d",
-    access_date = "D")
-  mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = "csv", col_types = col_types)
+  # col_types <- cols(
+  #   Country = "c",
+  #   S_pov_comb_norm = "d",
+  #   S_pov_prop_22_21_norm = "d",
+  #   S_pov_prop_21_20_norm = "d",
+  #   S_pov_prop_20_19_norm = "d",
+  #   S_pov_prop_22_21 = "d",
+  #   S_pov_prop_21_20 = "d",
+  #   S_pov_prop_20_19 = "d",
+  #   S_pov_prop_23_22_norm = "d",
+  #   S_pov_prop_23_22 = "d",
+  #   access_date = "D")
+  # mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = "csv", col_types = col_types)
+
+mpo <- read_csv("output/inputs-archive/mpo-alt.csv")
+
 return(mpo)
 }
 
@@ -1306,115 +1311,71 @@ imf_process <- function(as_of) {
 
 #------------------------------—GDACS-----------------------------------------
 gdacs_collect <- function() {
-  gdacweb <- "https://www.gdacs.org/"
-  gdac <- read_html(gdacweb)
-  
-  names <- c(
-    ".alert_EQ_Green", ".alert_EQ_PAST_Green", ".alert_EQ_Orange", ".alert_EQ_PAST_Orange",
-    ".alert_TC_Green", ".alert_TC_PAST_Green", ".alert_TC_Orange", ".alert_TC_PAST_Orange",
-    ".alert_FL_Green", ".alert_FL_PAST_Green", ".alert_FL_Orange", ".alert_FL_PAST_Orange",
-    ".alert_VO_Green", ".alert_VO_PAST_Green", ".alert_VO_Orange", ".alert_VO_PAST_Orange",
-    ".alert_DR_Green", ".alert_DR_PAST_Green", ".alert_DR_Orange", ".alert_DR_PAST_Orange"
+  gdacs_url <- "https://www.gdacs.org/"
+  gdacs_web <- read_html(gdacs_url) %>%
+    html_node("#containerAlertList")
+
+  alert_classes <- c(
+    ".alert_EQ_Green", ".alert_EQ_PAST_Green", ".alert_EQ_Orange", ".alert_EQ_PAST_Orange", ".alert_EQ_Red", ".alert_EQ_PAST_Red",
+    ".alert_TC_Green", ".alert_TC_PAST_Green", ".alert_TC_Orange", ".alert_TC_PAST_Orange", ".alert_TC_Red", ".alert_TC_PAST_Red",
+    ".alert_FL_Green", ".alert_FL_PAST_Green", ".alert_FL_Orange", ".alert_FL_PAST_Orange", ".alert_FL_Red", ".alert_FL_PAST_Red",
+    ".alert_VO_Green", ".alert_VO_PAST_Green", ".alert_VO_Orange", ".alert_VO_PAST_Orange", ".alert_VO_Red", ".alert_VO_PAST_Red",
+    ".alert_DR_Green", ".alert_DR_PAST_Green", ".alert_DR_Orange", ".alert_DR_PAST_Orange", ".alert_DR_Red", ".alert_DR_PAST_Red"
   )
   
   # Function to create database with hazard specific information
-  haz <- lapply(names, function(i) {
-    names <- gdac %>%
+  gdacs <- lapply(alert_classes, function(i) {
+    names <- gdacs_web %>%
       html_nodes(i) %>%
       html_nodes(".alert_item_name, .alert_item_name_past") %>%
       html_text()
     
-    mag <- gdac %>%
+    mag <- gdacs_web %>%
       html_nodes(i) %>%
       html_nodes(".magnitude, .magnitude_past") %>%
       html_text() %>%
       str_trim()
     
-    date <- gdac %>%
+    date <- gdacs_web %>%
       html_nodes(i) %>%
       html_nodes(".alert_date, .alert_date_past") %>%
       html_text() %>%
       str_trim()
     date <- gsub(c("-  "), "", date)
     date <- gsub(c("\r\n       "), "", date)
+
+    color <- str_extract(tolower(i), "red|orange|green")
+    hazard = str_extract(i, "EQ|TC|FL|VO|DR") %>%
+      str_replace_all(c(
+        "EQ" = "earthquake",
+        "TC" = "cyclone",
+        "FL" = "flood",
+        "VO" = "volcano",
+        "DR" = "drought"))
+    status <- if (hazard == "drought" | str_detect(tolower(i), "active")) "active" else "past"
+    len <- length(names)
     
-    cbind.data.frame(names, mag, date)
-  })
-  
-  # Labels
-  try(haz[[1]]$status <- paste("active"), silent = T)
-  try(haz[[2]]$status <- paste("past"), silent = T)
-  try(haz[[3]]$status <- paste("active"), silent = T)
-  try(haz[[4]]$status <- paste("past"), silent = T)
-  try(haz[[5]]$status <- paste("active"), silent = T)
-  try(haz[[6]]$status <- paste("past"), silent = T)
-  try(haz[[7]]$status <- paste("active"), silent = T)
-  try(haz[[8]]$status <- paste("past"), silent = T)
-  try(haz[[9]]$status <- paste("active"), silent = T)
-  try(haz[[10]]$status <- paste("past"), silent = T)
-  try(haz[[11]]$status <- paste("active"), silent = T)
-  try(haz[[12]]$status <- paste("past"), silent = T)
-  try(haz[[13]]$status <- paste("active"), silent = T)
-  try(haz[[14]]$status <- paste("past"), silent = T)
-  try(haz[[15]]$status <- paste("active"), silent = T)
-  try(haz[[16]]$status <- paste("past"), silent = T)
-  try(haz[[17]]$status <- paste("active"), silent = T)
-  try(haz[[18]]$status <- paste("past"), silent = T)
-  try(haz[[19]]$status <- paste("active"), silent = T)
-  try(haz[[20]]$status <- paste("past"), silent = T)
-  
-  # Earthquake
-  eq1 <- try(rbind(haz[[1]], haz[[2]]), silent = T)
-  try(eq1$haz <- paste("green"), silent = T)
-  eq2 <- try(rbind(haz[[3]], haz[[4]]), silent = T)
-  try(eq2$haz <- paste("orange"), silent = T)
-  eq <- try(rbind(eq1, eq2), silent = T)
-  eq$hazard <- "earthquake"
-  
-  # Cyclone
-  cy1 <- try(rbind(haz[[5]], haz[[6]]), silent = T)
-  try(cy1$haz <- paste("green"), silent = T)
-  cy2 <- try(rbind(haz[[7]], haz[[8]]), silent = T)
-  try(cy2$haz <- paste("orange"), silent = T)
-  cy <- try(rbind(cy1, cy2), silent = T)
-  cy$hazard <- "cyclone"
-  
-  # Flood
-  fl1 <- try(rbind(haz[[9]], haz[[10]]), silent = T)
-  try(fl1$haz <- paste("green"), silent = T)
-  fl2 <- try(rbind(haz[[11]], haz[[12]]), silent = T)
-  try(fl2$haz <- paste("orange"), silent = T)
-  fl <- try(rbind(fl1, fl2), silent = T)
-  fl$hazard <- "flood"
-  
-  # Volcano
-  vo1 <- try(rbind(haz[[13]], haz[[14]]), silent = T)
-  try(vo1$haz <- paste("green"), silent = T)
-  vo2 <- try(rbind(haz[[15]], haz[[16]]), silent = T)
-  try(vo2$haz <- paste("orange"), silent = T)
-  vo <- try(rbind(vo1, vo2), silent = T)
-  vo$hazard <- "volcano"
-  vo$names <- sub(".*in ", "", vo$names)
-  
-  # Drought
-  dr1 <- try(rbind(haz[[17]], haz[[18]]), silent = T)
-  try(dr1$haz <- paste("green"), silent = T)
-  dr2 <- try(rbind(haz[[19]], haz[[20]]), silent = T)
-  try(dr2$haz <- paste("orange"), silent = T)
-  dr <- try(rbind(dr1, dr2), silent = T)
-  dr$hazard <- "drought"
-  dr$date <- try(str_sub(dr$names, start = -4), silent = T)
-  dr$names <- try(gsub(".{5}$", "", dr$names), silent = T)
-  
-  # Combine into one dataframe
-  gdaclist <- rbind.data.frame(eq, cy, fl, vo, dr)
-  gdaclist[,1] <- gsub(c("\r\n\\s*"), "", gdaclist[,1])
-  gdaclist[,2] <- gsub(c("\r\n\\s*"), "", gdaclist[,2])
-  
-  gdacs <- mutate(gdaclist,
+    if (hazard == "drought") date <- as.character(Sys.Date() - 7 * as.numeric(str_extract(date, "\\d+")))
+
+    return(cbind.data.frame(names, mag, date, 
+      status = rep(status, len),
+      haz = rep(color, len),
+      hazard = rep(hazard, len)))
+  }) %>% 
+    bind_rows() %>% #separate_rows(names, sep = "-|, ") %>% 
+    mutate(names = trimws(names),
+      country = name2iso(names, multiple_matches = T)) %>%
+      separate_rows(country, sep = ", ")
+
+  # Clean up irregular characters
+  gdacs <- mutate(gdacs,
                   access_date = Sys.Date(),
-                  mag = na_if(mag, ""),
-                  names = trimws(names)
+                  # mag = na_if(mag, "") %>% str_replace_all("//s", " "),
+                  mag = na_if(mag, "") %>% {gsub(c("\r\n\\s*"), "", .)},
+                  mag = mag %>% str_replace_all("\\s", " "),
+                  # names = trimws(names) %>% str_replace_all("//s", " "),
+                  names = trimws(names) %>% {gsub(c("\r\n\\s*"), "", .)} %>% str_replace_all("//s", " "),
+                  date = date %>% str_replace_all("\\s", " ")
                   # , current = TRUE
   )
   
@@ -1423,7 +1384,7 @@ gdacs_collect <- function() {
   gdacs_prev <- suppressMessages(read_csv("output/inputs-archive/gdacs.csv"))
   gdacs_prev_recent <- filter(gdacs_prev, access_date == max(access_date)) %>% distinct()
   if(!identical(select(gdacs_prev_recent, -access_date), select(gdacs, -access_date))) {
-    gdacs <- rbind(gdacs_prev, gdacs) %>% distinct()
+    gdacs <- bind_rows(gdacs_prev, gdacs) %>% distinct()
     write.csv(gdacs, "output/inputs-archive/gdacs.csv", row.names = F)
   }
   # # There may be a more efficient approach that gives all currently online events a TRUE `current` variable, and
@@ -1453,48 +1414,60 @@ gdacs_process <- function(as_of) {
   #   # Read from Spark DataFrame
   # }
   
-  gdaclist <- gdacs
-  
-  # change times
-  gdaclist$date <- ifelse(gdaclist$hazard != c("drought") & gdaclist$status == "active", paste(as.Date(parse_date_time(gdaclist$date, orders = c("dm HM")))),
-                          ifelse(gdaclist$hazard == c("drought"), paste(gdaclist$date),
-                                 paste(as.Date(parse_date_time(gdaclist$date, orders = c("dmy"))))
-                          )
-  )
+  gdaclist <- gdacs %>% mutate(date = case_when(
+    hazard != "drought" & status == "active" &
+      month(access_date) == month(parse_date_time(date, orders = c("dm HM"))) ~
+      paste(parse_date_time(paste(date, year(access_date)), orders = "dm HM Y")),
+    hazard != "drought" & status == "active" &
+      month(access_date) != month(parse_date_time(date, orders = c("dm HM"))) ~ 
+      paste(parse_date_time(paste(date, year(access_date - 31)), orders = "dm HM Y")),
+    hazard == "drought" ~ str_extract(names, "\\d{4}$"),
+    T ~ paste(parse_date_time(date, orders = c("dmy")))
+    ))
   
   # Remove duplicate countries for drought
-  gdaclist$names <- as.character(gdaclist$names) # does this do anything?
-  add <- gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]
-  gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names <- sub("-.*", "", gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names)
-  add$names <- sub(".*-", "", add$names)
-  gdaclist <- rbind(gdaclist, add)
+  # Once I started processing country names in gdacs_collect() I also separated droughts in gdacs_collect()
+  # I don't need to do this if country values are not NA. Some country values may still be NA if they don't match a country
+  if (!any(!is.na(gdaclist$country))) {
+    add <- gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]
+    gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names <- sub("-.*", "", gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names)
+    add$names <- sub(".*-", "", add$names)
+    gdaclist <- rbind(gdaclist, add)
+  }
   
   # Drought orange
   # UPDATE? Does this need to now be 2021?
   # All droughts on GDAC are current ... 
-  gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2020", "active", gdaclist$status)
-  gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2021", "active", gdaclist$status)
-  gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2022", "active", gdaclist$status)
+  # Can I just set all droughts to active? 
+  # gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2020", "active", gdaclist$status)
+  # gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2021", "active", gdaclist$status)
+  # gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2022", "active", gdaclist$status)
   
   # Country names
-  gdaclist$namesiso <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
-  gdaclist$namesfull <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c", nomatch = NULL))
-  
+  if (!any(!is.na(gdaclist$country))) {
+    gdaclist$country <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
+    gdaclist$namesfull <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c", nomatch = NULL))
+  }
+
   # Create subset
-  gdac <- gdaclist %>%
-    dplyr::select(date, status, haz, hazard, namesiso)
-  
-  colnames(gdac) <- c("NH_GDAC_Date", "NH_GDAC_Hazard_Status", "NH_GDAC_Hazard_Severity", "NH_GDAC_Hazard_Type", "Country")
-  
-  gdac <- gdac %>%
+  gdacs <- gdaclist %>%
+    dplyr::select(Country = country,
+                  NH_GDAC_Date = date, 
+                  NH_GDAC_Hazard_Status = status, 
+                  NH_GDAC_Hazard_Magnitude = mag, 
+                  NH_GDAC_Hazard_Severity = haz,
+                  NH_GDAC_Hazard_Type = hazard)
+    
+  gdacs <- gdacs %>%
     mutate(NH_GDAC_Hazard_Score_Norm = case_when(
+      NH_GDAC_Hazard_Status == "active" & NH_GDAC_Hazard_Severity == "red" ~ 10,
       NH_GDAC_Hazard_Status == "active" & NH_GDAC_Hazard_Severity == "orange" ~ 10,
       TRUE ~ 0
     ),
-    NH_GDAC_Hazard_Score = paste(NH_GDAC_Hazard_Status, NH_GDAC_Hazard_Severity, sep = " - ")
+    NH_GDAC_Hazard_Score = paste(NH_GDAC_Date, NH_GDAC_Hazard_Type, NH_GDAC_Hazard_Severity, NH_GDAC_Hazard_Magnitude, sep = " - ")
     ) %>%
     drop_na(Country)
-  return(gdac)
+  return(gdacs)
 }
 
 #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
@@ -1769,18 +1742,22 @@ fcs_process <- function(as_of) {
 
 #-----------------------------—IDPs--------------------------------------------------------
 idp_collect <- function() {
-  idp_data <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/population.csv"),
+  un_idp <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/population.csv"),
                                         col_types = cols(
                                           `IDPs of concern to UNHCR` = col_number(),
-                                          `Refugees under UNHCR mandate` = col_number(),
+                                          `Refugees under UNHCR's mandate` = col_number(),
                                           Year = col_number()),
-                                        skip = 14))
+                                        skip = 14)) %>%
+              select(Year,
+                      `Country of origin (ISO)`,
+                      `Country of asylum (ISO)`,
+                      `Refugees under UNHCR mandate` = `Refugees under UNHCR's mandate`,
+                      `IDPs of concern to UNHCR`)
   
   update_date <- readLines(paste0(github, "Indicator_dataset/population.csv"), 3)[3] %>%
     str_extract("\\d+ [[:alpha:]]+ 20\\d\\d") %>%
     as.Date(format = "%d %B %Y")
   
-  un_idp <- idp_data
   archiveInputs(un_idp, group_by = c("Country of origin (ISO)", "Country of asylum (ISO)", "Year"), today = update_date)
 }
 

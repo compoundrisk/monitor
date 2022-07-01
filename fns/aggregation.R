@@ -555,22 +555,6 @@ order_columns_and_raws <- function(data) {
   return(data)
 }
 
-# Move this basic function elsewhere, somewhere more basic
-leading_zeros <- function(data, length, filler = "0") {
-  strings <- sapply(data, function(x) {
-    if(is.na(x)) {
-      x <- 0
-      warning("NAs converted to 0. Likelihood of duplicate strings")
-    }
-    if(nchar(x) > length) {
-      stop(paste("String is longer than desired length of", length, ":", x, "in", deparse(substitute(data))))
-    }
-    string <- paste0(paste0(rep(filler, length - nchar(x)), collapse = ""), x)
-    return(string)
-  })
-  return(strings)
-}
-
 create_id <- function(data) {
   data <- mutate(data,
     Indicator_ID = case_when(
@@ -598,8 +582,10 @@ create_id <- function(data) {
 append_if_exists <- function(data, path, col_types = NULL) {
   if(file.exists(path)) {
     already_exists <- T
+    # Maybe refactor to use bash head and tail and cat so that R doesn't need to read the full file.
+    # Or keep each run as separate files.
     existing <- read_csv(path, col_types = col_types)
-    data <- mutate(data, Run_ID = max(existing$Run_ID) + 1, .before = Index)
+    data <- mutate(data, Run_ID = max(existing$Run_ID, na.rm = T) + 1, .before = Index)
     prior_run <- subset(existing, Run_ID = max(Run_ID)) %>% factorize_columns()
     # TODO Check also if data is fresh. If all duplicates, don't append
     # Write a function that can be used for archiveInputs, countFlagChanges, and here

@@ -131,6 +131,20 @@ iso2name <- function(v) {
   return(names)
 }
 
+name2iso <- function(v, multiple_matches = F) {
+# This new multiple_matches = T argument makes this a much more complicated function,
+# though perhaps it could be written more simply. If the arg is set to TRUE, the function
+# looks at all NAs and tries to find all the matches it can with the country names list.
+# (It looks both backwards and forwards; otherwise as soon as Guinea was found, Papua
+# New Guinea wouldn't be possibly found.) It then scans each country name to see if its
+# detected within another select country's name. If it is, it's name is removed from the
+# original list, and the original list is scanned for it again. For example, if the list 
+# is "Algeria Papua New Guinea", the initial result is "DZA GIN PGA"; but Guinea is within
+# Papua New Guinea, so it is removed: "DZA, "GIN". However, if the original list is
+# "Algeria Guinea Papua New Guinea", the first "Guinea" is removed, but "Guinea" is still
+# deteced in the list: "DZA GIN PGA" 
+
+
 name2iso <- function(v) {
   names <- countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c(
     "Kosovo" = "XKX",
@@ -138,6 +152,44 @@ name2iso <- function(v) {
     "Türkiye" = "TUR",
     "Turkiye" = "TUR"))
   return(names)
+}
+
+output <- name2iso(v)
+
+if (!multiple_matches) {
+    return(output)
+} else {
+    # names <- v[is.na(output)]
+    na_index <- which(is.na(output))
+
+    multiple_isos <- lapply(na_index, function(n) {
+      isos <- c(str_replace_all(v[n], setNames(codelist$iso3c, codelist$country.name.en)),
+            str_replace_all(v[n], rev(setNames(codelist$iso3c, codelist$country.name.en))),
+            str_replace_all(tolower(v[n]), setNames(codelist$iso3c, codelist$country.name.en.regex)),
+            str_replace_all(tolower(v[n]), rev(setNames(codelist$iso3c, codelist$country.name.en.regex)))) %>%
+            paste(collapse = " ") %>%
+            str_replace_all("[A-Z]{3}[A-Z]+", "") %>%
+            str_extract_all("[A-Z]{3}", simplify = T)  %>% as.vector() %>% unique()
+      new_isos <- lapply(seq_along(isos), function(i, data) {
+          iso <- data[i]
+          name <- iso2name(iso)
+
+          if (!any(str_detect(iso2name(data[-i]), name))) {
+              return (iso)
+          } else {
+              if (str_replace(v[n], name, "") %>% str_detect(name)) {
+                  return(iso)
+              }
+          }}, data = isos) %>%
+          unlist() %>% paste(collapse = ", ")
+          return(c(index = n, isos = new_isos))
+    }) %>% bind_rows() %>% 
+      subset(isos != "")
+
+    output[as.numeric(multiple_isos$index)] <- multiple_isos$isos
+
+    return(output)
+}
 }
 
 # FUNCTION TO READ MOST RECENT FILE IN A FOLDER
@@ -236,4 +288,20 @@ release_delayed_errors <- function() {
     rm(delayed_error, envir = .GlobalEnv) # removing from global env so it doesnt continue to stop future runs
     stop(paste("Error on", paste(de, collapse = ", ")))
   }
+}
+
+# Move this basic function elsewhere, somewhere more basic
+leading_zeros <- function(data, length, filler = "0") {
+  strings <- sapply(data, function(x) {
+    if(is.na(x)) {
+      x <- 0
+      warning("NAs converted to 0. Likelihood of duplicate strings")
+    }
+    if(nchar(x) > length) {
+      stop(paste("String is longer than desired length of", length, ":", x, "in", deparse(substitute(data))))
+    }
+    string <- paste0(paste0(rep(filler, length - nchar(x)), collapse = ""), x)
+    return(string)
+  })
+  return(strings)
 }
