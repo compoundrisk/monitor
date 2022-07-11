@@ -625,7 +625,7 @@ append_if_exists <- function(data, path, col_types = NULL) {
 #   # arrange(Country)
   
 #   # Load dimension / data dictionary
-#   indicators_list <- as.data.frame(read.csv("indicators-list.csv"))
+#   indicators_list <- as.data.frame(read.csv("src/indicators-list.csv"))
   
 #   health_sheet <- read.csv("output/risk-sheets/health-sheet.csv")[,-1] # drops first column, X, which is row number
 #   food_sheet <- read.csv("output/risk-sheets/food-sheet.csv")[,-1]
@@ -1501,7 +1501,7 @@ append_if_exists <- function(data, path, col_types = NULL) {
 #   # for most recent before current/as_of date
 #   prev <- read_csv("output/crm-output-latest.csv")
   
-#   indicators_list <- as.data.frame(read.csv("indicators-list.csv"))
+#   indicators_list <- as.data.frame(read.csv("src/indicators-list.csv"))
   
 #   updateLog <- data.frame(
 #     Indicator = indicators_list$Indicator,
@@ -1601,7 +1601,7 @@ last_changed <- left_join(last_changed, last_changed_raw,
         T ~ `Last Changed_raw`)) %>%
         select(-`Last Changed_raw`)
 
-  ind_list <- as.data.frame(read_csv("indicators-list.csv")) #%>%
+  ind_list <- as.data.frame(read_csv("src/indicators-list.csv")) #%>%
     # select(-`Last Changed`)
   ind_list <- full_join(ind_list, last_changed, ) %>%
       relocate(`Last Changed`, .after = Updates) %>%
@@ -1693,26 +1693,27 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
   in_crisis <- acaps_high_severity()
   # in_crisis <- acaps[which(rowSums(acaps[,3:6])>0),2]
 
-  # df <- read.csv(paste_path(output_directory, "crm-dashboard-data.csv"))
-  crisis_rows <- df
-  crisis_rows[,c(1,4:12)] <- NA
-  # crisis_rows$`Risk Label` <- as.character(crisis_rows$`Risk Label`)
-  crisis_rows <- distinct(crisis_rows)
-  crisis_rows$Data.Level <- "Crisis Status"
-  # crisis_rows$Key <- ""
-  crisis_rows[,c("Value")] <- 0
-  crisis_rows[which(crisis_rows$Country %in% in_crisis),c("Value")] <- 1
-  crisis_rows <- dplyr::mutate(crisis_rows,
-                        Risk.Label =
-                          dplyr::case_when(
-                            Value == 1 ~ paste0("*", Countryname),
-                            Value == 0 ~ Countryname
-                          ))
-  crisis_rows$Overall.Contribution <- FALSE
-  crisis_rows <- dplyr::mutate(crisis_rows, Index = dplyr::row_number() + max(df$Index))
-  comb <- rbind(df, crisis_rows)
+  crisis_rows <- countrylist %>%
+      mutate(
+        Value = case_when(Country %in% in_crisis ~ 1, T ~ 0),
+        `Risk Label` = case_when(
+          Value == 1 ~ paste0("*", Countryname), 
+          Value == 0 ~ Countryname),
+          `Overall Contribution` = F,
+          Index = dplyr::row_number() + max(df$Index),
+          Date = unique(df$Date)[1])
+
+  comb <- bind_rows(df, crisis_rows)
   # write_csv(comb, "output/scheduled/crm-dashboard-data-with-crisis.csv")
   return(comb)
+}
+
+add_overall_indicators <- function(dashboard_data) {
+  indicators_o <- subset(dashboard_data, `Data Level` == "Indicator") %>%
+  mutate(Outlook = "Overall",
+         Index = Index + 400)
+  dashboard_data <- bind_rows(dashboard_data, indicators_o)
+  return(dashboard_data)
 }
 
 quick_scan <- function(countries, group_name, file_name, outlooks = c("Underlying", "Emerging", "Overall"), pdf = F) {

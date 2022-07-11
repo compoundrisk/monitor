@@ -22,7 +22,7 @@ lapply(packages, function(p) {
 #loading dplyr last to prevent masking select()
 library('dplyr')
 
-source("fns/helpers.R")
+source("src/fns/helpers.R")
 
 ## Direct Github location (data folder)
 #---------------------------------
@@ -58,7 +58,7 @@ regions$region_code <- regions$region_code %>%
     "NAC" = "NAR",
     "ECS" = "ECA"))
 
-indicators_list <- as.data.frame(read.csv("indicators-list.csv")) %>%
+indicators_list <- as.data.frame(read.csv("src/indicators-list.csv")) %>%
   subset(active == T)
 
 ## Set up Spark

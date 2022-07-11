@@ -915,7 +915,7 @@ fews_process <- function(as_of) {
 # Taken from https://microdatalib.worldbank.org/index.php/catalog/12421/
 # Behind intranet
 fpi_collect <- function(as_of = Sys.Date()) {
-  most_recent <- read_most_recent("restricted-data/food-price-inflation", FUN = read_csv, col_types = "dddddccD", as_of = as_of, return_date = T)
+  most_recent <- read_most_recent("hosted-data/food-price-inflation", FUN = read_csv, col_types = "dddddccD", as_of = as_of, return_date = T)
   file_date <- most_recent[[2]]
   
   wb_fpi <- most_recent[[1]] %>%
@@ -925,12 +925,12 @@ fpi_collect <- function(as_of = Sys.Date()) {
 
 fpi_collect_many <- function(as_of = Sys.Date()) {
   oldest_date <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), as_of = Sys.Date(), format = "csv") %>% .$access_date %>% max()
-  new_dates <- read_most_recent("restricted-data/food-price-inflation", n = "all", FUN = paste, as_of = Sys.Date(), return_date = T)$date %>%
+  new_dates <- read_most_recent("hosted-data/food-price-inflation", n = "all", FUN = paste, as_of = Sys.Date(), return_date = T)$date %>%
     .[. > oldest_date]
   lapply(new_dates, fpi_collect)
 }
 
-# dates <- list.files("restricted-data/food-price-inflation") %>%
+# dates <- list.files("hosted-data/food-price-inflation") %>%
 #   str_extract("2022.*[^.csv]") %>%
 #   as.Date()
 
@@ -941,7 +941,7 @@ fpi_collect_many <- function(as_of = Sys.Date()) {
 # dates[-c(1:3)]
 
 # lapply(dates[-c(1:2)], function (as_of) {
-#   most_recent <- read_most_recent("restricted-data/food-price-inflation", FUN = read.csv, as_of = as_of, return_date = T)
+#   most_recent <- read_most_recent("hosted-data/food-price-inflation", FUN = read.csv, as_of = as_of, return_date = T)
 #   file_date <- most_recent[[2]]
 
 #   wb_fpi <- most_recent[[1]] %>%
@@ -1012,7 +1012,7 @@ eiu_collect <- function() {
   
   first_of_month <- str_replace(Sys.Date(), "\\d\\d$", "01") %>% as.Date()
   
-  # eiu <- read_xls("restricted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
+  # eiu <- read_xls("hosted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
   
   archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"), today = first_of_month)
 }
@@ -1110,7 +1110,7 @@ income_support_process <- function(as_of) {
 
 #--------------------------—MPO: Poverty projections----------------------------------------------------
 mpo_collect <- function() {
-  most_recent <- read_most_recent("restricted-data/mpo", FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
+  most_recent <- read_most_recent("hosted-data/mpo", FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
   file_date <- most_recent[[2]]
   # mpo <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/mpo.csv")))
   # archiveInputs(mpo, group_by = c("Country"))

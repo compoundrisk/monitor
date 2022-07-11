@@ -14,8 +14,8 @@
 
 # COMMAND ----------
 
-source("fns/prep.R")
-source("fns/indicators.R")
+source("src/fns/prep.R")
+source("src/fns/indicators.R")
 
 # COMMAND ----------
 

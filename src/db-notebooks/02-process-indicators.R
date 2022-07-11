@@ -18,9 +18,9 @@ error_delay <- tryCatch(dbutils.widgets.get("error_delay"), error = function(e) 
 # COMMAND ----------
 
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
-source("fns/prep.R")
-source("fns/indicators.R")
-source("fns/aggregation.R")
+source("src/fns/prep.R")
+source("src/fns/indicators.R")
+source("src/fns/aggregation.R")
 
 # Create a temporary folder to save everything in? Is this helpful
 # dir.create("tmp")
@@ -178,14 +178,15 @@ long <- pretty_col_names(all_dimensions) %>%
 # Make function: `write_dashboard_data(data)`? – or should it go after I've written the appended file,
 # and it takes a date argument? I think yes
 # dashboard_data <- subset(long, `Data Level` != "Reliability" & `Data Level` != "Raw Indicator Data") # %>%
-dashboard_data <- subset(long, `Data Level` != "Reliability") # %>%
+dashboard_data <- subset(long, `Data Level` != "Reliability") %>%
+  add_overall_indicators() # %>%
 #  mutate(Index = row_number()) # Don't include because indices should match between long and dashboard
 # write.csv(dashboard_data, paste0(output_directory, "/crm-dashboard-data.csv"))
 multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, archive_directory))
 # write.csv(dashboard_data, paste0(output_directory, "/crm-runs/", Sys.Date(), "-crm-run.csv"))
 
 # Fix so that this uses dashboard_data instead of reading the CSV
-dashboard_crisis <- label_crises()
+dashboard_crisis <- label_crises(dashboard_data)
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
 write.csv(dashboard_crisis, "production/crm-dashboard-prod.csv", row.names = F)
 
