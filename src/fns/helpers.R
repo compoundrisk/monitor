@@ -305,3 +305,12 @@ leading_zeros <- function(data, length, filler = "0") {
   })
   return(strings)
 }
+
+lap_start <- function() .GlobalEnv$lap_start_time <- Sys.time()
+lap_print <- function(message = NULL) {
+  duration <- Sys.time() - lap_start_time
+  output <- paste0(
+    ifelse(!is.null(message), paste0(message, ": "), ""),
+    round(duration,2), " ", units(duration))
+  print(output)
+}

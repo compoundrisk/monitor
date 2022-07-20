@@ -9,3 +9,4 @@ lib
 production
 production-backup
 staging
+init-script
