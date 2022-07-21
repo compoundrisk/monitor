@@ -12,7 +12,7 @@
 # Set working directory, load libraries and read-in functions
 # setwd("../../../dbfs/mnt/CompoundRiskMonitor")
 
-# COMMAND ----------
+## COMMAND ----------
 
 source("src/fns/prep.R")
 source("src/fns/indicators.R")
@@ -105,3 +105,7 @@ acled_collect() %>% delay_error(return = NA, on = error_delay)
 gic_collect() %>% delay_error(return = NA, on = error_delay)
 ifes_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Fragility dimension finished collecting")
+
+# COMMAND ----------
+
+release_delayed_errors()

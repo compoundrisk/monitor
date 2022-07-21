@@ -33,30 +33,30 @@ countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv")) %>%
   dplyr::select(-X) %>%
   dplyr::arrange(Country)
 
-country_groups <- {
-  # Source file has changed; saving in case it reverts soon
-  # codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xls",
-  #   FUN = read_xls, sheet = 1, range = "C5:I224")[-1,]
-  codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
-    FUN = read_xlsx, sheet = 1, range = "A1:F219")
-  region_codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
-    FUN = read_xlsx, sheet = "Groups")[-1,] %>% 
-    select(region_code = GroupCode, GroupName) %>%
-    distinct() %>%
-    subset(GroupName %in% codes$Region)
-  left_join(codes, region_codes, by = c("Region" = "GroupName"))
-}
-regions <- select(country_groups, iso = Code, region = Region, region_code)
+# country_groups <- {
+#   # Source file has changed; saving in case it reverts soon
+#   # codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xls",
+#   #   FUN = read_xls, sheet = 1, range = "C5:I224")[-1,]
+#   codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
+#     FUN = read_xlsx, sheet = 1, range = "A1:F219")
+#   region_codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
+#     FUN = read_xlsx, sheet = "Groups")[-1,] %>% 
+#     select(region_code = GroupCode, GroupName) %>%
+#     distinct() %>%
+#     subset(GroupName %in% codes$Region)
+#   left_join(codes, region_codes, by = c("Region" = "GroupName"))
+# }
+# regions <- select(country_groups, iso = Code, region = Region, region_code)
 
-regions$region_code <- regions$region_code %>%
-  str_replace_all(c(
-    "LCN" = "LAC",
-    "SAS" = "SAR",
-    "SSF" = "SSA",
-    "MEA" = "MNA",
-    "EAS" = "EAP",
-    "NAC" = "NAR",
-    "ECS" = "ECA"))
+# regions$region_code <- regions$region_code %>%
+#   str_replace_all(c(
+#     "LCN" = "LAC",
+#     "SAS" = "SAR",
+#     "SSF" = "SSA",
+#     "MEA" = "MNA",
+#     "EAS" = "EAP",
+#     "NAC" = "NAR",
+#     "ECS" = "ECA"))
 
 indicators_list <- as.data.frame(read.csv("src/indicators-list.csv")) %>%
   subset(active == T)
