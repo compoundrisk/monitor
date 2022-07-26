@@ -193,6 +193,7 @@ aggregate_dimension <- function(dim, ..., prefix = "", overall_method = "geometr
       overall = case_when(
         overall_method == "emerging" ~ emerging,
         overall_method == "geometric" & !is.na(underlying) ~ sqrt(underlying * emerging),
+        overall_method == "arithmetic" & !is.na(underlying) ~ (underlying + emerging)/2,
         TRUE ~ emerging),
       overall_labels = assign_ternary_labels(overall, high = 7, medium = 5, low = 0)  %>% as.factor()
     ) %>%

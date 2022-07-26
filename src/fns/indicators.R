@@ -1064,7 +1064,7 @@ eiu_process <- function(as_of) {
 }
 
 #### SOCIO-ECONOMIC
-#---------------------------—Alternative socio-economic data (based on INFORM) - INFORM Income Support
+#---------------------------—Alternative socio-economic data (based on INFORM)
 inform_socio_process <- function(as_of) {
   inform_risk <- loadInputs("inform_risk", group_by = c("Country"), as_of = as_of, format = "csv")
   
@@ -1077,36 +1077,36 @@ inform_socio_process <- function(as_of) {
   return(inform_data)
 }
 
-income_support_process <- function(as_of) {
-  #------------------------—Forward-looking socio-economic variables from INFORM---------------------------
-  inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"), as_of = as_of, format = "csv")
-  socio_forward <- inform_covid_warning %>%
-    dplyr::select(
-      Country, H_gdp_change.Value,H_gdp_change.Rating, H_unemployment.Value,
-      H_unemployment.Rating, H_income_support.Value, H_income_support.Rating
-    ) %>%
-    rename_with(
-      .fn = ~ str_replace(., "H_", "S_"),
-      .cols = colnames(.)[-1]
-    ) %>%
-    mutate(across( # FIX: is this even being used?
-      .cols = c(S_gdp_change.Rating, S_unemployment.Rating),
-      ~ case_when(
-        .x == "High" ~ 10,
-        .x == "Medium" ~ 7,
-        .x == "Low" ~ 0,
-        TRUE ~ NA_real_
-      ),
-      .names = "{.col}_norm")) %>%
-    mutate(
-      S_income_support.Rating_crm_norm = case_when(
-        S_income_support.Value == "No income support" ~ 7,
-        S_income_support.Value == "Government is replacing more than 50% of lost salary (or if a flat sum, it  ..." ~ 3,
-        S_income_support.Value == "Government is replacing less than 50% of lost salary (or if a flat sum, it  ..." ~ 0,
-        TRUE ~ NA_real_
-      ))
-  return(socio_forward)
-}
+# income_support_process <- function(as_of) {
+#   #------------------------—Forward-looking socio-economic variables from INFORM---------------------------
+#   inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"), as_of = as_of, format = "csv")
+#   socio_forward <- inform_covid_warning %>%
+#     dplyr::select(
+#       Country, H_gdp_change.Value,H_gdp_change.Rating, H_unemployment.Value,
+#       H_unemployment.Rating, H_income_support.Value, H_income_support.Rating
+#     ) %>%
+#     rename_with(
+#       .fn = ~ str_replace(., "H_", "S_"),
+#       .cols = colnames(.)[-1]
+#     ) %>%
+#     mutate(across( # FIX: is this even being used?
+#       .cols = c(S_gdp_change.Rating, S_unemployment.Rating),
+#       ~ case_when(
+#         .x == "High" ~ 10,
+#         .x == "Medium" ~ 7,
+#         .x == "Low" ~ 0,
+#         TRUE ~ NA_real_
+#       ),
+#       .names = "{.col}_norm")) %>%
+#     mutate(
+#       S_income_support.Rating_crm_norm = case_when(
+#         S_income_support.Value == "No income support" ~ 7,
+#         S_income_support.Value == "Government is replacing more than 50% of lost salary (or if a flat sum, it  ..." ~ 3,
+#         S_income_support.Value == "Government is replacing less than 50% of lost salary (or if a flat sum, it  ..." ~ 0,
+#         TRUE ~ NA_real_
+#       ))
+#   return(socio_forward)
+# }
 
 #--------------------------—MPO: Poverty projections----------------------------------------------------
 mpo_collect <- function() {

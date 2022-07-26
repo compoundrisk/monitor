@@ -14,6 +14,7 @@ output_directory <- paste0("output/", run_type)
 # COMMAND ----------
 
 error_delay <- tryCatch(dbutils.widgets.get("error_delay"), error = function(e) {return(F)})
+error_delay <- if (error_delay) T else F
 
 # COMMAND ----------
 
@@ -126,8 +127,8 @@ fcs <- fcs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)
 
 fragility_sheet <- aggregate_dimension(
   "Conflict and Fragility",
-  # # Unlike other dimensions. conflict only uses emerging outlook to calculate overall
-  # overall_method = "emerging", 
+  # Unlike other dimensions. conflict uses arithmetic mean outlook to calculate overall
+  overall_method = "arithmetic", 
   fcs,
   un_idp_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acled_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
@@ -216,6 +217,8 @@ write_csv(all_runs, paste_path(output_directory, "crm-all-runs.csv"))
 
 dimension_dates <- date_dimension_highs(all_runs)
 
+# COMMAND ----------
+
 # Edit to include reliability sheet output and to only take crm-wide.csv?
 write_excel_source_files(
   all_dimensions = all_dimensions,
@@ -236,3 +239,8 @@ write.csv(ind_list, paste_path(output_directory, "crm-excel", "indicators-list-d
 
 # Task: add code for actually updating `crm-dashboard.xlsx`
 # (Probably a shell command?)
+
+# COMMAND ----------
+
+# Where does this best belong? After the *_process() functions? before all-runs?
+release_delayed_errors()
