@@ -151,15 +151,15 @@ add_new_input_cols <- function(df1, df2) {
     relocate(access_date, .after = ncol(.))
   return(combined)
 }
-# Move external to functions file (is this still relevant?)
-try_log <- function(expr) {
-  fun <- sub("\\(.*", "", deparse(substitute(expr)))
-  tryCatch({
-    expr
-  }, error = function(e) {
-    write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
-  })
-}
+# # Move external to functions file (is this still relevant?)
+# try_log <- function(expr) {
+#   fun <- sub("\\(.*", "", deparse(substitute(expr)))
+#   tryCatch({
+#     expr
+#   }, error = function(e) {
+#     write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
+#   })
+# }
 
 #--------------------—INDICATOR SPECIFIC FUNCTIONS-----------------------------
 
@@ -1004,17 +1004,20 @@ fao_wfp_process <- function(as_of) {
 
 #---------------------------—Economist Intelligence Unit---------------------------------
 eiu_collect <- function() {
-  url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
-  destfile <- "RBTracker.xls"
-  curl::curl_download(url, destfile)
-  eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
-  file.remove("RBTracker.xls")
+  # url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
+  # destfile <- "RBTracker.xls"
+  # curl::curl_download(url, destfile)
+  # eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
+  # file.remove("RBTracker.xls")
   
-  first_of_month <- str_replace(Sys.Date(), "\\d\\d$", "01") %>% as.Date()
+  # first_of_month <- str_replace(Sys.Date(), "\\d\\d$", "01") %>% as.Date()
   
   # eiu <- read_xls("hosted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
+  most_recent <- read_most_recent("hosted-data/eiu", FUN = read_excel, as_of = Sys.Date(), return_date = T, sheet = "Data Values", skip = 3)
+  eiu <- most_recent$data
+  date <- most_recent$date
   
-  archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"), today = first_of_month)
+  archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"), today = date)
 }
 
 eiu_process <- function(as_of) {
@@ -1060,6 +1063,14 @@ eiu_process <- function(as_of) {
   #   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_12m_change, 0.95), quantile(eiu_joint$M_EIU_12m_change, 0.10), "M_EIU_12m_change")
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score_12m, 0.95), quantile(eiu_joint$M_EIU_Score_12m, 0.10), "M_EIU_Score_12m")
+
+  # Add a cap so countries with low absolute risk are not flagged
+  eiu_joint <- eiu_joint %>% 
+    mutate(M_EIU_12m_change_norm = case_when(
+      M_EIU_12m_change_norm >= 7 & M_EIU_Score < 50 ~ 7,
+      T ~ M_EIU_12m_change_norm
+    ))
+
   return(eiu_joint)
 }
 
@@ -1352,7 +1363,7 @@ gdacs_collect <- function() {
         "FL" = "flood",
         "VO" = "volcano",
         "DR" = "drought"))
-    status <- if (hazard == "drought" | str_detect(tolower(i), "active")) "active" else "past"
+    status <- if (hazard != "drought" & str_detect(tolower(i), "past")) "past" else "active"
     len <- length(names)
     
     if (hazard == "drought") date <- as.character(Sys.Date() - 7 * as.numeric(str_extract(date, "\\d+")))
@@ -1467,7 +1478,14 @@ gdacs_process <- function(as_of) {
     NH_GDAC_Hazard_Score = paste(NH_GDAC_Date, NH_GDAC_Hazard_Type, NH_GDAC_Hazard_Severity, NH_GDAC_Hazard_Magnitude, sep = " - ")
     ) %>%
     drop_na(Country)
-  return(gdacs)
+  # Limit one entry per country
+  gdacs_summary <- gdacs %>% group_by(Country) %>%
+    arrange(desc(NH_GDAC_Hazard_Score_Norm)) %>%
+    summarize(
+      NH_GDAC_Hazard_Score_Norm = max(NH_GDAC_Hazard_Score_Norm, na.rm = T), 
+      NH_GDAC_Hazard_Score = paste(NH_GDAC_Hazard_Score, collapse = "; "))
+
+  return(gdacs_summary)
 }
 
 #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
@@ -1515,7 +1533,7 @@ iri_collect <- function(as_of = Sys.Date()) {
     curl_iri <- function(x) {
       iri_date <- paste0('?F=', format(as_of, "%b%%20%Y"))
       dest_file <- x[[1]]
-      iri_curl <- paste0('curl -g -k -b ".access/iri-access.txt" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
+      iri_curl <- paste0('curl -g -k -b "', mounted_path, '.access/iri-access.txt" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
       system(iri_curl)
       iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
       return(T)
@@ -1719,24 +1737,37 @@ locust_process <- function(as_of) {
 #-------------------------—FCS---------------------------------------------
 
 fcs_collect <- function() {
-  fcv <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/Country_classification.csv"))) %>%
-    dplyr::select(-`IDA-status`) %>%
-    mutate(FCV_status = tolower(FCV_status)) %>%
-    mutate(
-      FCS_normalised = case_when(
-        FCV_status == tolower("High-Intensity conflict") ~ 10,
-        FCV_status == tolower("Medium-Intensity conflict") ~ 10,
-        FCV_status == tolower("High-Institutional and Social Fragility") ~ 10,
-        TRUE ~ 0
-      )
-    )
+  most_recent <- read_most_recent("hosted-data/fcs", FUN = read_csv, as_of = as_of, return_date = T)
+  file_date <- most_recent[[2]]
+
+  fcs <- most_recent$data %>%
+    select(-`IDA-status`)
+
+  # archiveInputs(fcs, group_by = "Country", col_types = "cccc")
+
+
+  # fcv <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/Country_classification.csv"))) %>%
+  #   dplyr::select(-`IDA-status`) %>%
+  #   mutate(FCV_status = tolower(FCV_status)) %>%
+  #   mutate(
+  #     FCS_normalised = case_when(
+  #       FCV_status == tolower("High-Intensity conflict") ~ 10,
+  #       FCV_status == tolower("Medium-Intensity conflict") ~ 10,
+  #       FCV_status == tolower("High-Institutional and Social Fragility") ~ 10,
+  #       TRUE ~ 0
+  #     )
+  #   )
   
-  fcs <- fcv
-  archiveInputs(fcs, group_by = c("Country"))
+  # fcs <- fcv
+  archiveInputs(fcs, group_by = c("Country"), col_types = "cccc", today = file_date)
 }
 
 fcs_process <- function(as_of) {
-  fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = "csv")
+  fcs <- loadInputs("fcs", group_by = c("Country"), col_types = "cccc", as_of = as_of, format = "csv") %>%
+    mutate(FCS_normalised = case_when(
+      !is.na(FCV_status) ~ 10,
+      T ~ 0))
+
   return(fcs)
 }
 
@@ -1831,16 +1862,7 @@ acled_collect <- function() {
   # Get ACLED API URL
   acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
                       three_year,
-                      "&event_date_where=>&fields=event_id_cnty|iso3|fatalities|event_date&limit=0")
-  
-  # acled_url2 <- paste0("https://api.acleddata.com/acled/read/?key=*9t-89Rn*bDb4qFXBAmO&email=ljones12@worldbank.org&event_date=",
-  #                     three_year,
-  #                     "&event_date_where=>&fields=iso3|fatalities|event_date|event_type|actor1|&limit=0")
-  #
-  # #Get ACLED API URL
-  # acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
-  #                     three_year,
-  #                     "&event_date_where=>&fields=iso3|fatalities|event_date&limit=0")
+                      "&event_date_where=>&fields=event_id_cnty|iso3|fatalities|event_type|event_date&limit=0")
   
   # Retrieve information
   acled_data <- fromJSON(acled_url)
@@ -1875,7 +1897,7 @@ acled_process <- function(as_of) {
   # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
   # acled <- loadInputs("acled", group_by = "event_id_cnty", as_of = effective_access_date, col_types = "cddDc") #158274
   # file.remove("output/inputs-archive/acled.R")
-  acled <- read_csv("output/inputs-archive/acled.csv", col_types = "cddDcD")
+  acled <- read_csv("output/inputs-archive/acled.csv", col_types = "cddcDcD")
 
 
   # Select date as three years plus two month (date to retrieve ACLED data)
@@ -1930,71 +1952,71 @@ acled_process <- function(as_of) {
   return(acled)
 }
 
-acled_hdx_collect <- function() {
-  rhdx::set_rhdx_config(hdx_site = "prod")
-  acled_hdx <- rhdx::pull_dataset("political-violence-events-and-fatalities") %>% 
-    rhdx::get_resource(1) %>%
-    rhdx::read_resource(sheet = 2) %>%
-    subset(Year >= as.numeric(format(Sys.Date(), format = "%Y")) - 4)
+# acled_hdx_collect <- function() {
+#   rhdx::set_rhdx_config(hdx_site = "prod")
+#   acled_hdx <- rhdx::pull_dataset("political-violence-events-and-fatalities") %>% 
+#     rhdx::get_resource(1) %>%
+#     rhdx::read_resource(sheet = 2) %>%
+#     subset(Year >= as.numeric(format(Sys.Date(), format = "%Y")) - 4)
   
-  # write.csv(acled_hdx, "output/inputs-archive/acled_hdx.csv", row.names = F)
-  archiveInputs(acled_hdx, group_by = c("Country", "Year", "Month"))
-}
+#   # write.csv(acled_hdx, "output/inputs-archive/acled_hdx.csv", row.names = F)
+#   archiveInputs(acled_hdx, group_by = c("Country", "Year", "Month"))
+# }
 
-acled_hdx_process <- function(as_of) {
-  acled_hdx <- loadInputs("acled_hdx", group_by = c("Country", "Year", "Month"))
+# acled_hdx_process <- function(as_of) {
+#   acled_hdx <- loadInputs("acled_hdx", group_by = c("Country", "Year", "Month"))
   
-  # Select date as three years plus two month (date to retrieve ACLED data)
-  three_year <- as.yearmon(as_of - 45) - 3.2
+#   # Select date as three years plus two month (date to retrieve ACLED data)
+#   three_year <- as.yearmon(as_of - 45) - 3.2
   
-  # Progress conflict data
-  acled <- acled_hdx %>%
-    mutate(
-      iso3 = name2iso(Country),
-      fatal_month = as.numeric(as.character(Fatalities)),
-      month_yr = as.yearmon(paste(Month, Year))
-    ) %>%
-    filter(month_yr >= three_year) %>%
-    # Remove dates for the latest month (or month that falls under the prior 6 weeks)
-    # Is there a way to still acknowledge countries with high fatalities in past 6 weeks?
-    filter(month_yr <= as.yearmon(as_of - 45)) %>% 
-    select(iso3, month_yr, fatal_month) %>%
-    group_by(iso3) %>%
-    mutate(fatal_month_log = log(fatal_month + 1)) %>%
-    mutate(fatal_3_month = fatal_month + lag(fatal_month, na.rm= T) + lag(fatal_month, 2, na.rm= T),
-           fatal_3_month_log = log(fatal_3_month + 1)) %>%
-    group_by(iso3) %>%
-    mutate(
-      fatal_z = (fatal_3_month_log - mean(fatal_3_month_log, na.rm = T)) / sd(fatal_3_month_log, na.rm = T),
-      sd = sd(fatal_3_month_log, na.rm = T),
-      mean = mean(fatal_3_month_log, na.rm = T)
-    ) %>%
-    #Calculate month year based on present month (minus 6 weeks)
-    filter(month_yr == paste(month.abb[month(format(as_of - 45))], year(format(as_of - 45)))) 
+#   # Progress conflict data
+#   acled <- acled_hdx %>%
+#     mutate(
+#       iso3 = name2iso(Country),
+#       fatal_month = as.numeric(as.character(Fatalities)),
+#       month_yr = as.yearmon(paste(Month, Year))
+#     ) %>%
+#     filter(month_yr >= three_year) %>%
+#     # Remove dates for the latest month (or month that falls under the prior 6 weeks)
+#     # Is there a way to still acknowledge countries with high fatalities in past 6 weeks?
+#     filter(month_yr <= as.yearmon(as_of - 45)) %>% 
+#     select(iso3, month_yr, fatal_month) %>%
+#     group_by(iso3) %>%
+#     mutate(fatal_month_log = log(fatal_month + 1)) %>%
+#     mutate(fatal_3_month = fatal_month + lag(fatal_month, na.rm= T) + lag(fatal_month, 2, na.rm= T),
+#            fatal_3_month_log = log(fatal_3_month + 1)) %>%
+#     group_by(iso3) %>%
+#     mutate(
+#       fatal_z = (fatal_3_month_log - mean(fatal_3_month_log, na.rm = T)) / sd(fatal_3_month_log, na.rm = T),
+#       sd = sd(fatal_3_month_log, na.rm = T),
+#       mean = mean(fatal_3_month_log, na.rm = T)
+#     ) %>%
+#     #Calculate month year based on present month (minus 6 weeks)
+#     filter(month_yr == paste(month.abb[month(format(as_of - 45))], year(format(as_of - 45)))) 
   
-  # Normalise scores
-  acled <- normfuncpos(acled, 1, 0, "fatal_z")
+#   # Normalise scores
+#   acled <- normfuncpos(acled, 1, 0, "fatal_z")
   
-  # Correct for countries with 0
-  acled <- acled %>%
-    mutate(
-      fatal_z_norm = case_when(
-        is.nan(fatal_z) ~ 0,
-        TRUE ~ fatal_z_norm
-      ),
-      Country = iso3,
-      fatal_z_norm = case_when(
-        fatal_3_month_log == 0 ~ 0,
-        (fatal_3_month_log <= log(25 + 1)) ~ 0,
-        TRUE ~ fatal_z_norm
-      )
-    ) %>%
-    ungroup() %>%
-    dplyr::select(-iso3) %>% 
-    rename(BRD_Normalised = fatal_z_norm) %>%
-    relocate(Country, .before = 1)
-  return(acled)
-}
+#   # Correct for countries with 0
+#   acled <- acled %>%
+#     mutate(
+#       fatal_z_norm = case_when(
+#         is.nan(fatal_z) ~ 0,
+#         TRUE ~ fatal_z_norm
+#       ),
+#       Country = iso3,
+#       fatal_z_norm = case_when(
+#         fatal_3_month_log == 0 ~ 0,
+#         (fatal_3_month_log <= log(25 + 1)) ~ 0,
+#         TRUE ~ fatal_z_norm
+#       )
+#     ) %>%
+#     ungroup() %>%
+#     dplyr::select(-iso3) %>% 
+#     rename(BRD_Normalised = fatal_z_norm) %>%
+#     relocate(Country, .before = 1)
+#   return(acled)
+# }
 
 #--------------------------—REIGN--------------------------------------------
 reign_collect <- function() {
@@ -2209,6 +2231,7 @@ ifes <- bind_rows(ifes_upcoming, ifes_past) %>%
   archiveInputs(ifes, group_by = NULL)
 
   #   # Using the API
+  # 2022-08-10 Learned that while the url is elections_demo it is in fact the current data
   # ifes_data <- system("curl -X GET https://electionguide.org/api/v1/elections_demo/ -H 'Authorization: Token 6233e188716a27eb8d26668fea3a068d4c067b85'",
   #  intern = T) %>%
   #  fromJSON()
@@ -2220,8 +2243,6 @@ ifes <- bind_rows(ifes_upcoming, ifes_past) %>%
   # ifes_data2 <- system("curl -X GET https://electionguide.org/api/v1/api_elections/ -H 'Authorization: Token 6233e188716a27eb8d26668fea3a068d4c067b85'",
   #  intern = T) %>%
   #  fromJSON()
-
-  # str(ifes_data2)
 }
 
 ifes_process <- function(as_of) {

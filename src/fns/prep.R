@@ -10,7 +10,11 @@ packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "ggplot
 #               "sjmisc", "sparklyr", "stats", "stringr", "tidyr", "xml2",
 #               "wppExplorer", "zoo")
 
-.libPaths(c("lib", .libPaths()))
+if (dir.exists("/dbfs")) {
+  .libPaths(c("/dbfs/mnt/CompoundRiskMonitor/lib", .libPaths()))
+} else {
+  .libPaths(c("lib", .libPaths()))
+}
 
 lapply(packages, function(p) {
   # if (!require(p, character.only = T, quietly = T)) {

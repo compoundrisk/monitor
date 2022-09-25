@@ -7,9 +7,20 @@
 as_of <- Sys.Date()
 # format <- "csv" # or "spark" or "both"; format of how input archives are saved (in case I switch )
 
+if (dir.exists("/dbfs")) {
+  # setwd("/dbfs/mnt/CompoundRiskMonitor")
+  setwd("/tmp/crm/monitor")
+  mounted_path <- "/dbfs/mnt/CompoundRiskMonitor"
+  # mounted_output_directory <- paste_path(mounted_path, "output")
+  } else {
+    mounted_path <- ""
+  }
+
 # if run is a job, save files to "output/scheduled"; if manually, save to "output/manual"
 run_type <- tryCatch(dbutils.widgets.get("run_type"), error = function(e) {return("manual")})
-output_directory <- paste0("output/", run_type)
+output_directory <- paste_path("output/", run_type)
+mounted_output_directory <- paste_path(mounted_path, "output/", run_type)
+
 
 # COMMAND ----------
 
@@ -18,7 +29,6 @@ error_delay <- if (error_delay) T else F
 
 # COMMAND ----------
 
-# setwd("../../../dbfs/mnt/CompoundRiskMonitor")
 source("src/fns/prep.R")
 source("src/fns/indicators.R")
 source("src/fns/aggregation.R")
@@ -34,8 +44,9 @@ source("src/fns/aggregation.R")
 
 # COMMAND ----------
 ensure_directory_exists(output_directory)
-ensure_directory_exists(output_directory, "archive")
-archive_directory <- ensure_directory_exists(output_directory, "archive", as_of,
+ensure_directory_exists(mounted_output_directory)
+ensure_directory_exists(mounted_output_directory, "archive")
+archive_directory <- ensure_directory_exists(mounted_output_directory, "archive", as.character(as_of),
                                              new = T, suffix = "run_", return = T)
 dim_path <- ensure_directory_exists(output_directory, "dimensions", return = T)
 # ensure_directory_exists(output_directory, "dimensions/archive")
@@ -44,9 +55,6 @@ dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions", ret
 # aggregated_archive_path <- ensure_directory_exists(output_directory, "aggregated-archive", Sys.Date(), new = T, suffix = "run_", return = T)
 
 # COMMAND ----------
-
-# ACAPS
-# acaps_sheet <- acaps_process(as_of = as_of)
 
 # COMMAND ----------
 
@@ -189,7 +197,7 @@ multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, ar
 # Fix so that this uses dashboard_data instead of reading the CSV
 dashboard_crisis <- label_crises(dashboard_data)
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
-write.csv(dashboard_crisis, "production/crm-dashboard-prod.csv", row.names = F)
+write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)
 
 # track_indicator_updates()
 # I've already written this. Do I still use it? My concern is that its reliance 

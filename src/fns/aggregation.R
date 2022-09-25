@@ -21,28 +21,28 @@
 # Don't think I need this, as I can re-create risk sheets at any time,
 # and risk-sheets is just a pass-through from process-indicators.R to
 # the next step (`aggregate_inds()`?)
-archive_risk_sheets <- function() {
-  # file.copy("Risk_sheets", "external", recursive = T)
-  # Put dated copy in /risk-sheets/archive
-  if (!dir.exists("archives")) dir.create("archives")
-  # dir.create("external/risk-sheets")
-  # dir.create("external/risk-sheets/archive")
-  file.copy("Risk_sheets", "archives", recursive = T)
-  # file.copy("Risk_sheets", "external/risk-sheets", recursive = T)
-  setwd("archives/Risk_sheets")
-  file.rename(list.files(),
-              paste0(Sys.Date(), "-", list.files()))
-  setwd("../..")
-  file.copy(paste0("archives/Risk_sheets/", list.files("archives/Risk_sheets")),
-            paste0("output/risk-sheets/archive/", list.files("archives/Risk_sheets")),
-            overwrite = TRUE)
-}
+# archive_risk_sheets <- function() {
+#   # file.copy("Risk_sheets", "external", recursive = T)
+#   # Put dated copy in /risk-sheets/archive
+#   if (!dir.exists("archives")) dir.create("archives")
+#   # dir.create("external/risk-sheets")
+#   # dir.create("external/risk-sheets/archive")
+#   file.copy("Risk_sheets", "archives", recursive = T)
+#   # file.copy("Risk_sheets", "external/risk-sheets", recursive = T)
+#   setwd("archives/Risk_sheets")
+#   file.rename(list.files(),
+#               paste0(Sys.Date(), "-", list.files()))
+#   setwd("../..")
+#   file.copy(paste0("archives/Risk_sheets/", list.files("archives/Risk_sheets")),
+#             paste0("output/risk-sheets/archive/", list.files("archives/Risk_sheets")),
+#             overwrite = TRUE)
+# }
 
-externalize_risk_sheets <- function() {
-  file.copy(paste0("Risk_sheets/", list.files("Risk_sheets")),
-            paste0("output/risk-sheets/", list.files("Risk_sheets")),
-            overwrite = TRUE)
-}
+# externalize_risk_sheets <- function() {
+#   file.copy(paste0("Risk_sheets/", list.files("Risk_sheets")),
+#             paste0("output/risk-sheets/", list.files("Risk_sheets")),
+#             overwrite = TRUE)
+# }
 
 # Function for gathering all of a dimension's sources together
 merge_indicators <- function(...) {
@@ -322,7 +322,7 @@ write_excel_source_files <- function(
   ensure_directory_exists(directory_path)
   if(archive) {
     ensure_directory_exists(directory_path, "archive")
-    archive_path <- ensure_directory_exists(directory_path, "archive", Sys.Date(), new = T, return = T, suffix = "run_")
+    archive_path <- ensure_directory_exists(directory_path, "archive", as.character(as_of), new = T, return = T, suffix = "run_")
   } else {
     archive_path <- NULL
   }

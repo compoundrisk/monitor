@@ -10,3 +10,4 @@ production
 production-backup
 staging
 init-script
+.vscode
