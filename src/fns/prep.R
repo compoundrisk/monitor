@@ -33,7 +33,7 @@ source("src/fns/helpers.R")
 github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 #---------------------------------
 
-countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv")) %>%
+countrylist <- read.csv("src/countrylist.csv")) %>%
   dplyr::select(-X) %>%
   dplyr::arrange(Country)
 
