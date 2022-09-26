@@ -10,9 +10,22 @@
 
 # Databricks notebook source
 # Set working directory, load libraries and read-in functions
-# setwd("../../../dbfs/mnt/CompoundRiskMonitor")
 
-## COMMAND ----------
+if (dir.exists("/dbfs")) {
+  # The mounted path is the path to mounted storage on Databricks
+  mounted_path <- "/dbfs/mnt/CompoundRiskMonitor"
+  # mounted_output_directory <- paste_path(mounted_path, "output")
+  working_path <- "/tmp/crm/monitor"
+  setwd(working_path)
+  } else {
+    mounted_path <- ""
+    working_path <- ""
+  }
+
+# Until I also add the output repository, output folder resides on mounted storage
+inputs_archive_path <- paste_path(mounted_path, "output/inputs-archive/")
+  
+# COMMAND ----------
 
 source("src/fns/prep.R")
 source("src/fns/indicators.R")

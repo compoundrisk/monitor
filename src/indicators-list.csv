@@ -2,7 +2,7 @@
 "Underlying","Conflict and Fragility","1","FCS","WB","Annual","1",,"Fr_FCS_normalised","Fr_FCV_status","fcv","FALSE","TRUE"
 "Underlying","Food Security","2","Proteus Composite Index","World Food Programme","Ad hoc","1",,"F_Proteus_Score_norm","F_Proteus_Score","proteus","FALSE","TRUE"
 "Underlying","Health","3","Global Health Security Index","Johns Hopkins/Economist Intelligence Unit","Annual","1",,"H_HIS_Score_norm","H_HIS_Score","HIS","FALSE","TRUE"
-"Underlying","Health","4","INFORM Rating","INFORM","Annual","1",,"H_INFORM_rating.Value_norm","H_INFORM_rating.Value","inform_covid_warning","FALSE","TRUE"
+"Underlying","Health","4","INFORM COVID Rating","INFORM","Annual","0",,"H_INFORM_rating.Value_norm","H_INFORM_rating.Value","inform_covid_warning","FALSE","FALSE"
 "Underlying","Macro Fiscal","5","Operational Risk Score, 12M","Economist Intelligence Unit","Monthly","1",,"M_EIU_Score_12m_norm","M_EIU_Score_12m","eiu_joint","FALSE","TRUE"
 "Underlying","Natural Hazard","6","INFORM Natural Multi-hazard Rating","INFORM","Annual","1",,"NH_Hazard_Score_norm","NH_Hazard_Score","informnathaz","FALSE","TRUE"
 "Underlying","Socioeconomic Vulnerability","7","INFORM Socio-economic Vulnerability Index","INFORM","Annual","1",,"S_INFORM_vul_norm","S_INFORM_vul","inform_data","FALSE","TRUE"

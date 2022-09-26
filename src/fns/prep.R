@@ -10,7 +10,11 @@ packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "ggplot
 #               "sjmisc", "sparklyr", "stats", "stringr", "tidyr", "xml2",
 #               "wppExplorer", "zoo")
 
-.libPaths(c("lib", .libPaths()))
+if (dir.exists("/dbfs")) {
+  .libPaths(c("/dbfs/mnt/CompoundRiskMonitor/lib", .libPaths()))
+} else {
+  .libPaths(c("lib", .libPaths()))
+}
 
 lapply(packages, function(p) {
   # if (!require(p, character.only = T, quietly = T)) {
@@ -29,7 +33,7 @@ source("src/fns/helpers.R")
 github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 #---------------------------------
 
-countrylist <- read.csv(paste0(github, "Indicator_dataset/countrylist.csv")) %>%
+countrylist <- read.csv("src/countrylist.csv") %>%
   dplyr::select(-X) %>%
   dplyr::arrange(Country)
 

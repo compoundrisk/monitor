@@ -75,7 +75,9 @@ get_col_types_short <- function(.df) {
 }
 
 paste_path <- function(...) {
-  path <- paste(..., sep = "/") %>%
+  items <- c(...)
+  if (items[1] == "") items <- items[-1]
+  path <- paste(items, collapse = "/") %>%
     { gsub("/+", "/", .) }
   return(path)
 }
@@ -123,7 +125,7 @@ curl_and_delete <- function(url, FUN, ...) {
 # }
 
 iso2name <- function(v) {
-  names <- countrycode(v, origin = "iso3c", destination = "country.name", custom_match = c(
+  names <- countrycode::countrycode(v, origin = "iso3c", destination = "country.name", custom_match = c(
     "XKX" = "Kosovo",
     "CIV" = "Cote d'Ivoire",
     "COD" = "Congo, DR",
@@ -146,7 +148,7 @@ name2iso <- function(v, multiple_matches = F) {
 
 
 name2iso <- function(v) {
-  names <- countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c(
+  names <- countrycode::countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c(
     "Kosovo" = "XKX",
     "Micronesia" = "FSM",
     "Türkiye" = "TUR",
@@ -187,7 +189,7 @@ if (!multiple_matches) {
       subset(isos != "")
 
     output[as.numeric(multiple_isos$index)] <- multiple_isos$isos
-
+    print("Dev Note: Edit this function to identify which of the matches that name2iso couldn't match were matched by name2match multiple_matches = T")
     return(output)
 }
 }
@@ -199,7 +201,8 @@ if (!multiple_matches) {
 read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, n = 1) {
     file_names <- list.files(directory_path)
     # Reads the date portion of a filename in the format of acaps-2021-12-13
-    name_dates <- sub(".*(20[[:digit:]-]+)\\..*", "\\1", file_names) %>%
+    name_dates <- sub(".*(20[[:digit:][:punct:]]+)\\..*", "\\1", file_names) %>%
+        str_replace_all("[:punct:]", "-") %>%
         as.Date(format = date_format) %>% sort()
     if (n == "all") n <- length(name_dates)
     selected_dates <- subset(name_dates, name_dates <= as_of) %>% tail(n)
@@ -313,4 +316,28 @@ lap_print <- function(message = NULL) {
     ifelse(!is.null(message), paste0(message, ": "), ""),
     round(duration,2), " ", units(duration))
   print(output)
+}
+
+add_empty_rows <- function(dataframe, total_rows, fill = NA) {
+  # Function is useful for forcing multiple dataframes to same length before column binding 
+  # (e.g. when making a table for printing)
+    if (is.data.frame(total_rows)) {total_rows <- nrow(total_rows) 
+    } else {
+        if (length(total_rows) > 1) total_rows <- length(total_rows)
+    }
+    dataframe[(nrow(dataframe)+1):total_rows,] <- fill
+    return(dataframe)
+}
+
+bind_cols_fill <- function(df1, df2, fill = NA) {
+  # Column binds dataframes or vectors of differing lengths
+    if (is.data.frame(df1)) a <- nrow(df1) else a <- length(df1)
+    if (is.data.frame(df2)) b <- nrow(df2) else b <- length(df2)
+    if (a < b) {
+        if (is.data.frame(df1)) df1[(nrow(df1)+1):b,] <- fill else df1[(length(df1)+1):b] <- fill
+    }
+    if (a > b) {
+        if (is.data.frame(df2)) df2[(nrow(df2)+1):a,] <- fill else df2[(length(df2)+1):a] <- fill
+    }
+    dplyr::bind_cols(df1, df2)
 }
