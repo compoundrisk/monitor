@@ -8,12 +8,14 @@ as_of <- Sys.Date()
 # format <- "csv" # or "spark" or "both"; format of how input archives are saved (in case I switch )
 
 if (dir.exists("/dbfs")) {
-  # setwd("/dbfs/mnt/CompoundRiskMonitor")
-  setwd("/tmp/crm/monitor")
+  # The mounted path is the path to mounted storage on Databricks
   mounted_path <- "/dbfs/mnt/CompoundRiskMonitor"
   # mounted_output_directory <- paste_path(mounted_path, "output")
+  working_path <- "/tmp/crm/monitor"
+  setwd(working_path)
   } else {
     mounted_path <- ""
+    working_path <- ""
   }
 
 # if run is a job, save files to "output/scheduled"; if manually, save to "output/manual"

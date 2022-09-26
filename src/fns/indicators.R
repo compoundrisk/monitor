@@ -1533,7 +1533,7 @@ iri_collect <- function(as_of = Sys.Date()) {
     curl_iri <- function(x) {
       iri_date <- paste0('?F=', format(as_of, "%b%%20%Y"))
       dest_file <- x[[1]]
-      iri_curl <- paste0('curl -g -k -b "', mounted_path, '.access/iri-access.txt" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
+      iri_curl <- paste0('curl -g -k -b "', paste_path(mounted_path, '.access/iri-access.txt'), '" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
       system(iri_curl)
       iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
       return(T)

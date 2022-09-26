@@ -11,13 +11,14 @@
 # Databricks notebook source
 # Set working directory, load libraries and read-in functions
 if (dir.exists("/dbfs")) {
-  # setwd("/dbfs/mnt/CompoundRiskMonitor")
-  setwd("/tmp/crm/monitor")
   # The mounted path is the path to mounted storage on Databricks
   mounted_path <- "/dbfs/mnt/CompoundRiskMonitor"
   # mounted_output_directory <- paste_path(mounted_path, "output")
+  working_path <- "/tmp/crm/monitor"
+  setwd(working_path)
   } else {
     mounted_path <- ""
+    working_path <- ""
   }
   
 # COMMAND ----------
