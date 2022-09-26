@@ -293,7 +293,7 @@ acaps_category_process <- function(as_of, category, prefix) {
 
 #--------------------—GHSI Score-----------------
 ghsi_collect <- function() {
-  ghsi <- read.csv(paste0(github, "Indicator_dataset/HIS.csv"))
+  ghsi <- read.csv("hosted-data/ghsi/ghsi.csv")
   ghsi <- ghsi %>%
     rename(Country = H_Country) %>%
     dplyr::select(-X)
@@ -759,7 +759,7 @@ dons_process <- function(as_of) {
 #### FOOD SECURITY
 # -------------------------------— Proteus Index -------------------------------
 proteus_collect <- function() {
-  proteus <- read.csv(paste0(github, "Indicator_dataset/proteus.csv"))
+  proteus <- read.csv("hosted-data/proteus/proteus.csv")
   
   proteus <- proteus %>%
     rename(F_Proteus_Score = Proteus.index) %>%
@@ -788,7 +788,7 @@ proteus_process <- function(as_of) {
 
 #Load database
 fews_collect <- function() {
-  fewsnet <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/fews.csv"), col_types = cols()))
+  fewsnet <- suppressMessages(read_csv("hosted-data/fews/fews.csv", col_types = cols()))
   archiveInputs(fewsnet, group_by = c("admin_code", "year_month"))
 }
 
@@ -973,7 +973,7 @@ fpi_process <- function (as_of) {
 
 #-------------------------—FAO/WFP HOTSPOTS----------------------------
 fao_wfp_collect <- function() {
-  fao_wfp <- read_csv(paste0(github, "Indicator_dataset/WFP%3AFAO_food.csv"), col_types = cols())
+  fao_wfp <- read_csv("hosted-data/fao-wfp/fao-wfp.csv", col_types = cols())
   fao_wfp <- fao_wfp %>%
     mutate(Country = countrycode(Country,
                                  origin = "country.name",
@@ -1221,7 +1221,7 @@ return(mpo)
 
 ## MACROFIN / EFI Macro Financial Review Household Level Risk
 mfr_collect <- function() {
-  macrofin <- read.csv(paste0(github, "Indicator_dataset/macrofin.csv"))
+  macrofin <- read.csv("hosted-data/efi-mfr/macrofin.csv")
   archiveInputs(macrofin, group_by = c("ISO3"))
 }
 
@@ -1251,17 +1251,19 @@ macrofin_process <- function(as_of) {
 #----------------------------—WB PHONE SURVEYS-----------------------------------------------------
 
 ## WB COVID PHONE SURVEYS
-phone_collect <- function() {
-  wb_phone <- read_csv(paste0(github, "Indicator_dataset/phone.csv"))[,-1]
-  archiveInputs(wb_phone , group_by = c("Country"))
-}
+# phone_collect <- function() {
+#   wb_phone <- read_csv(paste0(github, "Indicator_dataset/phone.csv"))[,-1]
+#   archiveInputs(wb_phone , group_by = c("Country"))
+# }
 
-phone_process <- function(as_of) {
-  wb_phone  <- loadInputs("wb_phone", group_by = c("Country"), as_of = as_of, format = "csv")
-}
+# phone_process <- function(as_of) {
+#   wb_phone  <- loadInputs("wb_phone", group_by = c("Country"), as_of = as_of, format = "csv")
+# }
 #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
 imf_collect <- function() {
-  imf_unemployment <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/imf_unemployment.csv")))
+  imf_unemployment <- read_csv("hosted-data/imf-unemployment/imf-unemployment.csv",
+    col_types = "cccclcccccccccd",
+    na = c("NA", "n/a", ""))
   
   # imf_archive <- read_csv("output/inputs-archive/imf_unemployment.csv") %>%
   #   mutate(`2027` = NA, .after = `2026`)
@@ -1491,7 +1493,7 @@ gdacs_process <- function(as_of) {
 
 #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
 inform_risk_collect <- function() {
-  inform_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/INFORM_Risk.csv"), col_types = cols()))
+  inform_risk <- read_csv("hosted-data/inform-risk/inform-risk.csv", col_types = cols())
   archiveInputs(inform_risk, group_by = c("Country"))
 }
 
@@ -1705,6 +1707,7 @@ iri_process <- function(
 # write.csv(iri, "~/Documents/world-bank/crm/compoundriskdata/Indicator_dataset/iri-precipitation-temp.csv")
 
 iri_process_temp <- function() {
+  # Not currently used but helpful if IRI script breaks
   iri <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/iri-precipitation-temp.csv"), col_types = cols())) 
   return(iri)
 }
@@ -1712,7 +1715,7 @@ iri_process_temp <- function() {
 #-------------------------------------—Locust outbreaks----------------------------------------------
 # List of countries and risk factors associated with locusts (FAO), see:http://www.fao.org/ag/locusts/en/info/info/index.html
 locust_collect <- function() {
-  locust_risk <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/locust_risk.csv"), col_types = cols()))
+  locust_risk <- read_csv("hosted-data/fao-locust/fao-locust.csv", col_types = cols())
   locust_risk <- locust_risk %>%
     dplyr::select(Country, NH_locust_norm)
   
@@ -1774,19 +1777,19 @@ fcs_process <- function(as_of) {
 
 #-----------------------------—IDPs--------------------------------------------------------
 idp_collect <- function() {
-  un_idp <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/population.csv"),
+  un_idp <- read_csv("hosted-data/unhcr-idp/unhcr-idp.csv",
                                         col_types = cols(
                                           `IDPs of concern to UNHCR` = col_number(),
                                           `Refugees under UNHCR's mandate` = col_number(),
                                           Year = col_number()),
-                                        skip = 14)) %>%
+                                        skip = 14) %>%
               select(Year,
                       `Country of origin (ISO)`,
                       `Country of asylum (ISO)`,
                       `Refugees under UNHCR mandate` = `Refugees under UNHCR's mandate`,
                       `IDPs of concern to UNHCR`)
   
-  update_date <- readLines(paste0(github, "Indicator_dataset/population.csv"), 3)[3] %>%
+  update_date <- readLines("hosted-data/unhcr-idp/unhcr-idp.csv", 3)[3] %>%
     str_extract("\\d+ [[:alpha:]]+ 20\\d\\d") %>%
     as.Date(format = "%d %B %Y")
   
