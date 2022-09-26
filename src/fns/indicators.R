@@ -14,24 +14,24 @@
 
 #--------------------FUNCTION TO CALCULATE NORMALISED SCORES-----------------
 # Function to normalise with upper and lower bounds (when low score = high vulnerability)
-normfuncneg <- function(df, upperrisk, lowerrisk, col1) {
+normfuncneg <- compiler::cmpfun(function(df, upperrisk, lowerrisk, col1) {
   # Create new column col_name as sum of col1 and col2
   df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] <= upperrisk, 10,
                                         ifelse(df[[col1]] >= lowerrisk, 0,
                                                ifelse(df[[col1]] > upperrisk & df[[col1]] < lowerrisk, 10 - (upperrisk - df[[col1]]) / 
                                                         (upperrisk - lowerrisk) * 10, NA)))
   return(df)
-}
+})
 
 # Function to normalise with upper and lower bounds (when high score = high vulnerability)
-normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
+normfuncpos <- compiler::cmpfun(function(df, upperrisk, lowerrisk, col1) {
   # Create new column col_name as sum of col1 and col2
   df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] >= upperrisk, 10,
                                         ifelse(df[[col1]] <= lowerrisk, 0,
                                                ifelse(df[[col1]] < upperrisk & df[[col1]] > lowerrisk, 10 - (upperrisk - df[[col1]]) / 
                                                         (upperrisk - lowerrisk) * 10, NA)))
   return(df)
-}
+})
 
 ## FUNCTION TO ARCHIVE AND LOAD ALL INPUT DATA `archiveInputs()` 
 # _Edit this to use Spark_
@@ -40,7 +40,7 @@ normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
 # - When bringing in input archives, in order to select most recent, might make sense to use `memory = FALSE` in `spark_read_csv()`.
 
 #---------------------------------
-archiveInputs <- function(data,
+archiveInputs <- compiler::cmpfun(function(data,
                           path = paste0(inputs_archive_path, deparse(substitute(data)), ".csv"), 
                           newFile = F,
                           # group_by defines the groups for which most recent data should be taken
@@ -101,10 +101,10 @@ archiveInputs <- function(data,
     write.csv(combined, path, row.names = F)
     if(return == T) return(combined)
   }
-}
+})
 
 #--------------------FUNCTIONS TO LOAD INPUT DATA-----------------
-loadInputs <- function(
+loadInputs <- compiler::cmpfun(function(
   filename,
   group_by = "CountryCode",
   as_of = Sys.Date(),
@@ -137,7 +137,7 @@ loadInputs <- function(
       ungroup()
   }
   return(most_recent)
-}
+})
 
 add_dimension_prefix <- function(df, prefix) {
   df <- df %>% rename_with(.cols = -Country, .fn = ~ paste0(prefix, .x))
@@ -292,13 +292,13 @@ acaps_category_process <- function(as_of, category, prefix) {
 ##### HEALTH
 
 #--------------------—GHSI Score-----------------
-ghsi_collect <- function() {
+ghsi_collect2<- compiler::cmpfun(function() {
   ghsi <- read.csv("hosted-data/ghsi/ghsi.csv")
   ghsi <- ghsi %>%
     rename(Country = H_Country) %>%
     dplyr::select(-X)
   archiveInputs(ghsi, group_by = "Country")
-}
+})
 
 ghsi_process <- function(as_of) {
   
