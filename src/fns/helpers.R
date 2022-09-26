@@ -259,7 +259,7 @@ expr2text <- function(x) {
 }
 
 
-delay_error <- function(expr, return = NULL, no_stop = F, on = T) {
+delay_error <- function(expr, return = NULL, no_stop = F, on = T, file.path = "/dbfs/mnt/CompoundRiskMonitor/output/errors.log") {
   # no_stop=T means that a delayed_error variable will be created which will err when release_delayed_errors() is run
   # on means to delay errors, !on means to ignore the function; this is useful so that I can turn off all delays when debugging
   # fun <- sub("\\(.*", "", deparse(substitute(expr)))
@@ -277,7 +277,7 @@ delay_error <- function(expr, return = NULL, no_stop = F, on = T) {
             assign("delayed_error", c(delayed_error, fun), envir = .GlobalEnv)
           }
         }
-        write(paste(Sys.time(), "Error on", fun, "\n", e), file = "output/errors.log", append = T)
+        write(paste(Sys.time(), "Error on", fun, "\n", e), file = file.path, append = T)
         if (!is.null(return)) {
           return(return)
         }
