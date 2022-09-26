@@ -41,7 +41,7 @@ normfuncpos <- function(df, upperrisk, lowerrisk, col1) {
 
 #---------------------------------
 archiveInputs <- function(data,
-                          path = paste0("output/inputs-archive/", deparse(substitute(data)), ".csv"), 
+                          path = paste0(inputs_archive_path, deparse(substitute(data)), ".csv"), 
                           newFile = F,
                           # group_by defines the groups for which most recent data should be taken
                           group_by = "CountryCode",
@@ -116,7 +116,7 @@ loadInputs <- function(
   
   if (format == "csv") {
     # Read in CSV
-    data <- suppressMessages(read_csv(paste0("output/inputs-archive/", filename, ".csv"), col_types = col_types))
+    data <- suppressMessages(read_csv(paste0(inputs_archive_path, filename, ".csv"), col_types = col_types))
   }
   if (format == "spark") {
     # Read from Spark DataFrame
@@ -167,14 +167,14 @@ add_new_input_cols <- function(df1, df2) {
 acaps_collect <- function() {
   h <- new_handle()
   handle_setopt(h, ssl_verifyhost = 0, ssl_verifypeer = 0)
-  file_path <- paste_path("output/inputs-archive/acaps", paste0("acaps-", Sys.Date(), ".html"))
+  file_path <- paste_path(inputs_archive_path, "acaps", paste0("acaps-", Sys.Date(), ".html"))
   curl_download(url = "https://www.acaps.org/countries",
                 file_path,
                 handle = h)
   # Remove if text in ".severities" <div> of html is identical in previous run
   new <- read_html(file_path) %>%
     html_nodes(".severities") %>% html_text()
-  previous <- read_most_recent("output/inputs-archive/acaps", FUN = read_html, as_of = Sys.Date() - 1) %>%
+  previous <- read_most_recent(paste_path(inputs_archive_path, "acaps"), FUN = read_html, as_of = Sys.Date() - 1) %>%
     html_nodes(".severities") %>% html_text()
   if (identical(new, previous)) {
     unlink(file_path)
@@ -183,7 +183,7 @@ acaps_collect <- function() {
 
 ## Add in *_collect() function for ACAPS
 acaps_process <- function(as_of) {
-  acaps <- read_most_recent("output/inputs-archive/acaps", FUN = read_html, as_of = as_of)
+  acaps <- read_most_recent(paste_path(inputs_archive_path, "acaps"), FUN = read_html, as_of = as_of)
   
   # Scrape ACAPS website
   parent_nodes <- acaps %>% 
@@ -371,7 +371,7 @@ owid_collect <- function() {
         new_cases_smoothed_per_million = 'd',
         new_deaths_per_million = 'd',
         new_deaths_smoothed_per_million = 'd'))
-  write.csv(covidweb, "output/inputs-archive/owid_covid.csv", row.names = F)
+  write.csv(covidweb, paste_path(inputs_archive_path, "owid_covid.csv"), row.names = F)
 }
 
 owid_covid_process <- function(as_of) {
@@ -380,7 +380,7 @@ owid_covid_process <- function(as_of) {
   # covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
   #                      col_types = "cccD-------dd-dd-------------------------------------------------")
   
-  covidweb <- read_csv("output/inputs-archive/owid_covid.csv",
+  covidweb <- read_csv(paste_path(inputs_archive_path, "owid_covid.csv"),
                        col_types = cols_only(
                          iso_code = 'c',
                          continent = 'c',
@@ -872,7 +872,8 @@ fews_process <- function(as_of) {
   # Find max ipc for any region in the country
   fews_summary <- fewsg %>%
     group_by(country, year_month) %>%
-    # Yields warning of infinite values, but we filter these out below; not a concern
+    subset(!is.na(fews_proj_med_adjusted)) %>%
+    # Fixed with subset above: Yields warning of infinite values, but we filter these out below; not a concern
     summarise(max_ipc = max(fews_proj_med_adjusted, na.rm = T)) %>%
     # mutate(
     #   year_month = str_replace(year_month, "_", "-"),
@@ -1194,7 +1195,7 @@ mpo_collect <- function() {
   # write_csv(mpo_data, "Indicator_dataset/mpo.csv")
   mpo <- mpo_data
   archiveInputs(mpo, group_by = c("Country"), today = file_date)
-  write.csv(mpo_data, "output/inputs-archive/mpo-alt.csv", row.names = F)
+  write.csv(mpo_data, paste_path(inputs_archive_path, "mpo-alt.csv"), row.names = F)
 }
 
 mpo_process <- function(as_of) {
@@ -1213,7 +1214,7 @@ mpo_process <- function(as_of) {
   #   access_date = "D")
   # mpo <- loadInputs("mpo", group_by = c("Country"), as_of = as_of, format = "csv", col_types = col_types)
 
-mpo <- read_csv("output/inputs-archive/mpo-alt.csv")
+mpo <- read_csv(paste_path(inputs_archive_path, "mpo-alt.csv"))
 
 return(mpo)
 }
@@ -1392,11 +1393,11 @@ gdacs_collect <- function() {
   
   # Add all currently online events to gdacs file unless most recent access_date and
   # current data are fully identical
-  gdacs_prev <- suppressMessages(read_csv("output/inputs-archive/gdacs.csv"))
+  gdacs_prev <- suppressMessages(read_csv(paste_path(inputs_archive_path, "gdacs.csv")))
   gdacs_prev_recent <- filter(gdacs_prev, access_date == max(access_date)) %>% distinct()
   if(!identical(select(gdacs_prev_recent, -access_date), select(gdacs, -access_date))) {
     gdacs <- bind_rows(gdacs_prev, gdacs) %>% distinct()
-    write.csv(gdacs, "output/inputs-archive/gdacs.csv", row.names = F)
+    write.csv(gdacs, paste_path(inputs_archive_path, "gdacs.csv"), row.names = F)
   }
   # # There may be a more efficient approach that gives all currently online events a TRUE `current` variable, and
   # # when an event is no longer current, it receives a FALSE for its next entry.
@@ -1416,7 +1417,7 @@ gdacs_collect <- function() {
 gdacs_process <- function(as_of) {
   # if (format == "csv") {
     # Read in CSV
-    gdacs <- suppressMessages(read_csv("output/inputs-archive/gdacs.csv")) %>%
+    gdacs <- suppressMessages(read_csv(paste_path(inputs_archive_path, "gdacs.csv"))) %>%
       mutate(access_date = as.Date(access_date)) %>%
       filter(access_date <= as_of) %>%
       filter(access_date == max(access_date))
@@ -1522,7 +1523,7 @@ iri_collect <- function(as_of = Sys.Date()) {
     return(m != format(Sys.Date(), "%m"))
   }
   expect_new <- 
-    read_most_recent("output/inputs-archive/iri/forecast", FUN = is_diff_month, as_of = as_of) &
+    read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = is_diff_month, as_of = as_of) &
     as.numeric(format(as_of, "%d")) >= 15
   
   if (expect_new) {
@@ -1543,22 +1544,22 @@ iri_collect <- function(as_of = Sys.Date()) {
     
     # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
     continuity_new <- raster("tmp-continuity.tiff")
-    continuity_old <- read_most_recent("output/inputs-archive/iri/continuity", FUN = raster, as_of = as_of)
+    continuity_old <- read_most_recent(paste_path(inputs_archive_path, "iri/continuity"), FUN = raster, as_of = as_of)
     if(!identical(values(continuity_new), values(continuity_old))) {
-      file.rename("tmp-continuity.tiff", paste0("output/inputs-archive/iri/continuity/iri-continuity-", as_of, ".tiff"))
+      file.rename("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
     }
     
     forecast_new <- raster("tmp-forecast.tiff")
-    forecast_old <- read_most_recent("output/inputs-archive/iri/forecast", FUN = raster, as_of = as_of)
+    forecast_old <- read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = raster, as_of = as_of)
     if(!identical(values(forecast_new), values(forecast_old))) {
-      file.rename("tmp-forecast.tiff", paste0("output/inputs-archive/iri/forecast/iri-forecast-", as_of, ".tiff"))
+      file.rename("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
     }
   }
 }
 
 iri_process <- function(
-  sp_path = read_most_recent("output/inputs-archive/iri/forecast", FUN = paste, as_of = as_of) ,
-  continuity_path = read_most_recent("output/inputs-archive/iri/continuity", FUN = paste, as_of = as_of) ,
+  sp_path = read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = paste, as_of = as_of) ,
+  continuity_path = read_most_recent(paste_path(inputs_archive_path, "iri/continuity"), FUN = paste, as_of = as_of) ,
   include_area = F,
   drop_geometry = F,
   country_list = F,
@@ -1601,11 +1602,11 @@ iri_process <- function(
     # Continuity wet/dry condition data
     continuity = crop(raster(continuity_path), extent(-180.5, 180.5, -65.5, 75.5)),
     # Population density (gwp 2020 resampled to same grid as forecast)
-    pop_density = raster("output/inputs-archive/iri/pop-density.tiff"),
+    pop_density = raster(paste_path(inputs_archive_path, "iri/pop-density.tiff")),
     # Proportino crop+pasture, resampled to same grid as forecast
-    agri_density = raster("output/inputs-archive/iri/crop-pasture-density.tiff")))
+    agri_density = raster(paste_path(inputs_archive_path, "iri/crop-pasture-density.tiff"))))
   
-  countries <- st_read("output/inputs-archive/world-borders/TM_WORLD_BORDERS-0.3.shp") %>%
+  countries <- st_read(paste_path(inputs_archive_path, "world-borders/TM_WORLD_BORDERS-0.3.shp")) %>%
     dplyr::select(-fips, -iso2, -un, -area, -pop2005, -lon, -lat, -Pixelcount)
   st_crs(countries) <- st_crs(s)
   
@@ -1737,7 +1738,7 @@ locust_process <- function(as_of) {
 #-------------------------—FCS---------------------------------------------
 
 fcs_collect <- function() {
-  most_recent <- read_most_recent("hosted-data/fcs", FUN = read_csv, as_of = as_of, return_date = T)
+  most_recent <- read_most_recent("hosted-data/fcs", FUN = read_csv, as_of = Sys.Date(), return_date = T)
   file_date <- most_recent[[2]]
 
   fcs <- most_recent$data %>%
@@ -1879,7 +1880,7 @@ acled_collect <- function() {
   # understand why the dataset differs each day, so for now I'm just writing 
   # it fresh each time (like OWID COVID)
   acled <- mutate(acled, access_date = Sys.Date())
-  write.csv(acled, "output/inputs-archive/acled.csv", row.names = F)
+  write.csv(acled, paste_path(inputs_archive_path, "acled.csv"), row.names = F)
   
   # # If I want to reduce file size, zipping takes ~10 seconds (unzipping: <1s)
   # # and reduces size from 40 MB to 4 MB
@@ -1897,8 +1898,8 @@ acled_process <- function(as_of) {
   # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
   # acled <- loadInputs("acled", group_by = "event_id_cnty", as_of = effective_access_date, col_types = "cddDc") #158274
   # file.remove("output/inputs-archive/acled.R")
-  acled <- read_csv("output/inputs-archive/acled.csv", col_types = "cddcDcD")
 
+  acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cddcDcD")
 
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.yearmon(as_of - 45) - 3.2
@@ -2143,7 +2144,7 @@ gic_process <- function(as_of) {
   # (This is less because I may have retreived the dataset much later than the version, but because 
   # the event occured before the version date; that though is true of literally every event in this monitor,
   # and, in fact, true of all datasets that record events.
-  coups_raw <- read_csv("output/inputs-archive/gic.csv", col_types = "cdddddddc")
+  coups_raw <- read_csv(paste_path(inputs_archive_path, "gic.csv"), col_types = "cdddddddc")
   
   coups <- coups_raw %>%
     mutate(
@@ -2247,7 +2248,7 @@ ifes <- bind_rows(ifes_upcoming, ifes_past) %>%
 
 ifes_process <- function(as_of) {
   # elections_all <- loadInputs("ifes", group_by = NULL, as_of = as_of, format = "csv")
-  elections_all <- read_csv("output/inputs-archive/ifes.csv", col_types = "ccccDcdccdD") %>% 
+  elections_all <- read_csv(paste_path(inputs_archive_path, "ifes.csv"), col_types = "ccccDcdccdD") %>% 
     subset(date >= as_of & date <= as_of + 182)
   
   elections <- elections_all %>% 

@@ -10,6 +10,7 @@
 
 # Databricks notebook source
 # Set working directory, load libraries and read-in functions
+
 if (dir.exists("/dbfs")) {
   # The mounted path is the path to mounted storage on Databricks
   mounted_path <- "/dbfs/mnt/CompoundRiskMonitor"
@@ -20,6 +21,9 @@ if (dir.exists("/dbfs")) {
     mounted_path <- ""
     working_path <- ""
   }
+
+# Until I also add the output repository, output folder resides on mounted storage
+inputs_archive_path <- paste_path(mounted_path, "output/inputs-archive/")
   
 # COMMAND ----------
 
@@ -114,3 +118,7 @@ acled_collect() %>% delay_error(return = NA, on = error_delay)
 gic_collect() %>% delay_error(return = NA, on = error_delay)
 ifes_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Fragility dimension finished collecting")
+
+# COMMAND ----------
+
+release_delayed_errors()
