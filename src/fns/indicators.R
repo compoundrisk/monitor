@@ -292,7 +292,7 @@ acaps_category_process <- function(as_of, category, prefix) {
 ##### HEALTH
 
 #--------------------—GHSI Score-----------------
-ghsi_collect2<- compiler::cmpfun(function() {
+ghsi_collect <- compiler::cmpfun(function() {
   ghsi <- read.csv("hosted-data/ghsi/ghsi.csv")
   ghsi <- ghsi %>%
     rename(Country = H_Country) %>%
