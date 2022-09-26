@@ -30,7 +30,7 @@ if [ -d "/dbfs" ]; then
 	    git merge origin/databricks
 	fi
 	# Copy this shell script over so that it can be updated by git
-	cp -R /tmp/crm/monitor/src/clone-git-repos-tmp.sh /dbfs/mnt/CompoundRiskMonitor/src
+	cp -R /tmp/crm/monitor/src/clone-git-repos-into-tmp.sh /dbfs/mnt/CompoundRiskMonitor/src
 	if [ ! -d /tmp/crm/$REPO/$HOSTED_REPO ];
 	  then
 	    echo "No $HOSTED_REPO directory; cloning $HOSTED_REPO"
@@ -42,7 +42,7 @@ if [ -d "/dbfs" ]; then
 	  else
 	    cd $HOSTED_REPO
 	    git fetch https://bennotkin:$PAT@github.com/$HOSTED_REPO_PATH
-	    git merge origin/master
+	    git merge origin/databricks
 	fi
 	# if [ ! -d /tmp/crm/$REPO/$OUT_REPO ];
 	#   then
@@ -55,7 +55,7 @@ if [ -d "/dbfs" ]; then
 	#   else
 	#     cd $OUT_REPO
 	#     git fetch https://bennotkin:$PAT@github.com/$OUT_REPO_PATH
-	#     git merge origin/master
+	#     git merge origin/databricks
 	# fi
 	cd /tmp/crm/$REPO
 fi

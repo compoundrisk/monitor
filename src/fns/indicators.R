@@ -872,7 +872,8 @@ fews_process <- function(as_of) {
   # Find max ipc for any region in the country
   fews_summary <- fewsg %>%
     group_by(country, year_month) %>%
-    # Yields warning of infinite values, but we filter these out below; not a concern
+    subset(!is.na(fews_proj_med_adjusted)) %>%
+    # Fixed with subset above: Yields warning of infinite values, but we filter these out below; not a concern
     summarise(max_ipc = max(fews_proj_med_adjusted, na.rm = T)) %>%
     # mutate(
     #   year_month = str_replace(year_month, "_", "-"),
