@@ -74,19 +74,19 @@ get_col_types_short <- function(.df) {
     vl_col_class_char__
 }
 
-paste_path <- function(...) {
+paste_path <- compiler:cmpfun(function(...) {
   items <- c(...)
   if (items[1] == "") items <- items[-1]
   path <- paste(items, collapse = "/") %>%
     { gsub("/+", "/", .) }
   return(path)
-}
+})
 
-multi_write.csv <- function(data, filename, paths) {
+multi_write.csv <- compiler:cmpfun(function(data, filename, paths) {
   for(i in 1:length(paths)) {
     write.csv(data, paste_path(paths[i], filename), row.names = F)
   }
-}
+})
 
 column_differences <- function(df1, df2) {
     n1 <- names(df1)[which(names(df1) %ni% names(df2))]
@@ -111,12 +111,12 @@ replace_NAs_0 <- function(df, cols) {
     return(df)
 }
 
-curl_and_delete <- function(url, FUN, ...) {
+curl_and_delete <- compiler:cmpfun(function(url, FUN, ...) {
   curl::curl_download(url, "temporary")
   data <- FUN("temporary", ...)
   file.remove("temporary")
   return(data)
-}
+})
 
 # See IFES and DONS paste summarizes for what this is trying to generalize
 # summarize_many_columns <- function(df, group_by, new_col, old_cols, sep) {
@@ -124,16 +124,16 @@ curl_and_delete <- function(url, FUN, ...) {
 # ...
 # }
 
-iso2name <- function(v) {
+iso2name <- compiler:cmpfun(function(v) {
   names <- countrycode::countrycode(v, origin = "iso3c", destination = "country.name", custom_match = c(
     "XKX" = "Kosovo",
     "CIV" = "Cote d'Ivoire",
     "COD" = "Congo, DR",
     "COG" = "Congo, Republic"))
   return(names)
-}
+})
 
-name2iso <- function(v, multiple_matches = F) {
+name2iso <- compiler:cmpfun(function(v, multiple_matches = F) {
 # This new multiple_matches = T argument makes this a much more complicated function,
 # though perhaps it could be written more simply. If the arg is set to TRUE, the function
 # looks at all NAs and tries to find all the matches it can with the country names list.
@@ -192,13 +192,13 @@ if (!multiple_matches) {
     print("Dev Note: Edit this function to identify which of the matches that name2iso couldn't match were matched by name2match multiple_matches = T")
     return(output)
 }
-}
+})
 
 # FUNCTION TO READ MOST RECENT FILE IN A FOLDER
 # Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
 # Also could mean saving all live-downloaded data somewhere
 # I need to save the filename so I can use the date in it as the access_date
-read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, n = 1) {
+read_most_recent <- compiler:cmpfun(function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, n = 1) {
     file_names <- list.files(directory_path)
     # Reads the date portion of a filename in the format of acaps-2021-12-13
     name_dates <- sub(".*(20[[:digit:][:punct:]]+)\\..*", "\\1", file_names) %>%
@@ -218,7 +218,7 @@ read_most_recent <- function(directory_path, FUN = read.csv, ..., as_of, date_fo
       return(list(data = data, date = selected_dates))
     }
     return(data)
-}
+})
 
 count_extremes <- function(v) {
 # how many peaks and valleys are in vector?
