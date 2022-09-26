@@ -26,7 +26,7 @@ if [ -d "/dbfs" ]; then
 	    git config user.name "Ben Notkin";
 	  else
 	    cd $REPO
-	    git fetch https://bennotkin:$PAT@github.com/$REPO_PATH
+	    git fetch origin databricks
 	    git merge origin/databricks
 	fi
 	# Copy this shell script over so that it can be updated by git
@@ -41,7 +41,7 @@ if [ -d "/dbfs" ]; then
 	    git config user.name "Ben Notkin";
 	  else
 	    cd $HOSTED_REPO
-	    git fetch https://bennotkin:$PAT@github.com/$HOSTED_REPO_PATH
+	    git fetch origin databricks
 	    git merge origin/databricks
 	fi
 	# if [ ! -d /tmp/crm/$REPO/$OUT_REPO ];
