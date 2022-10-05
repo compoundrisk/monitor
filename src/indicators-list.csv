@@ -12,7 +12,7 @@
 "Emerging","Conflict and Fragility","32","IFES Elections & GIC Coups","IFES, GIC",,,"1","Fr_pseudo_reign_norm","Fr_coup_election_text",,"FALSE","TRUE"
 "Emerging","Food Security","11","FAO WFP Warning","FAO","Ad hoc",,"1","F_fao_wfp_warning","F_fao_wfp_warning","fao_wfp","FALSE","TRUE"
 "Emerging","Food Security","12","FEWS NET Score","FEWS NET","Quarterly",,"1","F_fews_crm_norm","F_fews_crm","fews_dataset","FALSE","TRUE"
-"Emerging","Food Security","13","Food Price Inflation (Secondary Indicator)","WB","Monthly",,"1","F_fpv_rating","F_Inflation","fpi","TRUE","TRUE"
+"Emerging","Food Security","13","Food Price Inflation","WB","Monthly",,"1","F_fpv_rating","F_Inflation","fpi","FALSE","TRUE"
 "Emerging","Health","14","Covid Growth, Cases (biweekly)","OWID","Daily",,"0","H_Covidgrowth_casesnorm","H_Covidgrowth_biweeklycases","covidgrowth","FALSE","FALSE"
 "Emerging","Health","15","Covid Growth, Deaths (biweekly)","OWID","Daily",,"1","H_Covidgrowth_deathsnorm","H_Covidgrowth_biweeklydeaths","covidgrowth","FALSE","TRUE"
 "Emerging","Health","16","Oxford Gov Response Index","Oxford","Daily",,"0","H_GovernmentResponseIndexForDisplay_norm","H_GovernmentResponseIndexForDisplay","Ox_cov_resp","FALSE","FALSE"

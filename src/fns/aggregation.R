@@ -52,6 +52,10 @@ merge_indicators <- function(...) {
     # Conditional means that if a indicator processing fails, and returns a NA,
     # the sheet can still be built, just without that indicator. Probably would be good
     # to fall back on old data instead of leaving it out, but for now this works.
+    if (is.logical(s$Country)) {
+      # If the 
+      s <- mutate(s, Country = as.character(Country))
+    }
     if (!is.null(nrow(s))) {
       sheet <- left_join(sheet, s, by = "Country")
     }
@@ -228,7 +232,7 @@ aggregate_dimension <- function(dim, ..., prefix = "", overall_method = "geometr
   # Check if any sheets have empty columns
   empties <- empty_cols(sheet) %>% names()
   if (length(empties) > 0) {
-    warning(paste(dim, " is empty on ", empties)) 
+    warning(paste(dim, " is empty on ", empties, "\n")) 
     # } else {
     #   print(paste(dimension, " is filled")) 
   }
@@ -1740,15 +1744,27 @@ quick_scan <- function(countries, group_name, file_name, outlooks = c("Underlyin
         mutate(Ind_ID = as.numeric(str_sub(Index, -2))) %>%
         arrange(Ind_ID)
 
-    raw_indicators <- subset(indicators, Data.Level == "Raw Indicator Data") %>%
+    norm_indicators <- subset(indicators, Data.Level == "Indicator") %>%
+        select(Index, Ind_ID, Country, Dimension, Key, Value)
+    if (outlook == "Overall") {
+      raw_indicators <- subset(data, Data.Level == "Raw Indicator Data") %>% 
+          select(Index, Country, Data.Level, Dimension, Key, Value, Value_Char) %>% 
+          mutate(Ind_ID = as.numeric(str_sub(Index, -2))) %>%
+          arrange(Ind_ID) %>%
+          select(Index, Ind_ID, Country, Key, Value_Char) %>% group_by(Country, Ind_ID) %>%
+          summarize(
+              # Raw_Key = paste(Key, collapse = "; "),
+              Raw = paste(Value_Char, collapse = "; "))
+    } else {
+      raw_indicators <- subset(indicators, Data.Level == "Raw Indicator Data") %>%
                 select(Index, Ind_ID, Country, Key, Value_Char) %>% group_by(Country, Ind_ID) %>%
                 summarize(
                     # Raw_Key = paste(Key, collapse = "; "),
                     Raw = paste(Value_Char, collapse = "; "))
-    norm_indicators <- subset(indicators, Data.Level == "Indicator") %>%
-        select(Index, Ind_ID, Country, Dimension, Key, Value)
+    }
 
-    wide_indicators <- full_join(norm_indicators, raw_indicators, by = c("Country", "Ind_ID"))
+
+    wide_indicators <- left_join(norm_indicators, raw_indicators, by = c("Country", "Ind_ID"))
 
     # For each country, for each high dimension, list the high indicators, and the raw indicator value underneath
 

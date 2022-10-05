@@ -11,3 +11,4 @@ production-backup
 staging
 init-script
 .vscode
+horizon-scan

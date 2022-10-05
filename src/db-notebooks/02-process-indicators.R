@@ -65,6 +65,7 @@ dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions", ret
 
 # HEALTH
 # Writes sheet of health variables to output/risk-sheets/health-sheet.csv
+lap_start()
 health_sheet <- aggregate_dimension(
   "Health", # Important for these dimension names to match the names to match what's in indicators-list.csv
   # acaps_category_process(as_of, category = "health", prefix = "H_") %>%
@@ -80,11 +81,13 @@ health_sheet <- aggregate_dimension(
 # (/output/scheduled/ or /output/manual/run-date/)
 # Do I even need to
 multi_write.csv(health_sheet, "health-sheet.csv", c(dim_path, dim_archive_path))
+lap_print("Health sheet is aggregated and saved.")
 
 # COMMAND ----------
 
 # FOOD
 # Writes sheet of food variables to output/risk-sheets/food-sheet.csv
+lap_start()
 food_sheet <- aggregate_dimension(
   "Food Security",
   proteus_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
@@ -92,21 +95,26 @@ food_sheet <- aggregate_dimension(
   fpi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   fao_wfp_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(food_sheet, "food-sheet.csv", c(dim_path, dim_archive_path))
+lap_print("Food sheet is aggregated and saved.")
 
 # COMMAND ----------
 
 # MACRO FISCAL
 # Writes sheet of macro fiscal variables to output/risk-sheets/macro-sheet.csv
+lap_start()
 macro_sheet <- aggregate_dimension(
   "Macro Fiscal",
   eiu_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   macrofin_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(macro_sheet, "macro-sheet.csv", c(dim_path, dim_archive_path))
+lap_print("Macro sheet is aggregated and saved.")
+
 
 # COMMAND ----------
 
 # SOCIO-ECONOMIC
 # Writes sheet of socio-economic variables to output/risk-sheets/socio-sheet.csv
+lap_start()
 socio_sheet <- aggregate_dimension(
   "Socioeconomic Vulnerability",
   inform_socio_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
@@ -117,11 +125,13 @@ socio_sheet <- aggregate_dimension(
   # Fix warnings
   imf_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(socio_sheet, "socio-sheet.csv", c(dim_path, dim_archive_path))
+lap_print("Socio sheet is aggregated and saved.")
 
 # COMMAND ----------
 
 # NATURAL HAZARDS
 # Writes sheet of natural hazard variables to output/risk-sheets/natural_hazards-sheet.csv
+lap_start()
 natural_hazards_sheet <- aggregate_dimension(
   "Natural Hazard",
   gdacs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
@@ -130,24 +140,24 @@ natural_hazards_sheet <- aggregate_dimension(
   locust_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acaps_category_process(as_of, category = "natural", prefix = "NH_") %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
+lap_print("Natural hazards sheet is aggregated and saved.")
+
 
 # COMMAND ----------
 
 # CONFLICT AND FRAGILITY
-# Writes sheet of conflict and fragility variables to output/risk-sheets/fragility-sheet.csv
-# REIGN uses fcs, so run it first to make it available
-fcs <- fcs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)
-
+lap_start()
 fragility_sheet <- aggregate_dimension(
   "Conflict and Fragility",
   # Unlike other dimensions. conflict uses arithmetic mean outlook to calculate overall
   overall_method = "arithmetic", 
-  fcs,
+  fcs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   un_idp_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acled_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   # reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)),
   pseudo_reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_path))
+lap_print("Fragility sheet is aggregated and saved.")
 
 # COMMAND ----------
 

@@ -419,10 +419,8 @@ owid_covid_process <- function(as_of) {
       # regardless of number of records? If a country reports 1x/week, should
       # we divide by 14 or by 2? (Should be 14)
       meandeaths = mean(new_deaths_per_million, na.rm = T),
-      meancase = mean(new_cases_per_million, na.rm = T))
-  
-  covidgrowth <- covidgrowth %>%
-    group_by(iso_code) %>%
+      meancase = mean(new_cases_per_million, na.rm = T),
+      .groups = "drop_last") %>%
     filter(!is.na(meandeaths) & !is.na(meancase)) 
   
   # remove countries without two weeks (seems the logical for remove is backwards?)
@@ -511,7 +509,7 @@ owid_covid_process <- function(as_of) {
       H_new_cases_smoothed_per_million_norm = new_cases_smoothed_per_million_norm,
       H_new_deaths_smoothed_per_million_norm = new_deaths_smoothed_per_million_norm)
   
-  owid <- left_join(covidcurrent, covidgrowth)
+  owid <- left_join(covidcurrent, covidgrowth, by = "Country")
   owid <- subset(owid, Country %in% countrylist$Country)
   
   # # In case we want to put a minimum threshold for total deaths
@@ -896,12 +894,7 @@ fews_process <- function(as_of) {
         TRUE ~ NA_real_
       ),
       fews_crm = paste(fshighrisk, "and max IPC of", max_ipc, "in", year_month.x),
-      Country = countrycode(
-        country,
-        origin = "country.name",
-        destination = "iso3c",
-        nomatch = NULL
-      )) %>%
+      Country = name2iso(country)) %>%
     dplyr::select(-country) %>%
     rename_with(
       .fn = ~ paste0("F_", .),
@@ -909,6 +902,7 @@ fews_process <- function(as_of) {
     )
   
   colnames(fews_dataset[-1]) <- paste0("F_", colnames(fews_dataset[-1])) 
+  # if (nrow(fews_dataset) == 0) stop("FEWS dataset is empty (likely not refreshed in a year)")
   return(fews_dataset)
 }
 
@@ -986,9 +980,9 @@ fao_wfp_collect <- function() {
   
   fao_wfp <- fao_all
   
-  y <- fao_all$Forecast_End[1] %>% str_extract("^\\d\\d\\d\\d")
-  m <- fao_all$Forecast_End[1] %>% str_extract("-\\d\\d-") %>% str_sub(2,3) %>% as.numeric() - 3 
-  start_date <- min(as.Date(paste(y, leading_zeros(m, 2), "01", sep = "-")), Sys.Date())
+  start_date <- min(
+    (as.yearmon(fao_all$Forecast_End[1]) - 3/12) %>% as.Date(),
+    Sys.Date())
   
   archiveInputs(fao_wfp, group_by = c("Country"), today = start_date)
 }
@@ -2268,7 +2262,7 @@ ifes_process <- function(as_of) {
       .before = Countryname)
   
   filter_for_fcs <- function(data, country_column) {
-    on_fcs <- loadInputs("fcs", group_by = c("Country"), as_of = as_of, format = "csv") %>%
+    on_fcs <- fcs_process(as_of = as_of) %>%
       subset(FCS_normalised == 10, select = Country)
     
     filtered <- subset(data, get(country_column) %in% on_fcs$Country)
