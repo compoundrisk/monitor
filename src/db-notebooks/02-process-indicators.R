@@ -72,7 +72,7 @@ health_sheet <- aggregate_dimension(
     # delay_error(return = NA, on = error_delay),
   ghsi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   # oxford_openness_process(as_of = as_of),
-  owid_covid_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  # owid_covid_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   # Oxres_process(as_of = as_of),
   inform_covid_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   dons_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))

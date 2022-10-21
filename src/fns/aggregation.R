@@ -93,8 +93,13 @@ assign_ternary_labels <- function(x, high, medium, low) {
   return(label)
 }
 
-aggregate_dimension <- function(dim, ..., prefix = "", overall_method = "geometric") {
+aggregate_dimension <- function(dim, ..., prefix = "", overall_method = "geometric", indicators_list_file = NULL) {
   
+  if (!is.null(indicators_list_file)) {
+    indicators_list <- as.data.frame(read.csv(indicators_list_file)) %>%
+      subset(active == T)
+  }
+
   if(!dim %in% indicators_list$Dimension) {
     stop(cat("Dimension name", dim, "not in indicators-list.csv"))
   }

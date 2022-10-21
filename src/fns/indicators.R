@@ -743,7 +743,7 @@ dons_process <- function(as_of) {
   
   who_dons <- left_join(countrylist, who_dons, by = c("Country" = "Country")) %>%
     mutate(who_dons_alert = case_when(
-      !is.na(who_dons_text) ~ 10,
+      !is.na(who_dons_text) ~ 7,
       TRUE ~ 0)) %>%
     select(Country, who_dons_alert, who_dons_text) %>%
     add_dimension_prefix("H_")
