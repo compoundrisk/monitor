@@ -50,7 +50,7 @@ is_string_number <- function(x, index = F) {
 }
 
 # https://stackoverflow.com/questions/55249599/create-a-col-types-string-specification-for-read-csv-based-on-existing-dataframe
-get_col_types_short <- function(.df) {
+get_col_types_short <- function(.df, collapse = T) {
     # Get column classes from input dataframe
     lst_col_classes__ <- purrr::map(.df, ~ class(.x))
 
@@ -69,9 +69,10 @@ get_col_types_short <- function(.df) {
         )
     })
 
+    if (collapse) vl_col_class_char__ <- paste0(vl_col_class_char__, collapse = "")
     # Return vector of single-character col_type indicator.
     # Element name is the source column it came from.
-    vl_col_class_char__
+    return(vl_col_class_char__)
 }
 
 paste_path <- compiler::cmpfun(function(...) {

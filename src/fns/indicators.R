@@ -282,11 +282,168 @@ acaps_category_process <- function(as_of, category, prefix) {
       is.na(acaps_risk) ~ 0,
       TRUE ~ acaps_risk)) %>%
     dplyr::select(Country, acaps_crisis, acaps_risk) %>%
-    rename_with(
-      .cols = -Country,
-      .fn = ~ paste0(prefix, .x)
-    )
+    add_dimension_prefix(prefix)
+    
   return(output)
+}
+
+#--------------------—ACAPS Risk List -----------------------------
+
+acaps_risk_list_collect <- function() {
+    ## Post credentials to get an authentication token
+    credentials <- read.csv(".access/acaps-credentials.csv")
+    credentials <- list(username=credentials$username, password=credentials$password)
+    auth_token_response <- httr::POST("https://api.acaps.org/api/v1/token-auth/", body=credentials)
+    auth_token <- httr::content(auth_token_response)$token
+
+    ## Pull data from ACAPS API and loop through the pages
+    df <- data.frame()
+    request_url <- "https://api.acaps.org/api/v1/risk-list/" # Replace with the URL of the dataset you want to access
+    last_request_time <- Sys.time()
+    while (TRUE) {
+
+        ## Wait to avoid throttling
+        while (as.numeric(Sys.time()-last_request_time) < 1) {
+            Sys.sleep(0.1)
+        }
+
+        ## Make the request
+        response <- httr::GET(request_url, httr::add_headers(Authorization=paste("Token", auth_token, sep=" ")))
+        last_request_time <- Sys.time()
+
+        ## Extract the data and convert any list-type columns to strings
+        json <- httr::content(response, "text")
+        df_results <- jsonlite::fromJSON(json)$results
+        # df_results <- df_results %>%
+        #   mutate(country = sapply(country, toString)) %>%
+        #   mutate(iso3 = sapply(iso3, toString)) %>%
+        #   mutate(regions = sapply(regions, toString))
+
+        ## Append to the main dataframe
+        df <- rbind(df, df_results)
+
+        ## Loop to the next page; if we are on the last page, break the loop
+        if (("next" %in% names(httr::content(response))) && (typeof(httr::content(response)[["next"]]) != "NULL")) {
+            request_url <- httr::content(response)[["next"]]
+        }
+        else {
+            break
+        }
+    }
+
+  # df[1:5,c(3,5)] %>% mutate(crisis_id2 = case_when(
+  #   lengths(iso3) > lengths(crisis_id) ~ 
+  #     data.frame(iso3 = dflist$iso3[[1]]) %>% 
+  #   left_join(
+  #     data.frame(iso3 = substr(dflist$crisis_id[[1]], 1, 3),
+  #               crisis_id = substr(dflist$crisis_id[[1]], 4, 6))
+  #     ) %>%
+  #     mutate(crisis_id = paste0(iso3, crisis_id)) %>%
+  #     .$crisis_id %>% list(),
+  #   T ~ "SHORT"
+
+  # ))
+
+# The length of the crisis_id column doesn't always match the length of the iso3 column
+# This function assigns a crisis_id of "ISONA" to all countries in multi-country events 
+# that don't have a crisis_id. Otherwise, unnest() would fail because of differing lengths 
+# (Try by running unnest(df, country, iso3, crisis_id))
+
+df$crisis_id <- apply(df, 1, function(r) {
+  if (length(r$iso3) == length(r$crisis_id) |
+      length(r$iso3) == 1) {
+    return((r$crisis_id))
+  } else if (length(r$iso3) < length(r$crisis_id)) {
+    print(r$risk_id)
+    stop("Fewer countries in iso3 column than crises in crisis_id column")
+  } else if (length(r$iso3) > length(r$crisis_id)) {
+  new_row <- data.frame(iso3 = r$iso3) %>%#[[1]]) %>%
+    left_join(
+      data.frame(iso3 = substr(r$crisis_id, 1, 3),
+                 crisis_id = substr(r$crisis_id, 4, 6))) %>%
+      mutate(crisis_id = paste0(iso3, crisis_id))
+  # new_row <- list(new_row$iso3, new_row$crisis_id)
+  return(new_row$crisis_id)
+}})
+
+df <- df %>% unnest(c(country, iso3, crisis_id))
+
+# test[1]
+
+# df[1:5,c(3,5)]
+#     dflist <- df[lengths(df$iso3) > 1 & lengths(df$iso3) != lengths(df$crisis_id),c(3,5)]
+
+#     data.frame(iso3 = dflist$iso3[[1]]) %>% 
+#     left_join(
+#       data.frame(iso3 = substr(dflist$crisis_id[[1]], 1, 3),
+#                 crisis_id = substr(dflist$crisis_id[[1]], 4, 6))
+#       ) %>%
+#       mutate(crisis_id = paste0(iso3, crisis_id)) %>%
+#       .$crisis_id %>% list()
+    
+    acaps_risklist <- df %>% type_convert("cccccccDTDccccdcdccc")
+
+    # Delete this after one run on Databricks
+    if (!file.exists("output/inputs-archive/acaps_risklist.csv")) {
+      print("No file acaps_risklist.csv, being created.")
+      archiveInputs(acaps_risklist, group_by = "risk_id", newFile = T)
+    } else {
+      archiveInputs(acaps_risklist, group_by = "risk_id")
+    }
+}
+
+acaps_risk_list_process <- function(as_of, dim, prefix) {
+
+    df <- loadInputs("acaps_risklist", group_by = "risk_id", as_of = as_of, col_types = "cccccccDTDccccdcdccc")
+
+    natural_words <- paste(c(
+        "flood", "drought", "natural", "rain", "monsoon", "dry", "fire",
+        "earthquak", "tropic", "cyclon", "volcan", "scarcity", "weather",
+        "temperat", "climat", "landslid"),
+         collapse = "|")
+
+    conflict_words <- paste(c("violen", "armed", "clash", "gang", "attack",
+        "fight", "offensive", "conflict", "fragil", ""),
+        collapse = "|")
+
+    socio_words <- paste(c(
+        "livelihood", "cost", "inflation", "socioeconom", "price", "unemploy", "povert"),
+         collapse = "|")
+
+    keywords <- c(
+      "Natural Hazard" = natural_words,
+      "Conflict and Fragility" = conflict_words,
+      "Socioeconomic" = socio_words)
+
+    crisis_words <- keywords[dim]
+
+    crisis_events <- as_tibble(df) %>% 
+        subset(
+            (str_detect(tolower(risk_title), crisis_words) |
+            str_detect(tolower(rationale), crisis_words) |
+            str_detect(tolower(vulnerability), crisis_words)) & 
+            status != "Not materialised" & last_risk_update >= as_of - 60) %>%
+        select(iso3, risk_level, risk_title, rationale, vulnerability, date_entered, last_risk_update, status) %>%
+        mutate(risk_level = case_when(
+            risk_level == "High" ~ 10,
+            risk_level == "Medium" ~ 7,
+            risk_level == "Low" ~ 3,
+            T ~ NA_real_
+        )) %>%
+        group_by(iso3) %>%
+        slice_max(risk_level, n = 1, with_ties = T) %>%
+        group_by(iso3) %>%
+        summarize(
+            acaps_risk_level = max(risk_level),
+            acaps_risk_title = paste(risk_title, collapse = " | ")
+        ) %>%
+        right_join(countrylist, by = c("iso3" = "Country")) %>%
+        select(-Countryname) %>%
+        arrange(iso3) %>%
+        rename(Country = iso3) %>%
+        add_dimension_prefix(prefix)
+
+    return(crisis_events)
 }
 
 ##### HEALTH
@@ -580,82 +737,6 @@ Oxres_process <- function(as_of) {
   return(Ox_cov_resp)
 }
 
-#------------------------------—INFORM COVID------------------------------------------------------
-# Also used for INFORM Income Support (Socio-economic vulnerability)
-#---------------------------------
-# SLOW
-inform_covid_collect <- function() {
-  inform_cov <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Covid-19/old-INFORM-Covid-19-Warning-beta-version")
-  
-  all_dat <- lapply(2:24, function(tt) {
-    see <- lapply(c("data-country", "data-value", "style"), function(xx) {
-      inform_cov %>% 
-        html_nodes(paste0("td:nth_child(", paste(tt), ")")) %>%
-        html_attr(xx)
-    })
-    do.call(rbind, Map(data.frame, cname = see[1], Value = see[2], Rating = see[3]))
-  })
-  
-  inform_covid_warning_raw <- do.call(rbind, Map(data.frame, INFORM_rating=all_dat[1], covid_case_rate=all_dat[2], legal_stringency=all_dat[3],
-                                                 international_travel=all_dat[4], internal_movement=all_dat[5], stay_home=all_dat[6],
-                                                 income_support=all_dat[7], debt_relief=all_dat[8], gdp_change=all_dat[9],
-                                                 unemployment=all_dat[10], inflation=all_dat[11], school_close=all_dat[12],
-                                                 ipc_3_plus=all_dat[13], growth_events=all_dat[14], public_info=all_dat[15],
-                                                 testing_policy=all_dat[16], contact_trace=all_dat[17], growth_conflict=all_dat[18],
-                                                 seasonal_flood=all_dat[19], seasonal_cyclone=all_dat[20], seasonal_exposure=all_dat[21],
-                                                 ASAP_hotspot=all_dat[22]))
-  
-  severity <- as.data.frame(all_dat[23]) %>%
-    rename(INFORM_rating.cname = cname,
-           INFORM_severity.Value = Value,
-           INFORM_severity.Rating = Rating)
-  
-  inform_covid_warning_raw <- left_join(inform_covid_warning_raw, severity, by = "INFORM_rating.cname")
-  
-  inform_covid_warning <-  inform_covid_warning_raw %>%
-    rename(
-      Countryname = INFORM_rating.cname,
-      hold_one = INFORM_severity.Rating
-    ) %>%
-    dplyr::select(-contains(".cname")) %>%
-    mutate_at(
-      vars(contains(".Rating")),
-      ~ case_when(
-        . == "background:#FF0000;" ~ "High",
-        . == "background:#FFD800;" ~ "Medium",
-        . == "background:#00FF00;" ~ "Low",
-        TRUE ~ NA_character_
-      )
-    ) %>%
-    mutate(
-      hold_one = case_when(
-        hold_one == "background:#FF0000;" ~ "High",
-        hold_one == "background:#FFD800;" ~ "Medium",
-        is.na(hold_one) ~ "Low",
-        TRUE ~ NA_character_
-      )) %>%
-    rename(INFORM_severity.Rating = hold_one) %>%
-    mutate(
-      INFORM_rating.Value = as.numeric(as.character(INFORM_rating.Value)),
-      Country = countrycode(Countryname, origin = "country.name", destination = "iso3c", nomatch = NULL
-      )) %>%
-    dplyr::select(-Countryname) %>%
-    rename_with(
-      .fn = ~ paste0("H_", .), 
-      .cols = colnames(.)[!colnames(.) %in% c("Country", "Countryname")]
-    )
-  
-  # FIX renaming
-  inform_covid <- suppressMessages(type_convert(inform_covid_warning))
-  archiveInputs(inform_covid, group_by = c("Country"))
-}
-
-inform_covid_process <- function(as_of) {
-  inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"), as_of = as_of, format = "csv")
-  inform_covid_warning <- normfuncpos(inform_covid_warning, 6, 2, "H_INFORM_rating.Value")
-  return(inform_covid_warning)
-}
-
 #----------------------------------—WHO DONS--------------------------------------------------------------
 dons_collect <- function() {
   dons_raw <- read_html("https://www.who.int/emergencies/disease-outbreak-news")
@@ -709,7 +790,6 @@ dons_collect <- function() {
   
   archiveInputs(who_dons, group_by = NULL)
 }
-#----------------------------------—WHO DONs--------------------------------------------------------------
 
 dons_process <- function(as_of) {
   who_dons <- loadInputs("who_dons", group_by = NULL, as_of = as_of, format = "csv")
@@ -750,6 +830,56 @@ dons_process <- function(as_of) {
   
   return(who_dons)
 }
+
+#---------------------------------—IFRC Epidemics---------------------------------
+
+ifrc_collect <- function() {
+url <- "https://goadmin.ifrc.org/api/v2/event"
+queryString <- list(
+  limit = "1000",
+  ordering = "-disaster_start_date",
+  disaster_start_date__gte = "2022-09-27T00:00:00.000Z",
+  dtype = "1",
+  offset = "0")
+payload <- ""
+encode <- "raw"
+response <- httr::VERB("GET", url, body = payload,
+                 add_headers(Origin = 'https://go.ifrc.org', Accept_Encoding = 'gzip, deflate, br',
+                 Host = 'goadmin.ifrc.org',
+                 User_Agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15', Accept_Language = 'en', Referer = 'https://go.ifrc.org/', Connection = 'keep-alive', ''), query = queryString, content_type("application/octet-stream"), accept("*/*"), encode = encode)
+
+json <- content(response, "text")
+df <- jsonlite::fromJSON(json)$results 
+df$dtype <- df$dtype$name
+df$countries <- lapply(df$countries, function(i) {return(i$iso3)}) %>% unlist()
+ifrc_epidemics <- df %>% mutate(
+  disaster_start_date = as.Date(disaster_start_date),
+  created_at = as.Date(created_at),
+  updated_at = as.Date(updated_at),
+  num_affected = as.numeric(num_affected)) %>%
+  select(-field_reports, -appeals)
+
+    # Delete this after one run on Databricks
+    if (!file.exists("output/inputs-archive/ifrc_epidemics.csv")) {
+      print("No file ifrc_epidemics.csv, being created.")
+      archiveInputs(ifrc_epidemics, group_by = "id", newFile = T, col_types = "ccdiccDDlllDilcllllcc")
+    } else {
+      archiveInputs(ifrc_epidemics, group_by = "id", col_types = "ccdiccDDlllDilcllllcc")
+    }
+}
+
+ifrc_process <- function(as_of) {
+df <- loadInputs("ifrc_epidemics", group_by = "id", as_of = as_of, col_types = "ccdiccDDlllDilcllllcc") %>% 
+  select(Country = countries,
+    severity_level = ifrc_severity_level, severity_level_color = ifrc_severity_level_display,
+    disaster_start_date, updated_at, created_at, id, summary, name) %>%
+    mutate(ifrc_epidemics = 10, ifrc_epidemics_text = name) %>%
+    add_dimension_prefix("H_")
+
+epidemics <- left_join(countrylist, df, by = "Country") %>% as_tibble() %>% arrange(H_ifrc_epidemics)
+return(epidemics)
+}
+
 
 #---------------------------------—Health ACAPS---------------------------------
 # acaps_health <- acapssheet[,c("Country", "H_health_acaps")]
@@ -1083,37 +1213,6 @@ inform_socio_process <- function(as_of) {
   return(inform_data)
 }
 
-# income_support_process <- function(as_of) {
-#   #------------------------—Forward-looking socio-economic variables from INFORM---------------------------
-#   inform_covid_warning <- loadInputs("inform_covid", group_by = c("Country"), as_of = as_of, format = "csv")
-#   socio_forward <- inform_covid_warning %>%
-#     dplyr::select(
-#       Country, H_gdp_change.Value,H_gdp_change.Rating, H_unemployment.Value,
-#       H_unemployment.Rating, H_income_support.Value, H_income_support.Rating
-#     ) %>%
-#     rename_with(
-#       .fn = ~ str_replace(., "H_", "S_"),
-#       .cols = colnames(.)[-1]
-#     ) %>%
-#     mutate(across( # FIX: is this even being used?
-#       .cols = c(S_gdp_change.Rating, S_unemployment.Rating),
-#       ~ case_when(
-#         .x == "High" ~ 10,
-#         .x == "Medium" ~ 7,
-#         .x == "Low" ~ 0,
-#         TRUE ~ NA_real_
-#       ),
-#       .names = "{.col}_norm")) %>%
-#     mutate(
-#       S_income_support.Rating_crm_norm = case_when(
-#         S_income_support.Value == "No income support" ~ 7,
-#         S_income_support.Value == "Government is replacing more than 50% of lost salary (or if a flat sum, it  ..." ~ 3,
-#         S_income_support.Value == "Government is replacing less than 50% of lost salary (or if a flat sum, it  ..." ~ 0,
-#         TRUE ~ NA_real_
-#       ))
-#   return(socio_forward)
-# }
-
 #--------------------------—MPO: Poverty projections----------------------------------------------------
 mpo_collect <- function() {
   most_recent <- read_most_recent("hosted-data/mpo", FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
@@ -1242,17 +1341,6 @@ macrofin_process <- function(as_of) {
   return(macrofin)
 }
 
-#----------------------------—WB PHONE SURVEYS-----------------------------------------------------
-
-## WB COVID PHONE SURVEYS
-# phone_collect <- function() {
-#   wb_phone <- read_csv(paste0(github, "Indicator_dataset/phone.csv"))[,-1]
-#   archiveInputs(wb_phone , group_by = c("Country"))
-# }
-
-# phone_process <- function(as_of) {
-#   wb_phone  <- loadInputs("wb_phone", group_by = c("Country"), as_of = as_of, format = "csv")
-# }
 #------------------------------—IMF FORECASTED UNEMPLOYMENT-----------------------------------------
 imf_collect <- function() {
   imf_unemployment <- read_csv("hosted-data/imf-unemployment/imf-unemployment.csv",
@@ -1314,6 +1402,67 @@ imf_process <- function(as_of) {
 }
 
 #---------------------------------
+
+eiu_security_process <- function(as_of) {
+    eiu_data <- loadInputs("eiu", group_by = c("SERIES NAME", "MONTH"), as_of = as_of) %>%
+        select(-access_date) %>%
+        subset(MONTH <= as_of)
+
+    series_names <- c("Security risk", "1. Armed conflict", "2. Terrorism", "3. Violent demonstrations",
+        "4. Hostility to foreigners/private property" ,  "5. Violent crime", "6. Organised crime",
+        "7. Kidnapping/extortion", "8. Cyber security, likelihood of attacks")
+
+    eiu_long <- eiu_data %>%
+        select(-`SERIES CODE`) %>%
+        subset(`SERIES NAME` %in% series_names) %>%
+        pivot_longer(-c(`SERIES NAME`, MONTH), names_to = "Country", values_to = "Values") %>%
+        rename(Series = `SERIES NAME`) %>%
+        group_by(Country, Series)
+
+    eiu_1_month <- eiu_long %>%
+        slice_max(MONTH, n = 1) %>%
+        select(Country, Series, one_month = Values)
+    eiu_1_year <- eiu_long %>%
+        slice_max(MONTH, n = 13) %>%
+        slice_min(MONTH, n = 12) %>%
+        summarize(one_year_mean = mean(Values))
+
+    series_select <- c("1. Armed conflict", "2. Terrorism", "3. Violent demonstrations",
+        "5. Violent crime", "6. Organised crime",
+        "7. Kidnapping/extortion", "8. Cyber security, likelihood of attacks")
+
+    eiu_aggregate <- 
+        # reduce(list(eiu_1_month, eiu_3_month, eiu_1_year, eiu_3_year),#, eiu_three_month),
+        reduce(list(eiu_1_month, eiu_1_year),#, eiu_three_month),
+            full_join, by = c("Country", "Series")) %>%
+            subset(Series %in% series_select) %>%
+            ungroup() %>% group_by(Country) %>%
+            summarize(across(contains("_"), ~ mean(.x))) %>%
+        mutate(
+            security_1_month = one_month,
+            security_1_year = one_year_mean,
+            security_change_12_1 = one_month - one_year_mean,
+            .keep = "unused"
+            ) %>%
+        # full_join(sec_risk) %>% 
+        arrange(desc(security_change_12_1))
+
+    eiu_security_risk <- 
+        normfuncpos(eiu_aggregate, 0.2, 0, "security_change_12_1") %>%
+        # normfuncpos(quantile(eiu_aggregate$security, 0.95), quantile(eiu_aggregate$security, 0.05), "security") %>%
+        # select(Country, security, security_norm, change_12_1, change_12_1_norm) %>%
+        select(Country, security_1_month, security_change_12_1, security_change_12_1_norm) %>%
+        mutate(security_change_12_1_norm = case_when(
+            security_1_month <= 2 & security_change_12_1_norm > 7 ~ 7,
+            T ~ security_change_12_1_norm)) %>% 
+            arrange(desc(security_change_12_1_norm)) %>%
+    mutate(Country = name2iso(Country)) %>%
+    rename(eiu_security_change_12_1_norm = security_change_12_1_norm,
+           eiu_security_change_12_1 = security_change_12_1) %>%
+           add_dimension_prefix("Fr_")
+
+    return(eiu_security_risk)
+}
 
 #### NATURAL HAZARDS
 
@@ -1487,8 +1636,17 @@ gdacs_process <- function(as_of) {
 
 #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
 inform_risk_collect <- function() {
-  inform_risk <- read_csv("hosted-data/inform-risk/inform-risk.csv", col_types = cols())
-  archiveInputs(inform_risk, group_by = c("Country"))
+  # Delete after it run on Github once
+  read_csv("output/inputs-archive/inform_risk.csv", na = "x") %>%
+  write.csv("output/inputs-archive/inform_risk.csv", row.names = F)
+
+  most_recent <- read_most_recent("hosted-data/inform-risk", FUN = read_csv, as_of = Sys.Date(), , col_types = cols(), na = "x", return_date = T)
+  file_date <- most_recent[[2]]
+
+  inform_risk <- most_recent$data %>%
+    replace_na
+
+  archiveInputs(inform_risk, today = file_date, group_by = c("Country"))
 }
 
 inform_nathaz_process <- function(as_of) {
@@ -1726,12 +1884,8 @@ locust_process <- function(as_of) {
 #---------------------------------—Natural Hazard ACAPS---------------------------------
 # acaps_nh <- acapssheet[,c("Country", "NH_natural_acaps")]
 
-
-
-
-
-
 ####    FRAGILITY
+
 #-------------------------—FCS---------------------------------------------
 
 fcs_collect <- function() {
@@ -1767,6 +1921,29 @@ fcs_process <- function(as_of) {
       T ~ 0))
 
   return(fcs)
+}
+
+#-------------------------—FSI---------------------------------------------
+
+fsi_collect <- function() {
+    most_recent <- read_most_recent('hosted-data/fsi', FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
+    fsi <- most_recent$data
+    file <- most_recent$date
+    
+    # Delete this after one run on Databricks
+    if (!file.exists("output/inputs-archive/fsi.csv")) {
+      print("No file fsi.csv, being created.")
+    archiveInputs(fsi, group_by = "Country", col_types = "cTcddddddddddddd", newFile = T)
+    } else {
+    archiveInputs(fsi, group_by = "Country", col_types = "cTcddddddddddddd")
+    }   
+}
+
+fsi_process <- function(as_of) {
+  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = "cTcddddddddddddd") %>%
+        mutate(Country = name2iso(Country), FSI = Total, .keep = "none") %>%
+        normfuncpos(quantile(.$FSI, .98), quantile(.$FSI, .4), "FSI")
+  return(fsi)
 }
 
 #-----------------------------—IDPs--------------------------------------------------------
@@ -1950,71 +2127,47 @@ acled_process <- function(as_of) {
   return(acled)
 }
 
-# acled_hdx_collect <- function() {
-#   rhdx::set_rhdx_config(hdx_site = "prod")
-#   acled_hdx <- rhdx::pull_dataset("political-violence-events-and-fatalities") %>% 
-#     rhdx::get_resource(1) %>%
-#     rhdx::read_resource(sheet = 2) %>%
-#     subset(Year >= as.numeric(format(Sys.Date(), format = "%Y")) - 4)
-  
-#   # write.csv(acled_hdx, "output/inputs-archive/acled_hdx.csv", row.names = F)
-#   archiveInputs(acled_hdx, group_by = c("Country", "Year", "Month"))
-# }
+acled_events_process <- function(as_of) {
+    # Compares the average weekly event count from the past month of ACLED data to
+    # average weekly count from the past year
 
-# acled_hdx_process <- function(as_of) {
-#   acled_hdx <- loadInputs("acled_hdx", group_by = c("Country", "Year", "Month"))
-  
-#   # Select date as three years plus two month (date to retrieve ACLED data)
-#   three_year <- as.yearmon(as_of - 45) - 3.2
-  
-#   # Progress conflict data
-#   acled <- acled_hdx %>%
-#     mutate(
-#       iso3 = name2iso(Country),
-#       fatal_month = as.numeric(as.character(Fatalities)),
-#       month_yr = as.yearmon(paste(Month, Year))
-#     ) %>%
-#     filter(month_yr >= three_year) %>%
-#     # Remove dates for the latest month (or month that falls under the prior 6 weeks)
-#     # Is there a way to still acknowledge countries with high fatalities in past 6 weeks?
-#     filter(month_yr <= as.yearmon(as_of - 45)) %>% 
-#     select(iso3, month_yr, fatal_month) %>%
-#     group_by(iso3) %>%
-#     mutate(fatal_month_log = log(fatal_month + 1)) %>%
-#     mutate(fatal_3_month = fatal_month + lag(fatal_month, na.rm= T) + lag(fatal_month, 2, na.rm= T),
-#            fatal_3_month_log = log(fatal_3_month + 1)) %>%
-#     group_by(iso3) %>%
-#     mutate(
-#       fatal_z = (fatal_3_month_log - mean(fatal_3_month_log, na.rm = T)) / sd(fatal_3_month_log, na.rm = T),
-#       sd = sd(fatal_3_month_log, na.rm = T),
-#       mean = mean(fatal_3_month_log, na.rm = T)
-#     ) %>%
-#     #Calculate month year based on present month (minus 6 weeks)
-#     filter(month_yr == paste(month.abb[month(format(as_of - 45))], year(format(as_of - 45)))) 
-  
-#   # Normalise scores
-#   acled <- normfuncpos(acled, 1, 0, "fatal_z")
-  
-#   # Correct for countries with 0
-#   acled <- acled %>%
-#     mutate(
-#       fatal_z_norm = case_when(
-#         is.nan(fatal_z) ~ 0,
-#         TRUE ~ fatal_z_norm
-#       ),
-#       Country = iso3,
-#       fatal_z_norm = case_when(
-#         fatal_3_month_log == 0 ~ 0,
-#         (fatal_3_month_log <= log(25 + 1)) ~ 0,
-#         TRUE ~ fatal_z_norm
-#       )
-#     ) %>%
-#     ungroup() %>%
-#     dplyr::select(-iso3) %>% 
-#     rename(BRD_Normalised = fatal_z_norm) %>%
-#     relocate(Country, .before = 1)
-#   return(acled)
-# }
+    # Normalize to high 0.25 and low 0, with a cap at 7 when monthly count is less than 5
+
+    # Data is updated on Monday or Tuesday, current to the most recent Friday
+    # For Sunday thru Tuesday, need to subtract an additional week
+    friday <- if (wday(as_of) > 3) {
+        as_of - wday(as_of) - 1
+    } else {
+        as_of - wday(as_of) - 8
+    }
+
+    acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cddcDcD") %>%
+        subset(event_date > (friday - 360) & event_date <= friday)
+
+    acled_year <- acled %>%
+        subset(event_type != "Violence against civilians") %>%
+        group_by(iso3) %>%
+        summarize(events_month_avg = n() / 12)
+
+    acled_month <- acled %>%
+        subset(event_date >= friday - 30) %>%
+      subset(event_type != "Violence against civilians") %>%
+        group_by(iso3) %>%
+        summarize(events_1_month = n())
+
+    acled_conflict_change <- full_join(acled_year, acled_month, by = "iso3") %>%
+        mutate(events_1_month = case_when(is.na(events_1_month) ~ as.integer(0), T ~ events_1_month)) %>%
+        mutate(acled_events_increase = (events_1_month - events_month_avg) / events_month_avg) %>%
+        normfuncpos(0.25, 0, "acled_events_increase") %>%
+        mutate(acled_events_increase_norm = case_when(
+                acled_events_increase_norm > 7 & events_1_month <= 5 ~ 7,
+                T ~ acled_events_increase_norm)) %>%
+        mutate(Country = iso3,
+              acled_events_increase_pct = 100*acled_events_increase,
+              .keep = "unused")
+
+    return(acled_conflict_change)
+}
 
 #--------------------------—REIGN--------------------------------------------
 reign_collect <- function() {
@@ -2246,7 +2399,7 @@ ifes <- bind_rows(ifes_upcoming, ifes_past) %>%
 ifes_process <- function(as_of) {
   # elections_all <- loadInputs("ifes", group_by = NULL, as_of = as_of, format = "csv")
   elections_all <- read_csv(paste_path(inputs_archive_path, "ifes.csv"), col_types = "ccccDcdccdD") %>% 
-    subset(date >= as_of & date <= as_of + 182)
+    subset(date >= as_of - 182 & date <= as_of + 182)
   
   elections <- elections_all %>% 
     mutate(

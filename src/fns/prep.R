@@ -1,6 +1,6 @@
-packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "ggplot2", 
-              "jsonlite","lubridate", "maps", "matrixStats", "purrr", "raster",
-              "readr", "readxl", "remotes", "rvest", "sf",
+packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "httr",
+              "ggplot2", "jsonlite","lubridate", "maps", "matrixStats", "purrr", 
+              "raster", "readr", "readxl", "remotes", "rvest", "sf",
               "sjmisc", "stats", "stringr", "tidyr", "xml2",
               "wppExplorer", "zoo")
               

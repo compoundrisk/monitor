@@ -1593,7 +1593,7 @@ date_indicators <- function(crm) {
   new_ind_vals_raw <- crm %>%
       subset(`Data Level` == "Raw Indicator Data") %>% 
       arrange(Index, Date) %>%
-      subset(first_ordered_instance(Value)) %>%
+      subset(first_ordered_instance(Value_Char)) %>%
       mutate(indicator_id = as.numeric(str_sub(Index, -2)))
 
   last_changed_raw <- new_ind_vals_raw %>%
@@ -1602,6 +1602,14 @@ date_indicators <- function(crm) {
       ungroup() %>%
       # mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
       select(indicator_id, `Last Changed` = Date)
+
+# Was going to bind_rows instead of join but it actually is better
+# to use raw because then a change in method won't change the dates
+# 
+# last_changed_both <- bind_rows(last_changed, last_changed_raw) %>%
+#   group_by(indicator_id) %>%
+#   slice_max(`Last Changed`) %>%
+#   mutate(`Last Changed` = case_when())
 
 last_changed <- left_join(last_changed, last_changed_raw,
     by = c("indicator_id" = "indicator_id"), suffix = c("", "_raw")) %>%

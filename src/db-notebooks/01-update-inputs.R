@@ -67,8 +67,9 @@ owid_collect() %>% delay_error(return = NA, on = error_delay)
 # Add in Oxford Response Tracker
 ghsi_collect() %>% delay_error(return = NA, on = error_delay)
 # oxford_openness_collect()
-inform_covid_collect() %>% delay_error(return = NA, on = error_delay)
+# inform_covid_collect() %>% delay_error(return = NA, on = error_delay)
 dons_collect() %>% delay_error(return = NA, on = error_delay)
+ifrc_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Health dimension finished collecting")
 
 # COMMAND ----------
@@ -104,15 +105,16 @@ lap_start()
 gdacs_collect()  %>% delay_error(return = NA, on = error_delay)
 inform_risk_collect()  %>% delay_error(return = NA, on = error_delay)
 iri_collect() %>% delay_error(return = NA, on = error_delay)
-locust_collect()  %>% delay_error(return = NA, on = error_delay)
+locust_collect() %>% delay_error(return = NA, on = error_delay)
+acaps_risk_list_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Natural hazards dimension finished collecting")
 
 # COMMAND ----------
 
 # FRAGILITY AND CONFLICT
 lap_start()
+fsi_collect() %>% delay_error(return = NA, on = error_delay)
 fcs_collect() %>% delay_error(return = NA, on = error_delay)
-idp_collect() %>% delay_error(return = NA, on = error_delay)
 acled_collect() %>% delay_error(return = NA, on = error_delay)
 # reign_collect()
 gic_collect() %>% delay_error(return = NA, on = error_delay)
