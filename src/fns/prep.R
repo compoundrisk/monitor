@@ -28,39 +28,51 @@ library('dplyr')
 
 source("src/fns/helpers.R")
 
-## Direct Github location (data folder)
-#---------------------------------
-github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
 #---------------------------------
 
-countrylist <- read.csv("src/countrylist.csv") %>%
-  dplyr::select(-X) %>%
-  dplyr::arrange(Country)
+country_groups <- tryCatch(
+  {
+    wb_countries_collect <- function() {
+      # Source file has changed; saving in case it reverts soon
+      # codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xls",
+      #   FUN = read_xls, sheet = 1, range = "C5:I224")[-1,]
+      codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
+        FUN = read_xlsx, sheet = 1, range = "A1:F219")
+      group_codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
+        FUN = read_xlsx, sheet = "Groups")
+      region_codes <- group_codes %>%
+        select(region_code_all = GroupCode, GroupName) %>%
+        distinct() %>%
+        subset(GroupName %in% codes$Region)
+      no_high_income <- group_codes %>%
+        subset(str_detect(GroupName, "excluding high income")) %>%
+        select(region_code_no_high = GroupCode, Code = CountryCode)
+      country_groups <- left_join(codes, region_codes, by = c("Region" = "GroupName")) %>%
+        left_join(no_high_income, by = "Code") %>%
+        mutate(region_code = str_replace_all(region_code_all, c(
+          "LCN" = "LAC",
+          "SAS" = "SAR",
+          "SSF" = "SSA",
+          "MEA" = "MNA",
+          "EAS" = "EAP",
+          "NAC" = "NAR",
+          "ECS" = "ECA")))
+      write.csv(country_groups, "src/country-groups.csv", row.names = F)
+      return(country_groups)
+    }
+    wb_countries_collect()
+  },
+  error = function(e) {
+    print(e)
+    df <- read_csv("src/country-groups.csv", col_types = "cccc")
+    return(df)
+  })
 
-# country_groups <- {
-#   # Source file has changed; saving in case it reverts soon
-#   # codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xls",
-#   #   FUN = read_xls, sheet = 1, range = "C5:I224")[-1,]
-#   codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
-#     FUN = read_xlsx, sheet = 1, range = "A1:F219")
-#   region_codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
-#     FUN = read_xlsx, sheet = "Groups")[-1,] %>% 
-#     select(region_code = GroupCode, GroupName) %>%
-#     distinct() %>%
-#     subset(GroupName %in% codes$Region)
-#   left_join(codes, region_codes, by = c("Region" = "GroupName"))
-# }
-# regions <- select(country_groups, iso = Code, region = Region, region_code)
+countrylist <- country_groups %>% 
+  select(Countryname = Economy, Country = Code) %>%
+  arrange(Country)
 
-# regions$region_code <- regions$region_code %>%
-#   str_replace_all(c(
-#     "LCN" = "LAC",
-#     "SAS" = "SAR",
-#     "SSF" = "SSA",
-#     "MEA" = "MNA",
-#     "EAS" = "EAP",
-#     "NAC" = "NAR",
-#     "ECS" = "ECA"))
+regions <- select(country_groups, iso = Code, region = Region, region_code)
 
 indicators_list <- as.data.frame(read.csv("src/indicators-list.csv")) %>%
   subset(active == T)

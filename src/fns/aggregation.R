@@ -298,7 +298,8 @@ join_dimension_dates <- function(sheet, dimension) {
       underlying_dimension_date = Underlying,
       emerging_dimension_date = Emerging,
       Country) %>%
-    full_join(sheet, by = c("Country" = "Country"))
+    full_join(sheet, by = c("Country" = "Country")) %>%
+    arrange(Country)
   return(new_sheet)
 }
 
@@ -566,6 +567,7 @@ order_columns_and_raws <- function(data) {
 }
 
 create_id <- function(data) {
+  country_numbers <- read.csv("src/country-numbers.csv")
   data <- mutate(data,
     Indicator_ID = case_when(
         `Data Level` == "Indicator" ~ indicators_list$indicator_id[match(Key, indicators_list$Indicator)],
@@ -576,7 +578,7 @@ create_id <- function(data) {
         TRUE ~ as.integer(0),
       ),
       Index = as.integer(paste0(
-        leading_zeros(as.numeric(Country), 3),
+        leading_zeros(country_numbers$number[country_numbers$country == Country], 3),
         # Does it make more sense to order by Data Level before Dimension, Outlook, and even Country?
         leading_zeros(as.numeric(Outlook), 1),
         leading_zeros(as.numeric(Dimension), 1),
@@ -1619,9 +1621,10 @@ last_changed <- left_join(last_changed, last_changed_raw,
         T ~ `Last Changed_raw`)) %>%
         select(-`Last Changed_raw`)
 
-  ind_list <- as.data.frame(read_csv("src/indicators-list.csv")) #%>%
+  ind_list <- as.data.frame(read_csv("src/indicators-list.csv")) %>%
     # select(-`Last Changed`)
-  ind_list <- full_join(ind_list, last_changed, ) %>%
+    subset(active)
+  ind_list <- left_join(ind_list, last_changed, ) %>%
       relocate(`Last Changed`, .after = Updates) %>%
       arrange(desc(Timeframe), Dimension)
   return(ind_list)
@@ -1734,7 +1737,12 @@ add_overall_indicators <- function(dashboard_data) {
   return(dashboard_data)
 }
 
-quick_scan <- function(countries, group_name, file_name, outlooks = c("Underlying", "Emerging", "Overall"), pdf = F) {
+quick_scan <- function(
+  countries,
+  group_name = NULL,
+  file_name,
+  outlooks = c("Overall", "Underlying", "Emerging"), pdf = F,
+  dimensions = c("Food Security", "Conflict and Fragility", "Health", "Macro Fiscal", "Natural Hazard", "Socioeconomic Vulnerability")) {
 
     data <- read.csv('production/crm-dashboard-prod.csv') #%>%
         # subset(Run_ID == max(Run_ID))
@@ -1745,12 +1753,27 @@ quick_scan <- function(countries, group_name, file_name, outlooks = c("Underlyin
 
     cat("---\ngeometry: margin=2cm\noutput: pdf_document\n---\n\n", file = file_md)
 
+    if (is.null(group_name)) {
+      # Ideally this would add an "and "
+        group_name <- countries %>% iso2name() %>% paste_and()
+    }
+
+    cat(paste0("# CRM: Flags and Indicators for ", group_name, "\n",Sys.Date(),"\n\nTables show high and medium value indicators for each country's high and medium risk dimensions\n\n"), append = T, file = file_md)
+
+    # I rearranged this so its grouped by country rather than outlook
+    # Remove next line and uncomment the same line when it reappears below to re-organize
+    # This also means code will seem oddly (inefficiently) organized
+    lapply(countries, function(country) {
+
+    cat(paste0("## ", iso2name(country), "\n\n"), append = T, file = file_md)
+
+    # for (country in countries) {
     lapply(outlooks, function(outlook) {
     # for(outlook in c("Underlying", "Emerging", "Overall")) {
+      threshold_medium <- ifelse(outlook == "Overall", 5, 7)
+      threshold_high <- ifelse(outlook == "Overall", 7, 10)
 
     outlook_data <- subset(data, Outlook == outlook)
-
-    dimensions <- c("Food Security", "Conflict and Fragility", "Health", "Macro Fiscal", "Natural Hazard", "Socioeconomic Vulnerability")
 
     indicators <- subset(outlook_data, Data.Level == "Indicator" | Data.Level == "Raw Indicator Data") %>% 
         select(Index, Country, Data.Level, Dimension, Key, Value, Value_Char) %>% 
@@ -1782,33 +1805,35 @@ quick_scan <- function(countries, group_name, file_name, outlooks = c("Underlyin
     # For each country, for each high dimension, list the high indicators, and the raw indicator value underneath
 
     # sapply(countries_countries, function(country) 
-    cat(paste0("# ", outlook, " Flags for ", group_name, "\n",Sys.Date(),"\n\nTables show high and medium value indicators for each country's high and medium risk dimensions\n\n"), append = T, file = file_md)
+    # cat(paste0("# ", outlook, " Flags for ", group_name, "\n",Sys.Date(),"\n\nTables show high and medium value indicators for each country's high and medium risk dimensions\n\n"), append = T, file = file_md)
 
-    lapply(countries, function(country) {
+    # lapply(countries, function(country) {
     # for (country in countries) {
+
         c_data <- subset(outlook_data, Country == country)
         
         outlook_count <- c_data$Value[which(c_data$Dimension == "Flag")]
-        cat(paste("##",
+        cat(paste("###",
             countrycode(country, origin = "iso3c", destination = "country.name"),
             "has",
             outlook_count,
+            outlook,
             paste0("flag", ifelse(outlook_count == 1, "", "s"))), file = file_md, append = T, sep = "\n")
 
         dims <- subset(c_data, Dimension %in% dimensions & 
-            Data.Level == "Dimension Value" & Value >= 7) %>%
+            Data.Level == "Dimension Value" & Value >= threshold_medium) %>%
             arrange(desc(Value)) 
         
-        dims_high <- dims %>% subset(Value == 10) %>% select(Dimension) %>% pull()
-        dims_med <- dims %>% subset(Value >= 7 & Value < 10) %>% select(Dimension) %>% pull()
+        dims_high <- dims %>% subset(Value >= threshold_high) %>% select(Dimension) %>% pull()
+        dims_med <- dims %>% subset(Value >= threshold_medium & Value < threshold_high) %>% select(Dimension) %>% pull()
             
         dims <- dims$Dimension
 
         if (length(dims_high) > 0) {
-            cat(paste("-", paste(dims_high, collapse = ", "), ifelse(length(dims_high) == 1, "is", "are"), "high risk."), file = file_md, append = T, sep = "\n")
+            cat(paste("-", paste_and(dims_high), ifelse(length(dims_high) == 1, "is", "are"), "high risk."), file = file_md, append = T, sep = "\n")
         }
         if (length(dims_med) > 0) {
-            cat(paste("-", paste(dims_med, collapse = ", "), ifelse(length(dims_med) == 1, "is", "are"), "medium risk."), file = file_md, append = T, sep = "\n")
+            cat(paste("-", paste_and(dims_med), ifelse(length(dims_med) == 1, "is", "are"), "medium risk."), file = file_md, append = T, sep = "\n")
             }
         cat("\n", file = file_md, sep = "\n", append = T)
 

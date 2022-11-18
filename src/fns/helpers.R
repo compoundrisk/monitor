@@ -125,76 +125,120 @@ curl_and_delete <- compiler::cmpfun(function(url, FUN, ...) {
 # ...
 # }
 
-iso2name <- compiler::cmpfun(function(v) {
-  names <- countrycode::countrycode(v, origin = "iso3c", destination = "country.name", custom_match = c(
-    "XKX" = "Kosovo",
-    "CIV" = "Cote d'Ivoire",
-    "COD" = "Congo, DR",
-    "COG" = "Congo, Republic"))
-  return(names)
-})
 
-name2iso <- compiler::cmpfun(function(v, multiple_matches = F) {
-# This new multiple_matches = T argument makes this a much more complicated function,
-# though perhaps it could be written more simply. If the arg is set to TRUE, the function
-# looks at all NAs and tries to find all the matches it can with the country names list.
-# (It looks both backwards and forwards; otherwise as soon as Guinea was found, Papua
-# New Guinea wouldn't be possibly found.) It then scans each country name to see if its
-# detected within another select country's name. If it is, it's name is removed from the
-# original list, and the original list is scanned for it again. For example, if the list 
-# is "Algeria Papua New Guinea", the initial result is "DZA GIN PGA"; but Guinea is within
-# Papua New Guinea, so it is removed: "DZA, "GIN". However, if the original list is
-# "Algeria Guinea Papua New Guinea", the first "Guinea" is removed, but "Guinea" is still
-# deteced in the list: "DZA GIN PGA" 
+define_iso2name <- function() {
+# Writes the iso2name function using the latest country code list
 
+  # Check if country_groups already is defined, and if it has the appropriate columns
+  if (ifelse(exists("country_groups"), "Economy" %in% names(country_groups), F)) {
+    dictionary <- country_groups$Economy
+    names(dictionary) <- country_groups$Code
+  } else if ( file.exists("src/country-groups.csv")) {
+    warning("`country_groups` is not defined or does not have variable `Economy`")
+    country_groups <- read_csv("src/country-groups.csv", col_types = "ccccccccc")
+    dictionary <- country_groups$Economy
+    names(dictionary) <- country_groups$Code
+  } else {
+    warning("`src/country-groups.csv` does not exist and `country_groups` is not defined")
+    dictionary <- c(
+        "XKX" = "Kosovo",
+        "CIV" = "Cote d'Ivoire",
+        "COD" = "Congo, DR",
+        "COG" = "Congo, Republic")
+  }
 
-name2iso <- function(v) {
-  names <- countrycode::countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c(
-    "Kosovo" = "XKX",
-    "Micronesia" = "FSM",
-    "Türkiye" = "TUR",
-    "Turkiye" = "TUR"))
-  if (is.logical(names)) names <- as.character(names)
-  return(names)
+  compiler::cmpfun(function(v) {
+    names <- countrycode::countrycode(v, origin = "iso3c", destination = "country.name", custom_match = dictionary)
+    return(names)
+  })
 }
 
-output <- name2iso(v)
+iso2name <- define_iso2name()
 
-if (!multiple_matches) {
-    return(output)
-} else {
-    # names <- v[is.na(output)]
-    na_index <- which(is.na(output))
+define_name2iso <- function() {
 
-    multiple_isos <- lapply(na_index, function(n) {
-      isos <- c(str_replace_all(v[n], setNames(codelist$iso3c, codelist$country.name.en)),
-            str_replace_all(v[n], rev(setNames(codelist$iso3c, codelist$country.name.en))),
-            str_replace_all(tolower(v[n]), setNames(codelist$iso3c, codelist$country.name.en.regex)),
-            str_replace_all(tolower(v[n]), rev(setNames(codelist$iso3c, codelist$country.name.en.regex)))) %>%
-            paste(collapse = " ") %>%
-            str_replace_all("[A-Z]{3}[A-Z]+", "") %>%
-            str_extract_all("[A-Z]{3}", simplify = T)  %>% as.vector() %>% unique()
-      new_isos <- lapply(seq_along(isos), function(i, data) {
-          iso <- data[i]
-          name <- iso2name(iso)
+    # Check if country_groups already is defined, and if it has the appropriate columns
+  if (ifelse(exists("country_groups"), "Economy" %in% names(country_groups), F)) {
+    dictionary <- country_groups$Code
+    names(dictionary) <- country_groups$Economy
+  } else if ( file.exists("src/country-groups.csv")) {
+    warning("`country_groups` is not defined or does not have variable `Economy`")
+    country_groups <- read_csv("src/country-groups.csv", col_types = "ccccccccc")
+    dictionary <- country_groups$Code
+    names(dictionary) <- country_groups$Economy
+  } else {
+    warning("`src/country-groups.csv` does not exist and `country_groups` is not defined")
+    dictionary <- c(
+      "Kosovo" = "XKX",
+      "Micronesia" = "FSM",
+      "Türkiye" = "TUR",
+      "Turkiye" = "TUR")
+  }
 
-          if (!any(str_detect(iso2name(data[-i]), name))) {
-              return (iso)
-          } else {
-              if (str_replace(v[n], name, "") %>% str_detect(name)) {
-                  return(iso)
-              }
-          }}, data = isos) %>%
-          unlist() %>% paste(collapse = ", ")
-          return(c(index = n, isos = new_isos))
-    }) %>% bind_rows() %>% 
-      subset(isos != "")
+  compiler::cmpfun(function(v, multiple_matches = F) {
+  # This new multiple_matches = T argument makes this a much more complicated function,
+  # though perhaps it could be written more simply. If the arg is set to TRUE, the function
+  # looks at all NAs and tries to find all the matches it can with the country names list.
+  # (It looks both backwards and forwards; otherwise as soon as Guinea was found, Papua
+  # New Guinea wouldn't be possibly found.) It then scans each country name to see if its
+  # detected within another select country's name. If it is, it's name is removed from the
+  # original list, and the original list is scanned for it again. For example, if the list 
+  # is "Algeria Papua New Guinea", the initial result is "DZA GIN PGA"; but Guinea is within
+  # Papua New Guinea, so it is removed: "DZA, "GIN". However, if the original list is
+  # "Algeria Guinea Papua New Guinea", the first "Guinea" is removed, but "Guinea" is still
+  # deteced in the list: "DZA GIN PGA" 
 
-    output[as.numeric(multiple_isos$index)] <- multiple_isos$isos
-    print("Dev Note: Edit this function to identify which of the matches that name2iso couldn't match were matched by name2match multiple_matches = T")
-    return(output)
+
+  name2iso_internal <- function(v) {
+    names <- countrycode::countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c(
+      "Kosovo" = "XKX",
+      "Micronesia" = "FSM",
+      "Türkiye" = "TUR",
+      "Turkiye" = "TUR"))
+    if (is.logical(names)) names <- as.character(names)
+    return(names)
+  }
+
+  output <- name2iso_internal(v)
+
+  if (!multiple_matches | !any(is.na(output))) {
+      return(output)
+  } else {
+      # names <- v[is.na(output)]
+      na_index <- which(is.na(output))
+
+      multiple_isos <- lapply(na_index, function(n) {
+        isos <- c(str_replace_all(v[n], setNames(codelist$iso3c, codelist$country.name.en)),
+              str_replace_all(v[n], rev(setNames(codelist$iso3c, codelist$country.name.en))),
+              str_replace_all(tolower(v[n]), setNames(codelist$iso3c, codelist$country.name.en.regex)),
+              str_replace_all(tolower(v[n]), rev(setNames(codelist$iso3c, codelist$country.name.en.regex)))) %>%
+              paste(collapse = " ") %>%
+              str_replace_all("[A-Z]{3}[A-Z]+", "") %>%
+              str_extract_all("[A-Z]{3}", simplify = T)  %>% as.vector() %>% unique()
+        new_isos <- lapply(seq_along(isos), function(i, data) {
+            iso <- data[i]
+            name <- iso2name(iso)
+
+            if (!any(str_detect(iso2name(data[-i]), name))) {
+                return (iso)
+            } else {
+                if (str_replace(v[n], name, "") %>% str_detect(name)) {
+                    return(iso)
+                }
+            }}, data = isos) %>%
+            unlist() %>% paste(collapse = ", ")
+            return(c(index = n, isos = new_isos))
+      }) %>% bind_rows() %>% 
+        subset(isos != "")
+
+      output[as.numeric(multiple_isos$index)] <- multiple_isos$isos
+      print("Dev Note: Edit this function to identify which of the matches that name2iso couldn't match were matched by name2match multiple_matches = T")
+      return(output)
+  }
+  })
 }
-})
+
+name2iso <- define_name2iso()
 
 # FUNCTION TO READ MOST RECENT FILE IN A FOLDER
 # Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
@@ -346,4 +390,23 @@ bind_cols_fill <- function(df1, df2, fill = NA) {
         if (is.data.frame(df2)) df2[(nrow(df2)+1):a,] <- fill else df2[(length(df2)+1):a] <- fill
     }
     dplyr::bind_cols(df1, df2)
+}
+
+vstring <- function(string, sep = "%%") {
+  vars <- stringr::str_extract_all(string, "%%[^(%%)]*%%", simplify = T)
+  reps <- sapply(vars, function(v) {
+    as.character(eval(parse(text = stringr::str_extract(v, "[^(%%)].+[^(%%)]"))))
+  })
+  string <- stringr::str_replace_all(string, reps)
+  return(string)
+}
+
+paste_and <- function(v) {
+    if (length(v) == 1) {
+    string <- paste(v)
+  } else {
+    # l[1:(length(l)-1)] %>% paste(collapse = ", ")
+    paste(head(v, -1), collapse = ", ") %>%
+    paste("and", tail(v, 1))
+  }
 }

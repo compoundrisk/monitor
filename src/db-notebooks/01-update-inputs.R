@@ -63,7 +63,7 @@ error_delay <- if (error_delay) T else F
 lap_start()
 acaps_collect() %>% delay_error(return = NA, on = error_delay)
 # Add in OWID
-owid_collect() %>% delay_error(return = NA, on = error_delay)
+# owid_collect() %>% delay_error(return = NA, on = error_delay)
 # Add in Oxford Response Tracker
 ghsi_collect() %>% delay_error(return = NA, on = error_delay)
 # oxford_openness_collect()
