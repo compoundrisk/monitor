@@ -218,7 +218,22 @@ multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, ar
 # Fix so that this uses dashboard_data instead of reading the CSV
 dashboard_crisis <- label_crises(dashboard_data)
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
-write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)
+
+# Temporarily remove new countries and indicators from production file
+new_countries <- read.csv("src/country-numbers.csv")[191:218,2]
+dashboard_crisis_prod <- dashboard_crisis %>% subset(Country %ni% new_countries)
+
+prod <- read_csv("~/Downloads/crm-dashboard-prod-2.csv")
+prod_nc <- subset(prod, !is.na(`Data Level`))
+prod_crisis <- subset(prod, is.na(`Data Level`))
+
+new_prod <- dashboard_crisis_prod 
+new_prod_nc <- subset(new_prod, `Data Level` != "Crisis Status")
+new_prod_limited <- new_prod_nc %>% subset(Index %in% prod_nc$Index)
+
+dashboard_crisis_prod <- bind_rows(new_prod_limited, prod_crisis)
+
+write.csv(dashboard_crisis_prod, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)
 
 # track_indicator_updates()
 # I've already written this. Do I still use it? My concern is that its reliance 
