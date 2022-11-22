@@ -165,6 +165,12 @@ fragility_sheet <- aggregate_dimension(
 multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Fragility sheet is aggregated and saved.")
 
+# For while we process a firewall request for ACAPS risk list and IFRC
+write.csv(ifrc_process(as_of = as_of), "hosted-data/ifrc-epidemics-temp.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_"), "hosted-data/acaps-socio-temp.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_"), "hosted-data/acaps-natural-temp.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_"), "hosted-data/acaps-conflict-temp.csv", row.names = F)
+
 # COMMAND ----------
 
 # Make sure to rename indicators with readable variable names
