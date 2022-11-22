@@ -289,7 +289,7 @@ acaps_category_process <- function(as_of, category, prefix) {
 
 acaps_risk_list_collect <- function() {
     ## Post credentials to get an authentication token
-    credentials <- read.csv(".access/acaps-credentials.csv")
+    credentials <- read.csv(paste_path(mounted_path, ".access/acaps-credentials.csv"))
     credentials <- list(username=credentials$username, password=credentials$password)
     auth_token_response <- httr::POST("https://api.acaps.org/api/v1/token-auth/", body=credentials)
     auth_token <- httr::content(auth_token_response)$token
@@ -385,7 +385,7 @@ df <- df %>% unnest(c(country, iso3, crisis_id))
     type_convert("cccccccDTDccccdcdcccD")
 
     # Delete this after one run on Databricks
-    if (!file.exists("output/inputs-archive/acaps_risklist.csv")) {
+    if (!file.exists(paste_path(inputs_archive_path, "acaps_risklist.csv"))) {
       print("No file acaps_risklist.csv, being created.")
       archiveInputs(acaps_risklist, group_by = "risk_id", newFile = T)
     } else {
@@ -804,7 +804,7 @@ dons_collect <- function() {
 }
 
 dons_process <- function(as_of) {
-  who_dons <- loadInputs("who_dons", group_by = NULL, as_of = as_of, format = "csv", col_types = "cDcccclD")
+  who_dons <- loadInputs("who_dons", group_by = NULL, as_of = as_of, format = "csv") #, col_types = "cDcccclD") # column order is oddly different on Databricks version of inputs archive
   # Only include DONs alerts from the past 3 months and not declared over
   # (more robust version would filter out outbreaks if they were later declared over)
   who_dons_current <- who_dons %>%
@@ -858,7 +858,8 @@ encode <- "raw"
 response <- httr::VERB("GET", url, body = payload,
                  add_headers(Origin = 'https://go.ifrc.org', Accept_Encoding = 'gzip, deflate, br',
                  Host = 'goadmin.ifrc.org',
-                 User_Agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15', Accept_Language = 'en', Referer = 'https://go.ifrc.org/', Connection = 'keep-alive', ''), query = queryString, content_type("application/octet-stream"), accept("*/*"), encode = encode)
+                #  User_Agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15', 
+                 Accept_Language = 'en', Referer = 'https://go.ifrc.org/', Connection = 'keep-alive', ''), query = queryString, content_type("application/octet-stream"), accept("*/*"), encode = encode)
 
 json <- content(response, "text")
 df <- jsonlite::fromJSON(json)$results 
@@ -872,7 +873,7 @@ ifrc_epidemics <- df %>% mutate(
   select(-field_reports, -appeals)
 
     # Delete this after one run on Databricks
-    if (!file.exists("output/inputs-archive/ifrc_epidemics.csv")) {
+    if (!file.exists(paste_path(inputs_archive_path, "ifrc_epidemics.csv"))) {
       print("No file ifrc_epidemics.csv, being created.")
       archiveInputs(ifrc_epidemics, group_by = "id", newFile = T, col_types = "ccdiccDDlllDilcllllcc")
     } else {
@@ -1389,7 +1390,7 @@ imf_collect <- function() {
 }
 
 imf_process <- function(as_of) {
-  imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"), as_of = as_of, format = "csv", col_types = "ccccclccccccccccccdD")
+  imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"), as_of = as_of, format = "csv")# , col_types = "ccccclccccccccccccdD") #Databricks has different columns
   # FIX
   
   imf_un <- imf_unemployment %>%
@@ -1684,9 +1685,9 @@ gdacs_process <- function(as_of) {
 
 #----------------------—INFORM Natural Hazard and Exposure rating--------------------------
 inform_risk_collect <- function() {
-  # Delete after it run on Github once
-  read_csv("output/inputs-archive/inform_risk.csv", na = "x") %>%
-  write.csv("output/inputs-archive/inform_risk.csv", row.names = F)
+  # # Delete after it run on Github once
+  # read_csv("output/inputs-archive/inform_risk.csv", na = "x") %>%
+  # write.csv("output/inputs-archive/inform_risk.csv", row.names = F)
 
   most_recent <- read_most_recent("hosted-data/inform-risk", FUN = read_csv, as_of = Sys.Date(), , col_types = cols(), na = "x", return_date = T)
   file_date <- most_recent[[2]]
@@ -1984,7 +1985,7 @@ fsi_collect <- function() {
     file <- most_recent$date
     
     # Delete this after one run on Databricks
-    if (!file.exists("output/inputs-archive/fsi.csv")) {
+    if (!file.exists(paste_path(inputs_archive_path, "fsi.csv"))) {
       print("No file fsi.csv, being created.")
     archiveInputs(fsi, group_by = "Country", col_types = "cTcddddddddddddd", newFile = T)
     } else {
