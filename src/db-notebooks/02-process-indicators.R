@@ -224,18 +224,13 @@ dashboard_crisis <- label_crises(dashboard_data)
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
 
 # Temporarily remove new countries and indicators from production file
+new_indicators <- c(34:41)
+dashboard_crisis_old_indicators <- dashboard_crisis %>% subset(str_sub(Index, -2) %ni% new_indicators | `Data Level` == 'Crisis Status')
+
+write.csv(dashboard_crisis_old_indicators, paste_path(mounted_path, "staging/crm-dashboard-stg.csv"), row.names = F)
+
 new_countries <- read.csv("src/country-numbers.csv")[191:218,2]
-dashboard_crisis_prod <- dashboard_crisis %>% subset(Country %ni% new_countries)
-
-prod <- read_csv("~/Downloads/crm-dashboard-prod-2.csv")
-prod_nc <- subset(prod, !is.na(`Data Level`))
-prod_crisis <- subset(prod, is.na(`Data Level`))
-
-new_prod <- dashboard_crisis_prod 
-new_prod_nc <- subset(new_prod, `Data Level` != "Crisis Status")
-new_prod_limited <- new_prod_nc %>% subset(Index %in% prod_nc$Index)
-
-dashboard_crisis_prod <- bind_rows(new_prod_limited, prod_crisis)
+dashboard_crisis_prod <- dashboard_crisis_old_indicators %>% subset(Country %ni% new_countries)
 
 write.csv(dashboard_crisis_prod, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)
 

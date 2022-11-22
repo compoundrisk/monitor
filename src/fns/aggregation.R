@@ -369,7 +369,7 @@ if (!is.null(countries)) {
   # This is necessary for the Excel dashboard, so maybe should be lumped with `write_excel_source_files()`
   reliability <- select(all_dimensions, Country, contains("Reliability")) %>%
     mutate(
-          Countryname = countrycode(Country, origin = "iso3c", destination = "country.name"),
+          Countryname = iso2name(Country),
           Underlying_Reliability = rowMeans(select(., starts_with("Underlying"))),
           Emerging_Reliability = rowMeans(select(., starts_with("Emerging"))), .after = Country) #%>%
     # Add columns that Excel file expects
@@ -1707,7 +1707,7 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
         Countryname = case_when(
           Countryname == "CAR" ~ "Central African Republic",
           TRUE ~ Countryname),
-        Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
+        Country = iso2name(Countryname),
         .before = 1)
 
   high_severity_countries <- pull(subset(acaps_list, value >= 4, select = Country))
@@ -1827,7 +1827,7 @@ quick_scan <- function(
         
         outlook_count <- c_data$Value[which(c_data$Dimension == "Flag")]
         cat(paste("###",
-            countrycode(country, origin = "iso3c", destination = "country.name"),
+            iso2name(country),
             "has",
             outlook_count,
             outlook,
