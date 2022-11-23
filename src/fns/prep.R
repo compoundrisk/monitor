@@ -63,7 +63,7 @@ country_groups <- tryCatch(
     wb_countries_collect()
   },
   error = function(e) {
-    print(e)
+    print("Unable to download country groups file from databank.worldbank.org")
     df <- read_csv("src/country-groups.csv", col_types = "cccc")
     return(df)
   })

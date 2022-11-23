@@ -168,6 +168,14 @@ fragility_sheet <- aggregate_dimension(
 multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Fragility sheet is aggregated and saved.")
 
+<<<<<<< HEAD
+=======
+# For while we process a firewall request for ACAPS risk list and IFRC
+write.csv(ifrc_process(as_of = as_of), "hosted-data/ifrc-epidemics-temp.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_"), "hosted-data/acaps-socio-temp.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_"), "hosted-data/acaps-natural-temp.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_"), "hosted-data/acaps-conflict-temp.csv", row.names = F)
+>>>>>>> main
 
 # COMMAND ----------
 
@@ -189,11 +197,7 @@ all_dimensions <- list(
   count_flags(outlook = "emerging", high = 10, medium = 7) %>%
   count_flags(outlook = "underlying", high = 10, medium = 7) %>%
   count_flags(outlook = "overall", high = 7, medium = 5) %>%
-  mutate(Countryname = countrycode(
-      Country,
-      origin = "iso3c",
-      destination = "country.name"),
-    .after = Country)
+  mutate(Countryname = iso2name(Country), .after = Country)
 
 # write.csv(all_dimensions, paste0(output_directory, "crm-wide.csv"))
 multi_write.csv(all_dimensions, "crm-wide.csv", c(output_directory, archive_directory))
