@@ -190,11 +190,7 @@ all_dimensions <- list(
   count_flags(outlook = "emerging", high = 10, medium = 7) %>%
   count_flags(outlook = "underlying", high = 10, medium = 7) %>%
   count_flags(outlook = "overall", high = 7, medium = 5) %>%
-  mutate(Countryname = countrycode(
-      Country,
-      origin = "iso3c",
-      destination = "country.name"),
-    .after = Country)
+  mutate(Countryname = iso2name(Country), .after = Country)
 
 # write.csv(all_dimensions, paste0(output_directory, "crm-wide.csv"))
 multi_write.csv(all_dimensions, "crm-wide.csv", c(output_directory, archive_directory))

@@ -477,9 +477,10 @@ ghsi_process <- function(as_of) {
   ghsi <- loadInputs("ghsi", group_by = "Country", as_of = as_of, format = "csv", col_types = "cdD")
   
   # Normalise scores
-  # Rename HIS to ghsi *everywhere*
-  HIS <- normfuncneg(ghsi, 20, 70, "H_HIS_Score")
-  return(HIS)
+  upperrisk <- quantile(ghsi$H_HIS_Score, probs = c(0.05), na.rm = T)
+  lowerrisk <- quantile(ghsi$H_HIS_Score, probs = c(0.90), na.rm = T)
+  ghsi <- normfuncneg(ghsi, upperrisk, lowerrisk, "H_HIS_Score")
+  return(ghsi)
 }
 
 # ## Oxford Openness
@@ -1444,8 +1445,8 @@ eiu_security_process <- function(as_of) {
         select(-access_date) %>%
         subset(MONTH <= as_of)
 
-    series_names <- c("Security risk", "1. Armed conflict", "2. Terrorism", "3. Violent demonstrations",
-        "4. Hostility to foreigners/private property" ,  "5. Violent crime", "6. Organised crime",
+    series_names <- c("1. Armed conflict", "2. Terrorism", "3. Violent demonstrations",
+        "5. Violent crime", "6. Organised crime",
         "7. Kidnapping/extortion", "8. Cyber security, likelihood of attacks")
 
     eiu_long <- eiu_data %>%
@@ -1463,15 +1464,10 @@ eiu_security_process <- function(as_of) {
         slice_min(MONTH, n = 12) %>%
         summarize(one_year_mean = mean(Values))
 
-    series_select <- c("1. Armed conflict", "2. Terrorism", "3. Violent demonstrations",
-        "5. Violent crime", "6. Organised crime",
-        "7. Kidnapping/extortion", "8. Cyber security, likelihood of attacks")
-
     eiu_aggregate <- 
         # reduce(list(eiu_1_month, eiu_3_month, eiu_1_year, eiu_3_year),#, eiu_three_month),
         reduce(list(eiu_1_month, eiu_1_year),#, eiu_three_month),
             full_join, by = c("Country", "Series")) %>%
-            subset(Series %in% series_select) %>%
             ungroup() %>% group_by(Country) %>%
             summarize(across(contains("_"), ~ mean(.x))) %>%
         mutate(

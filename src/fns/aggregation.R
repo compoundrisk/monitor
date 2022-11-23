@@ -1707,7 +1707,7 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
         Countryname = case_when(
           Countryname == "CAR" ~ "Central African Republic",
           TRUE ~ Countryname),
-        Country = iso2name(Countryname),
+        Country = name2iso(Countryname),
         .before = 1)
 
   high_severity_countries <- pull(subset(acaps_list, value >= 4, select = Country))
