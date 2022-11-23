@@ -369,7 +369,7 @@ if (!is.null(countries)) {
   # This is necessary for the Excel dashboard, so maybe should be lumped with `write_excel_source_files()`
   reliability <- select(all_dimensions, Country, contains("Reliability")) %>%
     mutate(
-          Countryname = countrycode(Country, origin = "iso3c", destination = "country.name"),
+          Countryname = iso2name(Country),
           Underlying_Reliability = rowMeans(select(., starts_with("Underlying"))),
           Emerging_Reliability = rowMeans(select(., starts_with("Emerging"))), .after = Country) #%>%
     # Add columns that Excel file expects
@@ -568,6 +568,8 @@ order_columns_and_raws <- function(data) {
 
 create_id <- function(data) {
   country_numbers <- read.csv("src/country-numbers.csv")
+  country_numbers_vector <- as.character(country_numbers$number)
+  names(country_numbers_vector) <- country_numbers$country
   data <- mutate(data,
     Indicator_ID = case_when(
         `Data Level` == "Indicator" ~ indicators_list$indicator_id[match(Key, indicators_list$Indicator)],
@@ -578,7 +580,8 @@ create_id <- function(data) {
         TRUE ~ as.integer(0),
       ),
       Index = as.integer(paste0(
-        leading_zeros(country_numbers$number[country_numbers$country == Country], 3),
+        # leading_zeros(country_numbers$number[country_numbers$country == Country], 3),
+        leading_zeros(str_replace_all(Country, country_numbers_vector), 3),
         # Does it make more sense to order by Data Level before Dimension, Outlook, and even Country?
         leading_zeros(as.numeric(Outlook), 1),
         leading_zeros(as.numeric(Dimension), 1),
@@ -1704,7 +1707,7 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
         Countryname = case_when(
           Countryname == "CAR" ~ "Central African Republic",
           TRUE ~ Countryname),
-        Country = countrycode(Countryname, origin = "country.name", destination = "iso3c"),
+        Country = iso2name(Countryname),
         .before = 1)
 
   high_severity_countries <- pull(subset(acaps_list, value >= 4, select = Country))
@@ -1721,7 +1724,9 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
           Value == 1 ~ paste0("*", Countryname), 
           Value == 0 ~ Countryname),
           `Overall Contribution` = F,
-          Index = dplyr::row_number() + max(df$Index),
+          `Data Level` = "Crisis Status",
+          Index = dplyr::row_number() + 19037731,
+          # Index = # Change so index uses `Data Level` = "Crisis Status", which numerically translates to 8, so the Afghanistan's crisis status id would be 00100800 or 00111800
           Date = unique(df$Date)[1])
 
   comb <- bind_rows(df, crisis_rows)
@@ -1731,8 +1736,16 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
 
 add_overall_indicators <- function(dashboard_data) {
   indicators_o <- subset(dashboard_data, `Data Level` == "Indicator") %>%
-  mutate(Outlook = "Overall",
-         Index = Index + 400)
+    mutate(Outlook = "Overall",
+          Index = Index + 400)
+          # Instead of changing Data Level, it should set the Outlook portion of the Index to 1, for overall 
+          #  Index = paste0(substr(leading_zeros(Index, 8), 1, 3), 1, substr(leading_zeros(Index, 8), 5, 8))  
+  dashboard_data <- bind_rows(dashboard_data, indicators_o)
+   indicators_o <- subset(dashboard_data, `Data Level` == "Indicator") %>%
+    mutate(Outlook = "Overall",
+          # Index = Index + 400)
+          # Instead of changing Data Level, it should set the Outlook portion of the Index to 1, for overall 
+          Index = as.numeric(paste0(substr(leading_zeros(Index, 8), 1, 3), 1, substr(leading_zeros(Index, 8), 5, 8))))
   dashboard_data <- bind_rows(dashboard_data, indicators_o)
   return(dashboard_data)
 }
@@ -1814,7 +1827,7 @@ quick_scan <- function(
         
         outlook_count <- c_data$Value[which(c_data$Dimension == "Flag")]
         cat(paste("###",
-            countrycode(country, origin = "iso3c", destination = "country.name"),
+            iso2name(country),
             "has",
             outlook_count,
             outlook,

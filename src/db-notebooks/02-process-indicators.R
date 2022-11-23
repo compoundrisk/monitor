@@ -145,7 +145,6 @@ natural_hazards_sheet <- aggregate_dimension(
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Natural hazards sheet is aggregated and saved.")
 
-
 # COMMAND ----------
 
 # CONFLICT AND FRAGILITY

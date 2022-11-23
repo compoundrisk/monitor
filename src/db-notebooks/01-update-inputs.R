@@ -30,6 +30,10 @@ inputs_archive_path <- paste_path(mounted_path, "output/inputs-archive/")
 source("src/fns/prep.R")
 source("src/fns/indicators.R")
 
+# if run is a job, save files to "output/scheduled"; if manually, save to "output/manual"
+run_type <- tryCatch(dbutils.widgets.get("run_type"), error = function(e) {return("manual")})
+output_directory <- paste_path(mounted_path, "output/", run_type) #paste_path("output/", run_type)
+
 # COMMAND ----------
 
 error_delay <- tryCatch(dbutils.widgets.get("error_delay"), error = function(e) {return(F)})
