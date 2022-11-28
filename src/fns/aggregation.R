@@ -1587,7 +1587,7 @@ append_if_exists <- function(data, path, col_types = NULL) {
 date_indicators <- function(crm) {
   new_ind_vals <- crm %>%
       subset(`Data Level` == "Indicator") %>%
-      arrange(Index, Date) %>% View()
+      arrange(Index, Date) %>%
       subset(first_ordered_instance(Value)) %>%
       mutate(indicator_id = as.numeric(str_sub(Index, -2)))
 
