@@ -91,6 +91,7 @@ lap_print("Health sheet is aggregated and saved.")
 lap_start()
 food_sheet <- aggregate_dimension(
   "Food Security",
+  gfsi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   proteus_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   fews_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   fpi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
@@ -231,7 +232,9 @@ write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-p
 # to just use the combined output file, and  compare against the previous date 
 # (the way `countFlagChanges()` does? can I just abstract `flagChanges()`?)
 
-all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"), col_types = 'iiiccccccdccccD')
+all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"), col_types = 'diiccccccdccccD')
+
+# all_runs <- subset(all_runs, !between(Date, as.Date("2022-11-15"), as.Date("2022-11-19")))
 # Task: what if I run the monitor multiple times in a day? 
 write_csv(all_runs, paste_path(output_directory, "crm-all-runs.csv"))
 # multi_write.csv(all_runs, "crm-all-runs.csv", c(output_directory, archive_directory))

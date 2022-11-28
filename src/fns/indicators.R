@@ -478,7 +478,7 @@ ghsi_process <- function(as_of) {
   
   # Normalise scores
   upperrisk <- quantile(ghsi$H_HIS_Score, probs = c(0.05), na.rm = T)
-  lowerrisk <- quantile(ghsi$H_HIS_Score, probs = c(0.90), na.rm = T)
+  lowerrisk <- quantile(ghsi$H_HIS_Score, probs = c(0.85), na.rm = T)
   ghsi <- normfuncneg(ghsi, upperrisk, lowerrisk, "H_HIS_Score")
   return(ghsi)
 }
@@ -899,6 +899,32 @@ return(epidemics)
 # acaps_health <- acapssheet[,c("Country", "H_health_acaps")]
 
 #### FOOD SECURITY
+# -------------------------------— EIU Global Food Security Index --------------
+gfsi_collect <- function() {
+    most_recent <- read_most_recent('hosted-data/gfsi', FUN = read_csv, col_types = "cdd", as_of = Sys.Date(), return_date = T)
+    gfsi <- most_recent$data
+    file_date <- most_recent$date
+    
+    # Delete this after one run on Databricks
+    if (!file.exists(paste_path(inputs_archive_path, "gfsi.csv"))) {
+      print("No file gfsi.csv, being created.")
+    archiveInputs(gfsi, group_by = "Country", col_types = "cdd", newFile = T)
+    } else {
+    archiveInputs(gfsi, group_by = "Country", col_types = "cdd", today = file_date)
+    }   
+}
+
+gfsi_process <- function(as_of) {
+  gfsi <- loadInputs("gfsi", group_by = "Country", col_types = "cddD") %>%
+       mutate(Country = name2iso(Country), F_GFSI = Score, .keep = "none")
+
+  lowerrisk <- quantile(gfsi$F_GFSI, .9)
+  upperrisk <- quantile(gfsi$F_GFSI, .1)
+  gfsi <- gfsi %>% normfuncneg(upperrisk, lowerrisk, "F_GFSI")
+
+  return(gfsi)
+}
+
 # -------------------------------— Proteus Index -------------------------------
 proteus_collect <- function() {
   proteus <- read.csv("hosted-data/proteus/proteus.csv")
@@ -930,15 +956,19 @@ proteus_process <- function(as_of) {
 #------------------—FEWSNET (with CRW threshold)---
 
 #Load database
-fews_collect <- function() {
-  fewsnet <- suppressMessages(read_csv("hosted-data/fews/fews.csv", col_types = cols()))
-  archiveInputs(fewsnet, group_by = c("admin_code", "year_month"))
+fews_collect <- function(as_of = Sys.Date()) {
+  most_recent <- read_most_recent("hosted-data/fews", 
+    FUN = read_csv, col_types = cols(), as_of = as_of, return_date = T)
+  file_date <- most_recent[[2]]
+  fewsnet <- most_recent$data
+  archiveInputs(fewsnet,  group_by = c("admin_code", "year_month"), today = file_date)
 }
 
 fews_process <- function(as_of) {
   fewswb <- loadInputs("fewsnet", group_by = c("admin_code", "year_month"), 
     as_of = as_of, format = "csv", col_types = "cdcdddddddddcddcD") %>%
-    mutate(year_month = as.yearmon(year_month, "%Y_%m"))
+    mutate(year_month = as.yearmon(year_month, "%Y_%m")) %>%
+    subset(as.Date(year_month) > as_of - 2 * 365) # Might be able to replace this with a shorter timespan
   
   #Calculate country totals
   fewsg <- fewswb %>%
@@ -947,7 +977,7 @@ fews_process <- function(as_of) {
     mutate(countrypop = sum(pop)) %>%
     ungroup()
   
-  #Calculate proportion and number of people in IPC class 
+  # Calculate proportion and number of people in IPC class 
   fewspop <- fewsg %>%
     group_by(country, year_month) %>%
     mutate(
@@ -981,33 +1011,26 @@ fews_process <- function(as_of) {
     group_by(admin_code) %>%
     slice_max(year_month, n = 2) %>% 
     ungroup() %>%
-    # filter(year_month == "2021_10" | year_month == "2021_06") %>%
     group_by(country, year_month) %>%
-    mutate(totalipc3plusabsfor = sum(ipc3plusabsfor, na.rm=T),
-           totalipc3pluspercfor = sum(ipc3pluspercfor, na.rm=T),
-           totalipc4plusabsfor = sum(ipc4plusabsfor, na.rm=T),
-           totalipc4pluspercfor = sum(ipc4pluspercfor, na.rm=T),
-           totalipc3plusabsnow = sum(ipc3plusabsnow, na.rm=T),
-           totalipc3pluspercnow = sum(ipc3pluspercnow, na.rm=T),
-           totalipc4plusabsnow = sum(ipc4plusabsnow, na.rm=T),
-           totalipc4pluspercnow = sum(ipc4pluspercnow, na.rm=T)) %>%
-    distinct(country, year_month, .keep_all = TRUE) %>%
-    dplyr::select(-ipc3plusabsfor, -ipc3pluspercfor, -ipc4plusabsfor, -ipc4pluspercfor, 
-                  -ipc3plusabsnow, -ipc3pluspercnow, -ipc4plusabsnow, -ipc4pluspercnow,
-                  -admin_name, -pop) %>%
-    group_by(country) %>%
-    mutate(pctchangeipc3for = pctabs(totalipc3pluspercfor),
-           pctchangeipc4for = pctperc(totalipc4pluspercfor),
-           pctchangeipc3now = pctabs(totalipc3pluspercnow),
-           pctchangeipc4now = pctperc(totalipc4pluspercnow),
+    # Calculate total country-wide counts and proportions for total IPC3+ and 4+ classes
+    summarize(across(
+      .cols = matches("ipc.plus.*"),
+      .fns = ~ sum(.x, na.rm = T),
+      .names = "total{.col}"),
+      .groups = "drop_last") %>%
+    # Calculate percentage change for proportions in IPC3+ or IPC4+
+    mutate(pctchangeipc3for = pctabs(totalipc3pluspercfor), # Latest ipc3+ forecast proportion - previous proportion
+           pctchangeipc4for = pctperc(totalipc4pluspercfor), # Percentage growth in ipc4+ forecast proportion from previous proportion
+           pctchangeipc3now = pctabs(totalipc3pluspercnow), # Latest ipc3+ current proportion - previous proportion
+           pctchangeipc4now = pctperc(totalipc4pluspercnow), # Percentage growth in ipc4+ current proportion from previous proportion
            diffactfor = totalipc3pluspercfor - totalipc3pluspercnow,
            fshighrisk = case_when((totalipc3plusabsfor >= 5000000 | totalipc3pluspercfor >= 20) & pctchangeipc3for >= 5  ~ "High risk",
                                   (totalipc3plusabsnow >= 5000000 | totalipc3pluspercnow >= 20) & pctchangeipc3now >= 5  ~ "High risk",
                                   totalipc4pluspercfor >= 2.5  & pctchangeipc4for >= 10  ~ "High risk",
                                   totalipc4pluspercnow >= 2.5  & pctchangeipc4now >= 10  ~ "High risk",
                                   TRUE ~ "Not high risk")) %>%
-    dplyr::select(-fews_ipc, -fews_ha, -fews_proj_near, -fews_proj_near_ha, -fews_proj_med, 
-                  -fews_proj_med_ha, -fews_ipc_adjusted, -fews_proj_med_adjusted, -countryproportion) %>%
+    # dplyr::select(-fews_ipc, -fews_ha, -fews_proj_near, -fews_proj_near_ha, -fews_proj_med, 
+    #               -fews_proj_med_ha, -fews_ipc_adjusted, -fews_proj_med_adjusted, -countryproportion) %>%
     group_by(country) %>%
     slice_max(year_month) %>%
     ungroup()
@@ -1028,7 +1051,7 @@ fews_process <- function(as_of) {
     group_by(country) %>% slice_max(year_month) %>% ungroup()
   
   # Join the two datasets
-  fews_dataset <- left_join(fewssum, fews_summary, by = "country") %>%
+  fews_dataset <- left_join(fewssum, fews_summary, by = c("country", "year_month")) %>%
     mutate(
       fews_crm_norm = case_when(
         fshighrisk == "High risk" ~ 10,
@@ -1039,9 +1062,9 @@ fews_process <- function(as_of) {
         fshighrisk != "High risk" & max_ipc == 1 ~ 3,
         TRUE ~ NA_real_
       ),
-      fews_crm = paste(fshighrisk, "and max IPC of", max_ipc, "in", year_month.x),
+      fews_crm = paste(fshighrisk, "and max IPC of", max_ipc, "in", year_month),
       Country = name2iso(country)) %>%
-    dplyr::select(-country) %>%
+    dplyr::select(-country) %>% dplyr::select(Country, everything()) %>%
     rename_with(
       .fn = ~ paste0("F_", .),
       .cols = colnames(.)[!colnames(.) %in% c("Country", "country")]
@@ -1161,9 +1184,9 @@ eiu_collect <- function() {
   # eiu <- read_xls("hosted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
   most_recent <- read_most_recent("hosted-data/eiu", FUN = read_excel, as_of = Sys.Date(), return_date = T, sheet = "Data Values", skip = 3)
   eiu <- most_recent$data
-  date <- most_recent$date
+  file_date <- most_recent$date
   
-  archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"), today = date)
+  archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"), today = file_date)
 }
 
 eiu_process <- function(as_of) {
@@ -1978,15 +2001,9 @@ fcs_process <- function(as_of) {
 fsi_collect <- function() {
     most_recent <- read_most_recent('hosted-data/fsi', FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
     fsi <- most_recent$data
-    file <- most_recent$date
+    file_date <- most_recent$date
     
-    # Delete this after one run on Databricks
-    if (!file.exists(paste_path(inputs_archive_path, "fsi.csv"))) {
-      print("No file fsi.csv, being created.")
-    archiveInputs(fsi, group_by = "Country", col_types = "cTcddddddddddddd", newFile = T)
-    } else {
-    archiveInputs(fsi, group_by = "Country", col_types = "cTcddddddddddddd")
-    }   
+    archiveInputs(fsi, group_by = "Country", col_types = "cTcddddddddddddd", today = file_date)
 }
 
 fsi_process <- function(as_of) {
