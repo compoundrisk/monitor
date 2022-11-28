@@ -84,6 +84,7 @@ fpi_collect_many() %>% delay_error(return = NA, on = error_delay)
 proteus_collect() %>% delay_error(return = NA, on = error_delay)
 fews_collect() %>% delay_error(return = NA, on = error_delay)
 fao_wfp_collect() %>% delay_error(return = NA, on = error_delay)
+gfsi_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Food dimension finished collecting")
 
 # COMMAND ----------
