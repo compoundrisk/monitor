@@ -1171,6 +1171,56 @@ fao_wfp_process <- function(as_of) {
 
 #### MACRO
 
+mfr_watchlist_collect <- function() {
+  most_recent <- read_most_recent("hosted-data/mfr-watchlist", FUN = read_csv, 
+    na = "-", col_types = "cdcccccc", as_of = Sys.Date(), return_date = T) 
+  mfr_watchlist <- most_recent$data %>% mutate(iso = name2iso(Country))
+  file_date <- most_recent$date
+
+  # Delete this after one run on Databricks
+  if (!file.exists(paste_path(inputs_archive_path, "mfr_watchlist.csv"))) {
+    print("No file mfr_watchlist.csv, being created.")
+    archiveInputs(mfr_watchlist, group_by = "iso", newFile = T, today = file_date)
+  } else {
+    archiveInputs(mfr_watchlist, group_by = "iso", today = file_date)
+  }
+}
+
+mfr_watchlist_process <- function(as_of = as_of) {
+  watchlist <- loadInputs("mfr_watchlist", group_by = "iso", as_of = as_of) %>%
+    mutate(
+      Country = iso,
+      M_MFR_Watchlist = case_when(
+        `MFR risk rating` == "High" ~ 10,
+        `MFR risk rating` == "Medium" ~ 7,
+        `MFR risk rating` == "Moderate" ~ 0
+      ),
+      M_DSA_Rating =  case_when(
+        `DSA rating` %in% c("High", "In distress") ~ 10,
+        `DSA rating` == "Medium" ~ 7,
+        `DSA rating` == "Moderate" ~ 0
+      )
+    ) %>% 
+    select(Country, M_MFR_Risk_Rating_text = `MFR risk rating`, M_MFR_Watchlist, M_DSA_Rating_text = `DSA rating`, M_DSA_Rating)
+  return(watchlist)  
+}
+
+mfr_process <- function(as_of = as_of) {
+  watchlist <- mfr_watchlist_process(as_of)
+  review <- macrofin_process(as_of)
+
+  mfr <- full_join(watchlist, review, by = "Country")
+  mfr %>% mutate(
+    M_MFR = case_when(
+      !is.na(M_MFR_Watchlist) ~ M_MFR_Watchlist,
+      !is.na(M_DSA_Rating) ~ M_DSA_Rating,
+      !is.na(M_Macro_Financial_Risk) ~ M_Macro_Financial_Risk),
+    M_MFR_raw = case_when(
+      !is.na(M_MFR_Risk_Rating_text) ~ paste("Watchlist:", M_MFR_Risk_Rating_text),
+      !is.na(M_DSA_Rating_text) ~ paste("DSA:", M_DSA_Rating_text),
+      !is.na(M_Macro_Financial_Risk_raw) ~ paste("MFR Financial Risk:", M_Macro_Financial_Risk_raw)))
+}
+
 #---------------------------—Economist Intelligence Unit---------------------------------
 eiu_collect <- function() {
   # url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
@@ -1382,8 +1432,8 @@ macrofin_process <- function(as_of) {
           #  M_MFR_raw = paste0("Macro: ", Macroeconomic.risks,
           #                     "; Monetary and Financial: ", Monetary.and.financial.conditions,
           #                     "; Risk Appetite: ",  Risk.appetite),
-           M_MFR_raw = Macro.Financial.Risk,
-           M_MFR = case_when(
+           M_Macro_Financial_Risk_raw = Macro.Financial.Risk,
+           M_Macro_Financial_Risk = case_when(
             # Macroeconomic.risks == "High" | Monetary.and.financial.conditions == "High" | Risk.appetite == "High" ~ 10,
             # Macroeconomic.risks == "Medium" | Monetary.and.financial.conditions == "Medium" | Risk.appetite == "Medium" ~ 7,
             # Macroeconomic.risks == "Low" | Monetary.and.financial.conditions == "Low" | Risk.appetite == "Low" ~ 0,

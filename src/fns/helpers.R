@@ -251,7 +251,7 @@ dictionary <- dictionary[unique(names(dictionary))]
                 }
             }}, data = isos) %>%
             unlist() %>% paste(collapse = ", ")
-            print(paste0(v[n], ": ", new_isos))
+            warning(paste0(v[n], ": ", new_isos))
             return(c(index = n, isos = new_isos))
       }) %>% bind_rows() %>% 
         subset(isos != "")
