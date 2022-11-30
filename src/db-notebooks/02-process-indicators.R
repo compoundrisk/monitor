@@ -227,18 +227,8 @@ multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, ar
 # Fix so that this uses dashboard_data instead of reading the CSV
 dashboard_crisis <- label_crises(dashboard_data)
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
-write.csv(dashboard_crisis, paste_path(mounted_path, "staging/crm-dashboard-stg.csv"), row.names = F)
-
-# Temporarily remove new countries and indicators from production file
-new_indicators <- c(34:41)
-dashboard_crisis_old_indicators <- dashboard_crisis %>% subset(str_sub(Index, -2) %ni% new_indicators | `Data Level` == 'Crisis Status')
-
-write.csv(dashboard_crisis_old_indicators, paste_path(mounted_path, "staging/crm-dashboard-stg.csv"), row.names = F)
-
-new_countries <- read.csv("src/country-numbers.csv")[191:218,2]
-dashboard_crisis_prod <- dashboard_crisis_old_indicators %>% subset(Country %ni% new_countries)
-
-write.csv(dashboard_crisis_prod, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)
+# write.csv(dashboard_crisis, paste_path(mounted_path, "staging/crm-dashboard-stg.csv"), row.names = F)
+write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)
 
 # track_indicator_updates()
 # I've already written this. Do I still use it? My concern is that its reliance 
