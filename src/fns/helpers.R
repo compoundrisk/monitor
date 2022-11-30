@@ -168,14 +168,27 @@ define_name2iso <- function() {
     names(dictionary) <- country_groups$Economy
   } else {
     warning("`src/country-groups.csv` does not exist and `country_groups` is not defined")
-    dictionary <- c(
-      "Kosovo" = "XKX",
-      "Micronesia" = "FSM",
-      "Türkiye" = "TUR",
-      "Turkiye" = "TUR")
+    dictionary <- c()
+  }
+dictionary <- c(
+    dictionary, c(
+    "Kosovo" = "XKX",
+    "kosovo" = "XKX",
+    "Micronesia" = "FSM",
+    "micronesia" = "FSM",
+    "Türkiye" = "TUR",
+    "türkiye" = "TUR",
+    "Turkiye" = "TUR",
+    "turkiye" = "TUR"))
+dictionary <- dictionary[unique(names(dictionary))]  
+
+    name2iso_internal <- function(v) {
+    names <- countrycode::countrycode(v, destination = "iso3c", origin = "country.name", custom_match = dictionary)
+    if (is.logical(names)) names <- as.character(names)
+    return(names)
   }
 
-  compiler::cmpfun(function(v, multiple_matches = F) {
+  function(v, multiple_matches = F) {
   # This new multiple_matches = T argument makes this a much more complicated function,
   # though perhaps it could be written more simply. If the arg is set to TRUE, the function
   # looks at all NAs and tries to find all the matches it can with the country names list.
@@ -188,54 +201,66 @@ define_name2iso <- function() {
   # "Algeria Guinea Papua New Guinea", the first "Guinea" is removed, but "Guinea" is still
   # deteced in the list: "DZA GIN PGA" 
 
-
-  name2iso_internal <- function(v) {
-    names <- countrycode::countrycode(v, destination = "iso3c", origin = "country.name", custom_match = c(
-      "Kosovo" = "XKX",
-      "Micronesia" = "FSM",
-      "Türkiye" = "TUR",
-      "Turkiye" = "TUR"))
-    if (is.logical(names)) names <- as.character(names)
-    return(names)
-  }
-
   output <- name2iso_internal(v)
 
-  if (!multiple_matches | !any(is.na(output))) {
+  if (!any(is.na(output))) {
       return(output)
   } else {
       # names <- v[is.na(output)]
       na_index <- which(is.na(output))
 
+      cnames <- setNames(codelist$iso3c, tolower(codelist$country.name.en))
+      cnames["kosovo"] <- "XKX"
+      # cnames_no_space <- setNames(cnames, str_replace_all(names(cnames), " ", ""))
+      cnames_regex <- setNames(codelist$iso3c, codelist$country.name.en.regex)
+      cnames_regex["kosovo"] <- "XKX"
+      names(cnames_regex) <- str_replace_all(names(cnames_regex), "\\.(?=[a-z])", ".?")
+
+      names(dictionary) <- tolower(names(dictionary))
+      dictionary_no_space <- setNames(dictionary, str_replace_all(names(dictionary), " ", ""))
+
+      v <- tolower(v)
+
       multiple_isos <- lapply(na_index, function(n) {
-        isos <- c(str_replace_all(v[n], setNames(codelist$iso3c, codelist$country.name.en)),
-              str_replace_all(v[n], rev(setNames(codelist$iso3c, codelist$country.name.en))),
-              str_replace_all(tolower(v[n]), setNames(codelist$iso3c, codelist$country.name.en.regex)),
-              str_replace_all(tolower(v[n]), rev(setNames(codelist$iso3c, codelist$country.name.en.regex)))) %>%
+        isos <- c(
+              # Look backwards and forwards through multiple dictionaries to find country names
+              # Backwards is important so that, eg, Guinea doesn't prevent Papua New Guinea from being found
+              str_replace_all(v[n], cnames),
+              str_replace_all(v[n], rev(cnames)),
+              # str_replace_all(v[n], cnames_no_space),
+              # str_replace_all(v[n], rev(cnames_no_space)),
+              str_replace_all(v[n], cnames_regex),
+              str_replace_all(v[n], rev(cnames_regex)),
+              str_replace_all(v[n], dictionary),
+              str_replace_all(v[n], rev(dictionary)),
+              str_replace_all(v[n], dictionary_no_space),
+              str_replace_all(v[n], rev(dictionary_no_space))) %>%
               paste(collapse = " ") %>%
               str_replace_all("[A-Z]{3}[A-Z]+", "") %>%
               str_extract_all("[A-Z]{3}", simplify = T)  %>% as.vector() %>% unique()
         new_isos <- lapply(seq_along(isos), function(i, data) {
             iso <- data[i]
             name <- iso2name(iso)
-
+            # Check if any country names are part of another country name (eg Guinea in PNG)
             if (!any(str_detect(iso2name(data[-i]), name))) {
                 return (iso)
             } else {
-                if (str_replace(v[n], name, "") %>% str_detect(name)) {
+              # Remove the country name; if it is still found, it appears 2x and therefore is actually present
+                if (str_replace(v[n], tolower(name), "") %>% str_detect(tolower(name))) {
                     return(iso)
                 }
             }}, data = isos) %>%
             unlist() %>% paste(collapse = ", ")
+            print(paste0(v[n], ": ", new_isos))
             return(c(index = n, isos = new_isos))
       }) %>% bind_rows() %>% 
         subset(isos != "")
 
       output[as.numeric(multiple_isos$index)] <- multiple_isos$isos
-      print("Dev Note: Edit this function to identify which of the matches that name2iso couldn't match were matched by name2match multiple_matches = T")
+      # print("Dev Note: Edit this function to identify which of the matches that name2iso couldn't match were matched by name2match multiple_matches = T")
       return(output)
   }
-  })
+  }
 }
 
 name2iso <- define_name2iso()

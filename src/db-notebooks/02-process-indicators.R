@@ -218,6 +218,7 @@ multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, ar
 # Fix so that this uses dashboard_data instead of reading the CSV
 dashboard_crisis <- label_crises(dashboard_data)
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
+write.csv(dashboard_crisis, paste_path(mounted_path, "staging/crm-dashboard-stg.csv"), row.names = F)
 
 # Temporarily remove new countries and indicators from production file
 new_indicators <- c(34:41)
@@ -240,7 +241,7 @@ write.csv(dashboard_crisis_prod, paste_path(mounted_path, "production/crm-dashbo
 # to just use the combined output file, and  compare against the previous date 
 # (the way `countFlagChanges()` does? can I just abstract `flagChanges()`?)
 
-all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"), col_types = 'diiccccccdccccD')
+all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"), col_types = 'dddccccccdccccD')
 
 # all_runs <- subset(all_runs, !between(Date, as.Date("2022-11-15"), as.Date("2022-11-19")))
 # Task: what if I run the monitor multiple times in a day? 
