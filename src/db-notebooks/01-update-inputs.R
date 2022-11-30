@@ -92,6 +92,7 @@ lap_print("Food dimension finished collecting")
 # MACRO FISCAL
 lap_start()
 eiu_collect() %>% delay_error(return = NA, on = error_delay)
+mfr_watchlist_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Macro-fiscal dimension finished collecting")
 
 # COMMAND ----------
