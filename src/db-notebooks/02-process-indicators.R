@@ -96,7 +96,7 @@ food_sheet <- aggregate_dimension(
   proteus_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   fews_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   fpi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  fao_wfp_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
+  read_csv("hosted-data/fao-wfp-hunger-hotspots-temp.csv"))
 multi_write.csv(food_sheet, "food-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Food sheet is aggregated and saved.")
 

@@ -269,7 +269,7 @@ name2iso <- define_name2iso()
 # Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
 # Also could mean saving all live-downloaded data somewhere
 # I need to save the filename so I can use the date in it as the access_date
-read_most_recent <- compiler::cmpfun(function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, n = 1) {
+read_most_recent <- compiler::cmpfun(function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, return_name = F, n = 1) {
     file_names <- list.files(directory_path)
     # Reads the date portion of a filename in the format of acaps-2021-12-13
     name_dates <- sub(".*(20[[:digit:][:punct:]]+)\\..*", "\\1", file_names) %>%
@@ -277,6 +277,7 @@ read_most_recent <- compiler::cmpfun(function(directory_path, FUN = read.csv, ..
         as.Date(format = date_format) %>% sort()
     if (n == "all") n <- length(name_dates)
     selected_dates <- subset(name_dates, name_dates <= as_of) %>% tail(n)
+    selected_names <- subset(file_names, name_dates <= as_of) %>% tail(n)
 
     data <- lapply(selected_dates, function(date) {
       most_recent_file <- file_names[which(name_dates == date)]
@@ -285,10 +286,14 @@ read_most_recent <- compiler::cmpfun(function(directory_path, FUN = read.csv, ..
 
     if (n == 1) data <- data[[1]]
 
-    if (return_date) {
-      return(list(data = data, date = selected_dates))
-    }
-    return(data)
+    output <- list(
+      data = data, 
+      date = if (return_date) selected_dates else NULL,
+      name = if (return_name) selected_names else NULL)
+    output <- output[lengths(output) != 0]
+    if (length(lengths(output)) == 1) output <- output[[1]]
+    
+    return(output)
 })
 
 count_extremes <- function(v) {
