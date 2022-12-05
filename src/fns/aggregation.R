@@ -1627,7 +1627,7 @@ last_changed <- left_join(last_changed, last_changed_raw,
         T ~ `Last Changed_raw`)) %>%
         select(-`Last Changed_raw`)
 
-  ind_list <- as.data.frame(read_csv("src/indicators-list.csv")) %>%
+  ind_list <- as.data.frame(read_csv("src/indicators-list.csv", col_types = "ccdcccddcclcccll")) %>%
     # select(-`Last Changed`)
     subset(active)
   ind_list <- left_join(ind_list, last_changed, ) %>%

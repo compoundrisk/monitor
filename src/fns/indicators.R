@@ -1169,6 +1169,93 @@ fao_wfp_process <- function(as_of) {
   return(fao_wfp)
 }
 
+fao_wfp_web_collect <- function() {
+
+  prev <- read_most_recent("output/inputs-archive/fao-wfp-web/", FUN = read_file, as_of = Sys.Date(), return_date = T, return_name = T)
+  prev_text <- prev$data
+  prev_outlook <- prev$name %>% str_match("hunger-hotspots-(\\d\\d)") %>% .[[2]] %>% as.numeric
+  outlook <- prev_outlook + 1
+
+  no_data <- T
+  while (no_data == T & outlook >= prev_outlook) {
+    print(outlook)
+    url <- "https://www.hungerhotspots.org//Components/ajaxengine.cfc"
+    payload <- ""
+    encode <- "raw"
+    queryString <- list(
+      method = "controllerNEW",
+      nIdOutlook = outlook,
+      nConcern = "0",
+      init = "1",
+      object = "comMap",
+      action = "getData",
+      timeout = "600",
+      cClientSession = "F2C6472F-E99C-4E2D-86CE102C4C94B29C")
+
+    response <- VERB("GET", url, body = payload, query = queryString,
+        content_type("application/octet-stream"),
+        set_cookies(
+            `cfid` = "cf5be69a-98d3-496f-aed4-deef0d844775",
+            `cftoken` = "0", `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_LV` = "1669922581475", 
+            `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_TC` = "1669922581475", 
+            `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_HC` = "2"),
+        encode = encode)
+
+    full_text <- content(response, "text")
+    if (full_text %>% str_detect('TOCOLOR\\\\+":1')) {
+        no_data <- F
+      } else {
+        outlook <- outlook - 1
+    }
+  }
+  
+  if (!identical(full_text, prev_text)) {
+    file_name <- paste0("output/inputs-archive/fao-wfp-web/hunger-hotspots-", outlook, "-", Sys.Date(), ".txt")
+    cat(full_text, file = file_name)
+  }
+}
+
+fao_wfp_web_process <- function(as_of) {
+  full_text <- read_most_recent("output/inputs-archive/fao-wfp-web/", FUN = read_file, as_of = as_of, return_date = T, return_name = T)
+
+  divs <- full_text %>% 
+      str_extract_all("<div style.*?NSTARRED....") %>%
+      unlist() %>%
+      str_replace_all("\\\\+t", "") %>%
+      str_replace_all("\\\\+r", "") %>%
+      str_replace_all("\\\\+n", "") %>%
+      str_replace_all("\\\\\\+", "")
+
+  hotspots <- lapply(divs, function(d) {
+      country <- str_extract(d, 'fas fa-square\\\\*"></i>.*?<div') %>%
+          str_extract("(?<=</span>).*?(?=</div>)")
+      color <- str_match(d, " color: rgb.?\\(([0-9, ]+)\\)")[2]
+      red <- str_extract(color, "^[0-9]+") %>% as.numeric()
+      concern <- if (red == 11) "highest" else if (red == 16) "very high" else if (red == 0) "high" else warning("No class assigned to color")
+      # ipc <- str_extract_all(d, "IPC/CH.*?(?=<div style)") %>%
+      #     lapply(function(s) {
+      #         phase <- str_match(s, "IPC/CH PHASE (.)")[2]
+      #         numbers <- str_match(s, "number.*?(\\d+\\.\\d).*?<div>.*?([A-Za-z]+)")
+      #         pop <- paste(numbers[,2], numbers[,3])
+      #         return(c("IPC" = phase, "pop" = pop))
+      #     })
+      return(c('Country' = country, 'Color' = color, 'F_FAO_WFP_Concern' = concern))
+  }) %>% bind_rows() %>%
+  mutate(Countryname = Country, Country = name2iso(Countryname), .before = 1) %>%
+  mutate(F_FAO_WFP_Hunger_Hotspot = case_when(
+    F_FAO_WFP_Concern == "highest" ~ 10,
+    F_FAO_WFP_Concern == "very high" ~  9,
+    F_FAO_WFP_Concern == "high" ~  8
+  ))
+
+  return(hotspots)
+  # food <- full_join(fews, hotspots, by = "Country") %>%
+  #   select(Country, F_fews_crm_norm, F_FAO_WFP_Hunger_Hotspot)
+
+  # ggplot(food) + ggrepel::geom_text_repel(aes(x = F_fews_crm_norm, y = F_FAO_WFP_Hunger_Hotspot, label = Country)) +
+  #  ggh4x::force_panelsizes(rows = unit(6, "in"), cols = unit(6, "in"))
+}
+
 #### MACRO
 
 mfr_watchlist_collect <- function() {

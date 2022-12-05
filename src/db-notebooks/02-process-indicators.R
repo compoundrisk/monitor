@@ -95,7 +95,7 @@ food_sheet <- aggregate_dimension(
   proteus_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   fews_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   fpi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  fao_wfp_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
+  fao_wfp_web_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(food_sheet, "food-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Food sheet is aggregated and saved.")
 
@@ -179,6 +179,7 @@ write.csv(ifrc_process(as_of = as_of), "hosted-data/ifrc-epidemics-temp.csv", ro
 write.csv(acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_"), "hosted-data/acaps-socio-temp-auto.csv", row.names = F)
 write.csv(acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_"), "hosted-data/acaps-natural-temp-auto.csv", row.names = F)
 write.csv(acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_"), "hosted-data/acaps-conflict-temp-auto.csv", row.names = F)
+write.csv(fao_wfp_web_process(as_of), "hosted-data/fao-wfp-hunger-hotspots-temp.csv", row.names = F)
 
 # COMMAND ----------
 
