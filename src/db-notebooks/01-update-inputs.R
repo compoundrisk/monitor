@@ -126,7 +126,3 @@ acled_collect() %>% delay_error(return = NA, on = error_delay)
 gic_collect() %>% delay_error(return = NA, on = error_delay)
 ifes_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Fragility dimension finished collecting")
-
-# COMMAND ----------
-
-release_delayed_errors()

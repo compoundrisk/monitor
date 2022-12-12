@@ -795,11 +795,7 @@ dons_collect <- function() {
            country = trimws(sub(".*-", "", country)),
            date = dmy(date)) %>%
     separate_rows(country, sep = ",") %>%
-    mutate(who_country_alert = countrycode(country,
-                                           origin = "country.name",
-                                           destination = "iso3c",
-                                           nomatch = NULL
-    ))
+    mutate(who_country_alert = name2iso(country))
   
   archiveInputs(who_dons, group_by = NULL)
 }
@@ -932,12 +928,7 @@ proteus_collect <- function() {
   proteus <- proteus %>%
     rename(F_Proteus_Score = Proteus.index) %>%
     dplyr::select(-X) %>%
-    mutate(
-      Country = countrycode(Country,
-                            origin = "country.name",
-                            destination = "iso3c",
-                            nomatch = NULL
-      ))
+    mutate(Country = name2iso(Country))
   
   archiveInputs(proteus, group_by = c("Country"))
 }
@@ -1142,10 +1133,7 @@ fpi_process <- function (as_of) {
 fao_wfp_collect <- function() {
   fao_wfp <- read_csv("hosted-data/fao-wfp/fao-wfp.csv", col_types = cols())
   fao_wfp <- fao_wfp %>%
-    mutate(Country = countrycode(Country,
-                                 origin = "country.name",
-                                 destination = "iso3c",
-                                 nomatch = NULL))
+    mutate(Country = name2iso(Country))
   
   fao_all <- countrylist
   fao_all[fao_all$Country %in% fao_wfp$Country,"F_fao_wfp_warning"] <- 10
@@ -1787,15 +1775,17 @@ gdacs_process <- function(as_of) {
       T ~ paste(parse_date_time(date, orders = c("dmy")))
     ))
   
-  # Remove duplicate countries for drought
-  # Once I started processing country names in gdacs_collect() I also separated droughts in gdacs_collect()
-  # I don't need to do this if country values are not NA. Some country values may still be NA if they don't match a country
-  if (!any(!is.na(gdaclist$country))) {
-    add <- gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]
-    gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names <- sub("-.*", "", gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names)
-    add$names <- sub(".*-", "", add$names)
-    gdaclist <- rbind(gdaclist, add)
-  }
+  # Removed because I now handle event names with multiple country names with names2iso()
+  # # Remove duplicate countries for drought
+  # # Once I started processing country names in gdacs_collect() I also separated droughts in gdacs_collect()
+  # # I don't need to do this if country values are not NA. Some country values may still be NA if they don't match a country
+  # if (!any(!is.na(gdaclist$country))) {
+  #   # Select drought events with a dash in the name
+  #   add <- gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]
+  #   gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names <- sub("-.*", "", gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names)
+  #   add$names <- sub(".*-", "", add$names)
+  #   gdaclist <- rbind(gdaclist, add)
+  # }
   
   # Drought orange
   # UPDATE? Does this need to now be 2021?
@@ -1805,11 +1795,11 @@ gdacs_process <- function(as_of) {
   # gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2021", "active", gdaclist$status)
   # gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2022", "active", gdaclist$status)
   
-  # Country names
-  if (!any(!is.na(gdaclist$country))) {
-    gdaclist$country <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
-    gdaclist$namesfull <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c", nomatch = NULL))
-  }
+  # # Country names
+  # if (!any(!is.na(gdaclist$country))) {
+  #   gdaclist$country <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
+  #   gdaclist$namesfull <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c", nomatch = NULL))
+  # }
 
   # Create subset
   gdacs <- gdaclist %>%
@@ -1878,13 +1868,13 @@ iri_collect <- function(as_of = Sys.Date()) {
   # # library(RColorBrewer)
   # library(exactextractr)
   
-  is_diff_month <- function(s) {
-    m <- str_replace(s, ".*20..-(..)-...tif.*", "\\1")
-    return(m != format(Sys.Date(), "%m"))
-  }
-  expect_new <- 
-    read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = is_diff_month, as_of = as_of) &
-    as.numeric(format(as_of, "%d")) >= 15
+  # is_diff_month <- function(s) {
+  #   m <- str_replace(s, ".*20..-(..)-...tif.*", "\\1")
+  #   return(m != format(Sys.Date(), "%m"))
+  # }
+  # expect_new <- 
+  #   read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = is_diff_month, as_of = as_of) &
+  #   as.numeric(format(as_of, "%d")) >= 15
   
   if (expect_new) {
     
@@ -1892,7 +1882,7 @@ iri_collect <- function(as_of = Sys.Date()) {
                      c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
     
     curl_iri <- function(x) {
-      iri_date <- paste0('?F=', format(as_of, "%b%%20%Y"))
+      iri_date <- if (format(as_of, "%d") >= 15) paste0('?F=', format(as_of, "%b%%20%Y")) else paste0('?F=', format(as_of - 30, "%b%%20%Y"))
       dest_file <- x[[1]]
       iri_curl <- paste0('curl -g -k -b "', paste_path(mounted_path, '.access/iri-access.txt'), '" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
       system(iri_curl)
@@ -2015,7 +2005,7 @@ iri_process <- function(
   if (include_area) {
     countries <- rbind(zeros, countries)
   }
-  
+
   if(drop_geometry) {
     countries <- countries %>% st_drop_geometry()
   }
@@ -2436,14 +2426,8 @@ reign_process <- function(as_of) {
     filter(year == max(year, na.rm= T)) %>%
     group_by(country) %>%
     slice(which.max(month)) %>%
-    dplyr::select(country, month, pt_suc, pt_attempt, delayed, irreg_lead_ant, anticipation) %>%
-    mutate(
-      country = countrycode(country,
-                            origin = "country.name",
-                            destination = "iso3c",
-                            nomatch = NULL
-      )) %>%
-    rename(Country = country)
+    dplyr::select(Country = country, month, pt_suc, pt_attempt, delayed, irreg_lead_ant, anticipation) %>%
+    mutate(country = name2iso(Country))
   
   # Add FSI/BRD threshold (BRD is battle-related deaths)
   reign <- left_join(reign_start, fcs %>% dplyr::select(Country, FCS_normalised), by = "Country") %>%
@@ -2580,7 +2564,7 @@ ifes_collect <- function() {
 ifes <- bind_rows(ifes_upcoming, ifes_past) %>% 
     mutate(Countryname = Country,
             office = `Election for`,
-            date = str_extract(`Date*`, ".*\\d\\d\\d\\d"),
+            date = str_extract(`Date`, ".*\\d\\d\\d\\d"),
             date = as.Date(date, format = "%b %d, %Y"),
             status = Status,
             election_type = NULL,

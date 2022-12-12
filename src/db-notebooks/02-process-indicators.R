@@ -228,7 +228,7 @@ multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, ar
 dashboard_crisis <- label_crises(dashboard_data)
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
 # write.csv(dashboard_crisis, paste_path(mounted_path, "staging/crm-dashboard-stg.csv"), row.names = F)
-write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)
+# write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)
 
 # track_indicator_updates()
 # I've already written this. Do I still use it? My concern is that its reliance 
