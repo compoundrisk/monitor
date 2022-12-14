@@ -1876,34 +1876,32 @@ iri_collect <- function(as_of = Sys.Date()) {
   #   read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = is_diff_month, as_of = as_of) &
   #   as.numeric(format(as_of, "%d")) >= 15
   
-  if (expect_new) {
     
-    iri_urls <- list(c('forecast', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.FD/.NMME_Seasonal_Forecast/.Precipitation_ELR/Y/-85/85/RANGE/X/-180/180/RANGEEDGES/a:/.dominant/:a:/.target_date/:a/X/Y/fig-/colors/plotlabel/black/thin/coasts_gaz/thin/countries_gaz/-fig/(L)cvn/1.0/plotvalue/(F)cvn/last/plotvalue/(antialias)cvn/true/psdef/(framelabel)cvn/(%=[target_date]%20IRI%20Seasonal%20Precipitation%20Forecast%20issued%20%=[F])psdef/(dominant)cvn/-100.0/100.0/plotrange/(plotaxislength)cvn/590/psdef/(plotborderbottom)cvn/40/psdef/(plotbordertop)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'),
-                     c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
-    
-    curl_iri <- function(x) {
-      iri_date <- if (format(as_of, "%d") >= 15) paste0('?F=', format(as_of, "%b%%20%Y")) else paste0('?F=', format(as_of - 30, "%b%%20%Y"))
-      dest_file <- x[[1]]
-      iri_curl <- paste0('curl -g -k -b "', paste_path(mounted_path, '.access/iri-access.txt'), '" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
-      system(iri_curl)
-      iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
-      return(T)
-    }
-    
-    lapply(iri_urls, curl_iri)
-    
-    # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
-    continuity_new <- raster("tmp-continuity.tiff")
-    continuity_old <- read_most_recent(paste_path(inputs_archive_path, "iri/continuity"), FUN = raster, as_of = as_of)
-    if(!identical(values(continuity_new), values(continuity_old))) {
-      file.rename("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
-    }
-    
-    forecast_new <- raster("tmp-forecast.tiff")
-    forecast_old <- read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = raster, as_of = as_of)
-    if(!identical(values(forecast_new), values(forecast_old))) {
-      file.rename("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
-    }
+  iri_urls <- list(c('forecast', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.FD/.NMME_Seasonal_Forecast/.Precipitation_ELR/Y/-85/85/RANGE/X/-180/180/RANGEEDGES/a:/.dominant/:a:/.target_date/:a/X/Y/fig-/colors/plotlabel/black/thin/coasts_gaz/thin/countries_gaz/-fig/(L)cvn/1.0/plotvalue/(F)cvn/last/plotvalue/(antialias)cvn/true/psdef/(framelabel)cvn/(%=[target_date]%20IRI%20Seasonal%20Precipitation%20Forecast%20issued%20%=[F])psdef/(dominant)cvn/-100.0/100.0/plotrange/(plotaxislength)cvn/590/psdef/(plotborderbottom)cvn/40/psdef/(plotbordertop)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'),
+                    c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
+  
+  curl_iri <- function(x) {
+    iri_date <- if (format(as_of, "%d") >= 15) paste0('?F=', format(as_of, "%b%%20%Y")) else paste0('?F=', format(as_of - 30, "%b%%20%Y"))
+    dest_file <- x[[1]]
+    iri_curl <- paste0('curl -g -k -b "', paste_path(mounted_path, '.access/iri-access.txt'), '" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
+    system(iri_curl)
+    iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
+    return(T)
+  }
+  
+  lapply(iri_urls, curl_iri)
+  
+  # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
+  continuity_new <- raster("tmp-continuity.tiff")
+  continuity_old <- read_most_recent(paste_path(inputs_archive_path, "iri/continuity"), FUN = raster, as_of = as_of)
+  if(!identical(values(continuity_new), values(continuity_old))) {
+    file.rename("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
+  }
+  
+  forecast_new <- raster("tmp-forecast.tiff")
+  forecast_old <- read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = raster, as_of = as_of)
+  if(!identical(values(forecast_new), values(forecast_old))) {
+    file.rename("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
   }
 }
 
