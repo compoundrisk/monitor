@@ -61,6 +61,13 @@ dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions", ret
 
 # COMMAND ----------
 
+# For while we process a firewall request for ACAPS risk list and IFRC
+# write.csv(ifrc_process(as_of = as_of), "hosted-data/ifrc-epidemics-temp.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_"), "hosted-data/acaps-socio-temp-auto.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_"), "hosted-data/acaps-natural-temp-auto.csv", row.names = F)
+write.csv(acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_"), "hosted-data/acaps-conflict-temp-auto.csv", row.names = F)
+# write.csv(fao_wfp_web_process(as_of), "hosted-data/fao-wfp-hunger-hotspots-temp.csv", row.names = F)
+
 # COMMAND ----------
 
 # HEALTH
@@ -135,7 +142,8 @@ socio_sheet <- aggregate_dimension(
   # phone_process(as_of = as_of),
   # Fix warnings
   imf_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_") %>% delay_error(return = NA, on = error_delay))
+  # acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_") %>% delay_error(return = NA, on = error_delay))
+  read_csv("hosted-data/acaps-socio-temp.csv"))
 multi_write.csv(socio_sheet, "socio-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Socio sheet is aggregated and saved.")
 
@@ -151,7 +159,8 @@ natural_hazards_sheet <- aggregate_dimension(
   iri_process(drop_geometry = T, as_of = as_of) %>% delay_error(return = NA, on = error_delay), # Rename iri_forecast)
   locust_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acaps_category_process(as_of, category = "natural", prefix = "NH_") %>% delay_error(return = NA, on = error_delay),
-  acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_") %>% delay_error(return = NA, on = error_delay))
+  # acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_") %>% delay_error(return = NA, on = error_delay))
+  read_csv("hosted-data/acaps-natural-temp.csv"))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Natural hazards sheet is aggregated and saved.")
 
@@ -168,18 +177,12 @@ fragility_sheet <- aggregate_dimension(
   acled_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acled_events_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   eiu_security_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_") %>% delay_error(return = NA, on = error_delay),
+  # acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_") %>% delay_error(return = NA, on = error_delay),
+  read_csv("hosted-data/acaps-conflict-temp.csv"),
   # reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)),
   pseudo_reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Fragility sheet is aggregated and saved.")
-
-# For while we process a firewall request for ACAPS risk list and IFRC
-write.csv(ifrc_process(as_of = as_of), "hosted-data/ifrc-epidemics-temp.csv", row.names = F)
-write.csv(acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_"), "hosted-data/acaps-socio-temp-auto.csv", row.names = F)
-write.csv(acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_"), "hosted-data/acaps-natural-temp-auto.csv", row.names = F)
-write.csv(acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_"), "hosted-data/acaps-conflict-temp-auto.csv", row.names = F)
-write.csv(fao_wfp_web_process(as_of), "hosted-data/fao-wfp-hunger-hotspots-temp.csv", row.names = F)
 
 # COMMAND ----------
 

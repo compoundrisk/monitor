@@ -226,11 +226,14 @@ acaps_process <- function(as_of) {
     selected <- data %>%
       filter(str_detect(tolower(crisis), string)) %>%
       filter(value >= minimum) %>%
-      group_by(Country) %>%
-      summarise(
+      group_by(Country)
+    if (nrow(selected > 0)) {
+     selected <- selected %>%
+        summarise(
         crisis = paste(paste0(crisis, " (", value, ")"), collapse = "; "),
-        value = max(value)) %>%
+        value = max(value, na.rm = T)) %>%
       mutate(category = category, .after = Country)
+    }
     return(selected)
   }
   
@@ -251,7 +254,7 @@ acaps_process <- function(as_of) {
   # Natural hazard countries
   natural_list <- select_acaps_countries(
     acaps_list,
-    string = "flood|drought|cyclone|landslide|earthquake",
+    string = "flood|drought|cyclone|landslide|earthquake|volcan",
     minimum = 3,
     category = "natural")
   
@@ -263,10 +266,10 @@ acaps_process <- function(as_of) {
     category = "health")
   
   acaps_sheet <- bind_rows(conflict_list, food_list, natural_list, health_list) %>%
-    mutate(acaps_risk = case_when(
+    mutate(inform_severity = case_when(
       !is.na(value) ~ 10,
       TRUE ~ 0)) %>%
-    rename(acaps_crisis = crisis)
+    rename(inform_severity_text = crisis)
   
   return(acaps_sheet)
 }
@@ -275,11 +278,11 @@ acaps_category_process <- function(as_of, category, prefix) {
   acaps_sheet <- acaps_process(as_of = as_of)
   
   output <- acaps_sheet[which(acaps_sheet$category == category),] %>%
-    right_join(countrylist) %>%
-    mutate(acaps_risk = case_when(
-      is.na(acaps_risk) ~ 0,
-      TRUE ~ acaps_risk)) %>%
-    dplyr::select(Country, acaps_crisis, acaps_risk) %>%
+    right_join(countrylist, by = "Country") %>%
+    mutate(inform_severity = case_when(
+      is.na(inform_severity) ~ 0,
+      TRUE ~ inform_severity)) %>%
+    dplyr::select(Country, inform_severity, inform_severity_text) %>%
     add_dimension_prefix(prefix)
     
   return(output)
@@ -352,8 +355,15 @@ df$crisis_id <- apply(df, 1, function(r) {
       length(r$iso3) == 1) {
     return((r$crisis_id))
   } else if (length(r$iso3) < length(r$crisis_id)) {
-    print(r$risk_id)
-    stop("Fewer countries in iso3 column than crises in crisis_id column")
+    reg_id <- r$crisis_id %>% subset(str_detect(., "REG")) 
+    r$crisis_id <- r$crisis_id %>% subset(!str_detect(., "REG"))
+      if (length(r$iso3) == length(r$crisis_id) |
+      length(r$iso3) == 1) {
+    return((paste(r$crisis_id, reg_id)))
+  } else if (length(r$iso3) < length(r$crisis_id)) {
+      print(r$risk_id)
+      stop("Fewer countries in iso3 column than crises in crisis_id column")
+  }
   } else if (length(r$iso3) > length(r$crisis_id)) {
   new_row <- data.frame(iso3 = r$iso3) %>%#[[1]]) %>%
     left_join(
@@ -426,6 +436,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix) {
             status != "Not materialised" & last_risk_update >= as_of - 60) %>%
         select(iso3, risk_level, risk_title, rationale, vulnerability, date_entered, last_risk_update, status) %>%
         mutate(
+          risk_text_full = paste(risk_title, rationale, vulnerability, sep = "\\n"),
           # Takes excerpts from vulnerability and rationale columns; ideally would use 
           # across() instead of duplicating for vulnerability and rationale.
           # ALSO, should use str_extract_all instead of str_extract()
@@ -447,10 +458,11 @@ acaps_risk_list_process <- function(as_of, dim, prefix) {
         group_by(iso3) %>%
         summarize(
             acaps_risk_level = max(risk_level),
-            acaps_risk_text = str_replace_all(paste(risk_text, collapse = " | "), "\\n", " ")
+            acaps_risk_text = str_replace_all(paste(risk_text, collapse = " | "), "\\n", " "),
+            acaps_risk_text_full = str_replace_all(paste(risk_text_full, collapse = " | "), "\\n", " ")
         ) %>%
         right_join(countrylist, by = c("iso3" = "Country")) %>%
-        select(-Countryname) %>%
+        # select(-Countryname) %>%
         arrange(iso3) %>%
         rename(Country = iso3) %>%
         add_dimension_prefix(prefix)
@@ -790,8 +802,8 @@ dons_collect <- function() {
     url = dons_urls,
     declared_over
   ) %>%
-    mutate(disease = trimws(sub("\\s[-——ｰ].*", "", text)),
-           country = trimws(sub(".*[-——ｰ]", "", text)),
+    mutate(disease = trimws(sub("\\s[-——ｰ–].*", "", text)),
+           country = trimws(sub(".*[-——ｰ–]", "", text)),
            country = trimws(sub(".*-", "", country)),
            date = dmy(date)) %>%
     separate_rows(country, sep = ",") %>%
@@ -1885,35 +1897,35 @@ iri_collect <- function(as_of = Sys.Date()) {
   #   read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = is_diff_month, as_of = as_of) &
   #   as.numeric(format(as_of, "%d")) >= 15
   
-  if (expect_new) {
+  # if (expect_new) {
     
-    iri_urls <- list(c('forecast', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.FD/.NMME_Seasonal_Forecast/.Precipitation_ELR/Y/-85/85/RANGE/X/-180/180/RANGEEDGES/a:/.dominant/:a:/.target_date/:a/X/Y/fig-/colors/plotlabel/black/thin/coasts_gaz/thin/countries_gaz/-fig/(L)cvn/1.0/plotvalue/(F)cvn/last/plotvalue/(antialias)cvn/true/psdef/(framelabel)cvn/(%=[target_date]%20IRI%20Seasonal%20Precipitation%20Forecast%20issued%20%=[F])psdef/(dominant)cvn/-100.0/100.0/plotrange/(plotaxislength)cvn/590/psdef/(plotborderbottom)cvn/40/psdef/(plotbordertop)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'),
-                     c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
-    
-    curl_iri <- function(x) {
-      iri_date <- if (format(as_of, "%d") >= 15) paste0('?F=', format(as_of, "%b%%20%Y")) else paste0('?F=', format(as_of - 30, "%b%%20%Y"))
-      dest_file <- x[[1]]
-      iri_curl <- paste0('curl -g -k -b "', paste_path(mounted_path, '.access/iri-access.txt'), '" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
-      system(iri_curl)
-      iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
-      return(T)
-    }
-    
-    lapply(iri_urls, curl_iri)
-    
-    # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
-    continuity_new <- raster("tmp-continuity.tiff")
-    continuity_old <- read_most_recent(paste_path(inputs_archive_path, "iri/continuity"), FUN = raster, as_of = as_of)
-    if(!identical(values(continuity_new), values(continuity_old))) {
-      file.rename("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
-    }
-    
-    forecast_new <- raster("tmp-forecast.tiff")
-    forecast_old <- read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = raster, as_of = as_of)
-    if(!identical(values(forecast_new), values(forecast_old))) {
-      file.rename("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
-    }
+  iri_urls <- list(c('forecast', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.FD/.NMME_Seasonal_Forecast/.Precipitation_ELR/Y/-85/85/RANGE/X/-180/180/RANGEEDGES/a:/.dominant/:a:/.target_date/:a/X/Y/fig-/colors/plotlabel/black/thin/coasts_gaz/thin/countries_gaz/-fig/(L)cvn/1.0/plotvalue/(F)cvn/last/plotvalue/(antialias)cvn/true/psdef/(framelabel)cvn/(%=[target_date]%20IRI%20Seasonal%20Precipitation%20Forecast%20issued%20%=[F])psdef/(dominant)cvn/-100.0/100.0/plotrange/(plotaxislength)cvn/590/psdef/(plotborderbottom)cvn/40/psdef/(plotbordertop)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'),
+                    c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
+  
+  curl_iri <- function(x) {
+    iri_date <- if (format(as_of, "%d") >= 15) paste0('?F=', format(as_of, "%b%%20%Y")) else paste0('?F=', format(as_of - 30, "%b%%20%Y"))
+    dest_file <- x[[1]]
+    iri_curl <- paste0('curl -g -k -b "', paste_path(mounted_path, '.access/iri-access.txt'), '" "', x[[2]], iri_date, '" > tmp-', dest_file, '.tiff')
+    system(iri_curl)
+    iri_exists <- !grepl(404, suppressWarnings(readLines(paste0('tmp-', dest_file, ".tiff"), 1)))
+    return(T)
   }
+  
+  lapply(iri_urls, curl_iri)
+  
+  # It would be faster to just place and name the file correctly the first time, and then remove it if duplicate
+  continuity_new <- raster("tmp-continuity.tiff")
+  continuity_old <- read_most_recent(paste_path(inputs_archive_path, "iri/continuity"), FUN = raster, as_of = as_of)
+  if(!identical(values(continuity_new), values(continuity_old))) {
+    file.rename("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
+  }
+  
+  forecast_new <- raster("tmp-forecast.tiff")
+  forecast_old <- read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = raster, as_of = as_of)
+  if(!identical(values(forecast_new), values(forecast_old))) {
+    file.rename("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
+  }
+  # }
 }
 
 iri_process <- function(
@@ -2015,7 +2027,6 @@ iri_process <- function(
     countries <- rbind(zeros, countries)
   }
 
-  
   if(drop_geometry) {
     countries <- countries %>% st_drop_geometry()
   }
@@ -2291,6 +2302,7 @@ acled_process <- function(as_of) {
       month_yr = as.yearmon(date)
     ) %>%
     filter(month_yr >= three_year) %>%
+    filter(event_type != "Strategic developments") %>%
     # Remove dates for the latest month (or month that falls under the prior 6 weeks)
     # Is there a way to still acknowledge countries with high fatalities in past 6 weeks?
     filter(month_yr <= as.yearmon(as_of - 45)) %>% 
@@ -2298,7 +2310,7 @@ acled_process <- function(as_of) {
     summarise(fatal_month = sum(fatalities, na.rm = T),
               fatal_month_log = log(fatal_month + 1),
               .groups = "drop_last") %>%
-    mutate(fatal_3_month = fatal_month + lag(fatal_month, na.rm= T) + lag(fatal_month, 2, na.rm= T),
+    mutate(fatal_3_month = fatal_month + lag(fatal_month) + lag(fatal_month, 2),
            fatal_3_month_log = log(fatal_3_month + 1)) %>%
     mutate(
       fatal_z = (fatal_3_month_log - mean(fatal_3_month_log, na.rm = T)) / sd(fatal_3_month_log, na.rm = T),
@@ -2350,13 +2362,13 @@ acled_events_process <- function(as_of) {
         subset(event_date > (friday - 360) & event_date <= friday)
 
     acled_year <- acled %>%
-        subset(event_type != "Violence against civilians") %>%
+        # subset(event_type != "Violence against civilians") %>%
         group_by(iso3) %>%
         summarize(events_month_avg = n() / 12)
 
     acled_month <- acled %>%
         subset(event_date >= friday - 30) %>%
-      subset(event_type != "Violence against civilians") %>%
+      # subset(event_type != "Violence against civilians") %>%
         group_by(iso3) %>%
         summarize(events_1_month = n())
 
@@ -2584,11 +2596,15 @@ ifes <- bind_rows(ifes_upcoming, ifes_past) %>%
   archiveInputs(ifes, group_by = NULL)
 
   #   # Using the API
-  # 2022-08-10 Learned that while the url is elections_demo it is in fact the current data
-  # ifes_data <- system("curl -X GET https://electionguide.org/api/v1/elections_demo/ -H 'Authorization: Token 6233e188716a27eb8d26668fea3a068d4c067b85'",
+  # # 2022-08-10 Learned that while the url is elections_demo it is in fact the current data
+  # ifes_data <- system(paste0("curl -X GET https://electionguide.org/api/v1/elections_demo/ -H 'Authorization: Token ", readLines(".access/ifes-authorization.txt", warn = F),"'"),
   #  intern = T) %>%
   #  fromJSON()
 
+  # str(ifes_data, max.levels = 1)
+
+
+  # ifes_data %>% str()
   # ifes_meta <- system("curl -X GET https://electionguide.org/api/v1/metadata/ -H 'Authorization: Token 6233e188716a27eb8d26668fea3a068d4c067b85'",
   #  intern = T) %>%
   #  fromJSON()

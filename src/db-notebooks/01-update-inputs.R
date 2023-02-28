@@ -21,14 +21,14 @@ if (dir.exists("/dbfs")) {
     mounted_path <- ""
     working_path <- ""
   }
-
-# Until I also add the output repository, output folder resides on mounted storage
-inputs_archive_path <- paste_path(mounted_path, "output/inputs-archive/")
   
 # COMMAND ----------
 
 source("src/fns/prep.R")
 source("src/fns/indicators.R")
+
+# Until I also add the output repository, output folder resides on mounted storage
+inputs_archive_path <- paste_path(mounted_path, "output/inputs-archive/")
 
 # if run is a job, save files to "output/scheduled"; if manually, save to "output/manual"
 run_type <- tryCatch(dbutils.widgets.get("run_type"), error = function(e) {return("manual")})
