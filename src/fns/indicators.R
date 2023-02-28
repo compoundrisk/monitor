@@ -1171,7 +1171,7 @@ fao_wfp_process <- function(as_of) {
 
 fao_wfp_web_collect <- function() {
 
-  prev <- read_most_recent("output/inputs-archive/fao-wfp-web/", FUN = read_file, as_of = Sys.Date(), return_date = T, return_name = T)
+  prev <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"), FUN = read_file, as_of = Sys.Date(), return_date = T, return_name = T)
   prev_text <- prev$data
   prev_outlook <- prev$name %>% str_match("hunger-hotspots-(\\d\\d)") %>% .[[2]] %>% as.numeric
   outlook <- prev_outlook + 1
@@ -1209,14 +1209,14 @@ fao_wfp_web_collect <- function() {
     }
   }
   
-  if (!identical(full_text, prev_text)) {
-    file_name <- paste0("output/inputs-archive/fao-wfp-web/hunger-hotspots-", outlook, "-", Sys.Date(), ".txt")
+  if (!identical(full_text, prev_text) & !no_data) {
+    file_name <- paste_path(inputs_archive_path, paste0("fao-wfp-web/hunger-hotspots-", outlook, "-", Sys.Date(), ".txt"))
     cat(full_text, file = file_name)
   }
 }
 
 fao_wfp_web_process <- function(as_of) {
-  full_text <- read_most_recent("output/inputs-archive/fao-wfp-web/", FUN = read_file, as_of = as_of, return_date = T, return_name = T)
+  full_text <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"), FUN = read_file, as_of = as_of, return_date = T, return_name = T)
 
   divs <- full_text %>% 
       str_extract_all("<div style.*?NSTARRED....") %>%
