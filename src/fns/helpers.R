@@ -180,7 +180,18 @@ dictionary <- c(
     "türkiye" = "TUR",
     "Turkiye" = "TUR",
     "turkiye" = "TUR"))
-dictionary <- dictionary[unique(names(dictionary))]  
+dictionary <- dictionary[unique(names(dictionary))]
+
+# multi_country_dictionary <- list(
+#   "Sahel" = c("BFA", "CMR", "TCD", "MLI", "MRT", "NER", "NGA", "SEN", "GMB"),
+#   "Central America" = name2iso(c('Guatemala', 'Belize', 'Honduras', 'El Salvador', 'Nicaragua', 'Costa Rica', 'Panama'))
+# )
+multi_country_dictionary <- c(
+  # The %% marks either end of the string, and is removed later on 
+  "sahel" = paste("BFA", "CMR", "TCD", "MLI", "MRT", "NER", "NGA", "SEN", "GMB", sep = ", ") %>% {paste0("%%", ., "%%")},
+  "central america" = paste("GTM", "BLZ", "HND", "SLV", "NIC", "CRI", "PAN", sep = ", ") %>% {paste0("%%", ., "%%")})
+
+
 
     name2iso_internal <- function(v) {
     names <- countrycode::countrycode(v, destination = "iso3c", origin = "country.name", custom_match = dictionary)
@@ -257,6 +268,20 @@ dictionary <- dictionary[unique(names(dictionary))]
         subset(isos != "")
 
       output[as.numeric(multiple_isos$index)] <- multiple_isos$isos
+
+      # Look for region or country groups, eg. Sahel or Central America
+      output_groups <- str_replace_all(v, multi_country_dictionary) %>% str_extract("%%([A-Z]{3},? ?)*%%") %>% str_extract("[^%]+")
+
+      output <- sapply(seq_along(output), function(i) {
+        if (is.na(output[i])) {
+          output_groups[i]
+        } else if (is.na(output_groups[i])) { 
+          output[i]
+        } else {
+          paste(output[i], output_groups[i], sep = ", ")
+        }
+        })
+
       # print("Dev Note: Edit this function to identify which of the matches that name2iso couldn't match were matched by name2match multiple_matches = T")
       return(output)
   }
@@ -425,8 +450,10 @@ bind_cols_fill <- function(df1, df2, fill = NA) {
 vstring <- function(string, sep = "%%") {
   vars <- stringr::str_extract_all(string, "%%[^(%%)]*%%", simplify = T)
   reps <- sapply(vars, function(v) {
-    as.character(eval(parse(text = stringr::str_extract(v, "[^(%%)].+[^(%%)]"))))
+    rep <- as.character(eval(parse(text = stringr::str_extract(v, "[^(%%)].+[^(%%)]"))))
+    if (length(rep) == 0) {rep <- "-"} else {rep}
   })
+  names(reps) <- str_replace_all(names(reps), "([\\[\\]\\(\\)\\$])", "\\\\\\1")
   string <- stringr::str_replace_all(string, reps)
   return(string)
 }
@@ -439,4 +466,8 @@ paste_and <- function(v) {
     paste(head(v, -1), collapse = ", ") %>%
     paste("and", tail(v, 1))
   }
+}
+
+duplicated2way <- duplicated_all <- function(x) {
+  duplicated(x) | duplicated(x, fromLast = T)
 }

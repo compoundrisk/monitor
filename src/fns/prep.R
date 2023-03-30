@@ -20,7 +20,7 @@ lapply(packages, function(p) {
   # if (!require(p, character.only = T, quietly = T)) {
   #   install.packages(p, lib = "lib")
   # }
-  library(p, character.only = T, quietly = T)
+  suppressMessages(library(p, character.only = T, quietly = T))
 })
 
 #loading dplyr last to prevent masking select()

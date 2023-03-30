@@ -1394,7 +1394,8 @@ eiu_process <- function(as_of) {
 #---------------------------—Alternative socio-economic data (based on INFORM)
 inform_socio_process <- function(as_of) {
   inform_risk <- loadInputs("inform_risk", group_by = c("Country"), 
-    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcDddddcd")
+    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcDddddcd") %>%
+    distinct()
   
   inform_data <- inform_risk %>%
     dplyr::select(Country, "Socio-Economic Vulnerability") %>%
@@ -1867,7 +1868,8 @@ inform_risk_collect <- function() {
 
 inform_nathaz_process <- function(as_of) {
   inform_risk <- loadInputs("inform_risk", group_by = c("Country"),
-    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcDddddcd")
+    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcDddddcd") %>%
+    distinct()
   # Rename country
   informnathaz <- inform_risk %>%
     dplyr::select(Country, Natural) %>%
@@ -2253,15 +2255,19 @@ acled_collect <- function() {
   # Get ACLED API URL
   acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
                       three_year,
-                      "&event_date_where=>&fields=event_id_cnty|iso3|fatalities|event_type|event_date&limit=0")
+                      "&event_date_where=>&fields=event_id_cnty|iso|fatalities|event_type|event_date&limit=0")
   
   # Retrieve information
   acled_data <- fromJSON(acled_url)
   
   acled <- acled_data$data %>%
     mutate(iso = as.numeric(iso),
+        iso3 = countrycode(iso, origin = "iso3n", destination = "iso3c"),
+        iso3b = substr(event_id_cnty, 1, 3),
+        iso3 = case_when(is.na(iso3) ~ iso3b, T ~ iso3),
         fatalities = as.numeric(fatalities),
         event_date = as.Date(event_date)) %>%
+    select(-iso3b) %>%
     subset(fatalities > 0)
   
   # # DELETE for first time only

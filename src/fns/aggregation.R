@@ -390,7 +390,7 @@ pretty_col_names <- function(data) {
       },
       .cols = any_of(indicators_list$indicator_slug)) %>%
     rename_with(
-      .cols = any_of(paste0(unlist(strsplit(indicators_list$indicator_raw_slug[c(1:5,28:6)], ", ")), "_raw")),
+      .cols = any_of(paste0(unlist(strsplit(indicators_list$indicator_raw_slug, ", ")), "_raw")),
       .fn = function(x) {
         # Unnest multi-value cells (for indicators that use multiple raw variables)
         df <- indicators_list %>% 
@@ -554,7 +554,6 @@ factorize_columns <- function(data) {
         Countryname = ordered(Countryname, levels = sort(unique(Countryname))),
         `Data Level` = ordered(`Data Level`, c("Flag Count", "Dimension Value", "Indicator", "Raw Indicator Data", "Reliability")),  
         `Display Status` = factor(`Display Status`))
-        Indicator = 
   return(data)
 }
 
@@ -570,14 +569,21 @@ create_id <- function(data) {
   country_numbers <- read.csv("src/country-numbers.csv")
   country_numbers_vector <- as.character(country_numbers$number)
   names(country_numbers_vector) <- country_numbers$country
+  multi_raw_indicator_ids <- indicators_list$indicator_id[indicators_list$indicator_raw_slug %>% str_detect(",")]
+  separated_indicators <- separate_rows(indicators_list, indicator_raw_slug, sep = ",") %>%
+    mutate(Indicator = case_when(
+      indicator_id %in% multi_raw_indicator_ids ~ paste0(Indicator, " (", trimws(indicator_raw_slug), ")"),
+      T ~ Indicator
+    ))
+
   data <- mutate(data,
     Indicator_ID = case_when(
         `Data Level` == "Indicator" ~ indicators_list$indicator_id[match(Key, indicators_list$Indicator)],
         # TASK: / FIX: This results in multiple raw variables receiving the same 
         `Data Level` == "Raw Indicator Data" ~
-          separate_rows(indicators_list, indicator_raw_slug, sep = ",")$indicator_id[match(sub("(.*) Raw", "\\1", Key), separate_rows(indicators_list, indicator_raw_slug, sep = ",")$Indicator)],
+          separated_indicators$indicator_id[match(sub("(.*) Raw", "\\1", Key), separated_indicators$Indicator)],
           # [match(sub("(.*) Raw", "\\1", Key), separate_rows(indicators_list, indicator_raw_slug, sep = ",")[,"Indicator"]]),
-        TRUE ~ as.integer(0),
+        TRUE ~ 0,
       ),
       Index = as.integer(paste0(
         # leading_zeros(country_numbers$number[country_numbers$country == Country], 3),
@@ -1758,9 +1764,10 @@ quick_scan <- function(
   group_name = NULL,
   file_name,
   outlooks = c("Overall", "Underlying", "Emerging"), pdf = F,
-  dimensions = c("Food Security", "Conflict and Fragility", "Health", "Macro Fiscal", "Natural Hazard", "Socioeconomic Vulnerability")) {
+  dimensions = c("Food Security", "Conflict and Fragility", "Health", "Macro Fiscal", "Natural Hazard", "Socioeconomic Vulnerability"),
+  source_file = 'production/crm-dashboard-prod.csv') {
 
-    data <- read.csv('production/crm-dashboard-prod.csv') #%>%
+    data <- read.csv(source_file) #%>%
         # subset(Run_ID == max(Run_ID))
 
     data <- subset(data, Country %in% countries)
