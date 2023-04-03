@@ -1,4 +1,4 @@
-# Finds the percentile of a given value in a vector 
+# Finds the percentile of a given value in a vector
 reverse_percentile <- function(vector, values, na.rm = F, desc = F) {
     if (na.rm) vector <- subset(vector, !is.na(vector))
     percentiles <- sapply(values, function(x) {
@@ -10,7 +10,7 @@ reverse_percentile <- function(vector, values, na.rm = F, desc = F) {
     return(percentiles)
 }
 
-slugify <- function(x, non_alphanum_replace="", space_replace="_", tolower=TRUE, toupper = FALSE) {
+slugify <- function(x, non_alphanum_replace = "", space_replace = "_", tolower = TRUE, toupper = FALSE) {
   x <- gsub("[^[:alnum:] ]", non_alphanum_replace, x)
   x <- gsub(" ", space_replace, x)
   if (tolower) {
@@ -41,7 +41,7 @@ which_not <- function(v1, v2, swap = F, both = F) {
 }
 
 is_string_number <- function(x, index = F) {
-  if(index) {
+  if (index) {
     out <- grep("[^[:digit:][:punct:]]", x)
   } else {
     out <- grepl("[^[:digit:][:punct:]]", x)
@@ -84,7 +84,7 @@ paste_path <- compiler::cmpfun(function(...) {
 })
 
 multi_write.csv <- compiler::cmpfun(function(data, filename, paths) {
-  for(i in 1:length(paths)) {
+  for (i in seq_along(paths)) {
     write.csv(data, paste_path(paths[i], filename), row.names = F)
   }
 })
@@ -101,7 +101,7 @@ column_differences <- function(df1, df2) {
 
 
 replace_NAs_0 <- function(df, cols) {
-    for(c in cols) {
+    for (c in cols) {
         df <- df %>%
             mutate(
                 !!c := case_when(
@@ -125,6 +125,27 @@ curl_and_delete <- compiler::cmpfun(function(url, FUN, ...) {
 # ...
 # }
 
+get_script_path <- function() {
+  # location of script can depend on how it was invoked:
+  # source() and knit() put it in sys.calls()
+  path <- NULL
+
+  if (!is.null(sys.calls())) {
+    # get name of script - hope this is consisitent!
+    path <- as.character(sys.call(1))[2]
+    # make sure we got a file that ends in .R, .Rmd or .Rnw
+    if (grepl("..+\\.[R|Rmd|Rnw]", path, perl=TRUE, ignore.case = TRUE) )  {
+      return(path)
+    } else {
+      message("Obtained value for path does not end with .R, .Rmd or .Rnw: ", path)
+    }
+  } else{
+    # Rscript and R -f put it in commandArgs
+    args <- commandArgs(trailingOnly = FALSE)
+  }
+  return(path)
+}
+getsd <- function() stringr::str_replace(get_script_path(), "/[^/]*$", "")
 
 define_iso2name <- function() {
 # Writes the iso2name function using the latest country code list
@@ -170,30 +191,45 @@ define_name2iso <- function() {
     warning("`src/country-groups.csv` does not exist and `country_groups` is not defined")
     dictionary <- c()
   }
-dictionary <- c(
+  dictionary <- c(
     dictionary, c(
     "Kosovo" = "XKX",
-    "kosovo" = "XKX",
     "Micronesia" = "FSM",
-    "micronesia" = "FSM",
     "Türkiye" = "TUR",
-    "türkiye" = "TUR",
-    "Turkiye" = "TUR",
-    "turkiye" = "TUR"))
-dictionary <- dictionary[unique(names(dictionary))]
+    "Turkiye" = "TUR"
+    ))
+  dictionary <- dictionary[unique(names(dictionary))]
+  names(dictionary) <- tolower(names(dictionary))
 
-# multi_country_dictionary <- list(
-#   "Sahel" = c("BFA", "CMR", "TCD", "MLI", "MRT", "NER", "NGA", "SEN", "GMB"),
-#   "Central America" = name2iso(c('Guatemala', 'Belize', 'Honduras', 'El Salvador', 'Nicaragua', 'Costa Rica', 'Panama'))
-# )
-multi_country_dictionary <- c(
-  # The %% marks either end of the string, and is removed later on 
-  "sahel" = paste("BFA", "CMR", "TCD", "MLI", "MRT", "NER", "NGA", "SEN", "GMB", sep = ", ") %>% {paste0("%%", ., "%%")},
-  "central america" = paste("GTM", "BLZ", "HND", "SLV", "NIC", "CRI", "PAN", sep = ", ") %>% {paste0("%%", ., "%%")})
+  # multi_country_dictionary <- list(
+  #   "Sahel" = c("BFA", "CMR", "TCD", "MLI", "MRT", "NER", "NGA", "SEN", "GMB"),
+  #   "Central America" = name2iso(c('Guatemala', 'Belize', 'Honduras', 'El Salvador', 'Nicaragua', 'Costa Rica', 'Panama'))
+  # )
+  # multi_country_dictionary <- c(
+  #   # The %% marks either end of the string, and is removed later on
+  #   "sahel" = paste(sort(c("BFA", "CMR", "TCD", "MLI", "MRT", "NER", "NGA", "SEN", "GMB")), collapse = ", ") %>% {paste0("%%", ., "%%")},
+  #   "central america" = paste(sort(c("GTM", "BLZ", "HND", "SLV", "NIC", "CRI", "PAN")), collapse = ", ") %>% {paste0("%%", ., "%%")},
+  #   "[^ls]iberia" = paste(sort(c("ESP", "PRT")), collapse = ", ") %>% {paste0("%%", ., "%%")},
+  #   "north africa" = paste(sort(c("ESH", "MAR", "DZA", "TUN", "LBY", "EGY")), collapse = ", ") %>% {paste0("%%", ., "%%")},
+  #   "central europe" = paste(sort(c(AUT, DEU, HUN, LIE, POL, SVK, SVN, CHE, CZE)), collapse = ", ") %>% {paste0("%%", ., "%%")}
+  #   )
 
+# read.csv("src/region-names.csv") %>%
+#   filter(!is.na(countries) & countries != "") %>%
+#   mutate(isos = name2iso(countries)) %>%
+#   write.csv("src/region-names.csv", row.names = F)
 
+wd <- getwd()
+setwd(getsd())
+setwd("../..")
+multi_country_dictionary_df <- read.csv("src/region-names.csv") %>%
+  mutate(isos = paste0("%%", isos, "%%"))
+multi_country_dictionary <- multi_country_dictionary_df$isos %>%
+  setNames(multi_country_dictionary_df$name)
+rm(multi_country_dictionary_df)
+setwd(wd)
 
-    name2iso_internal <- function(v) {
+  name2iso_internal <- function(v) {
     names <- countrycode::countrycode(v, destination = "iso3c", origin = "country.name", custom_match = dictionary)
     if (is.logical(names)) names <- as.character(names)
     return(names)
@@ -206,89 +242,102 @@ multi_country_dictionary <- c(
   # (It looks both backwards and forwards; otherwise as soon as Guinea was found, Papua
   # New Guinea wouldn't be possibly found.) It then scans each country name to see if its
   # detected within another select country's name. If it is, it's name is removed from the
-  # original list, and the original list is scanned for it again. For example, if the list 
+  # original list, and the original list is scanned for it again. For example, if the list
   # is "Algeria Papua New Guinea", the initial result is "DZA GIN PGA"; but Guinea is within
   # Papua New Guinea, so it is removed: "DZA, "GIN". However, if the original list is
   # "Algeria Guinea Papua New Guinea", the first "Guinea" is removed, but "Guinea" is still
-  # deteced in the list: "DZA GIN PGA" 
+  # deteced in the list: "DZA GIN PGA"
 
-  output <- name2iso_internal(v)
+  V <- v
+  v <- tolower(v)
 
-  if (!any(is.na(output))) {
+  output <- suppressWarnings(name2iso_internal(v))
+  na_index <- which(is.na(output))
+  region_index <- which(stringr::str_detect(v, paste(names(multi_country_dictionary), collapse = "|")))
+  combined_index <- sort(unique(c(na_index, region_index)))
+  # If there are no NAs and no region names detected, just return the output
+  if (length(combined_index) == 0) {
       return(output)
-  } else {
+  }
+  if (length(na_index) > 0) {
       # names <- v[is.na(output)]
-      na_index <- which(is.na(output))
 
       cnames <- setNames(codelist$iso3c, tolower(codelist$country.name.en))
       cnames["kosovo"] <- "XKX"
-      # cnames_no_space <- setNames(cnames, str_replace_all(names(cnames), " ", ""))
+      # cnames_no_space <- setNames(cnames, stringr::str_replace_all(names(cnames), " ", ""))
       cnames_regex <- setNames(codelist$iso3c, codelist$country.name.en.regex)
       cnames_regex["kosovo"] <- "XKX"
-      names(cnames_regex) <- str_replace_all(names(cnames_regex), "\\.(?=[a-z])", ".?")
+      names(cnames_regex) <- stringr::str_replace_all(names(cnames_regex), "\\.(?=[a-z])", ".?")
 
-      names(dictionary) <- tolower(names(dictionary))
-      dictionary_no_space <- setNames(dictionary, str_replace_all(names(dictionary), " ", ""))
-
-      v <- tolower(v)
+      # names(dictionary) <- tolower(names(dictionary))
+      dictionary_no_space <- setNames(dictionary, stringr::str_replace_all(names(dictionary), " ", ""))
 
       multiple_isos <- lapply(na_index, function(n) {
         isos <- c(
               # Look backwards and forwards through multiple dictionaries to find country names
               # Backwards is important so that, eg, Guinea doesn't prevent Papua New Guinea from being found
-              str_replace_all(v[n], cnames),
-              str_replace_all(v[n], rev(cnames)),
-              # str_replace_all(v[n], cnames_no_space),
-              # str_replace_all(v[n], rev(cnames_no_space)),
-              str_replace_all(v[n], cnames_regex),
-              str_replace_all(v[n], rev(cnames_regex)),
-              str_replace_all(v[n], dictionary),
-              str_replace_all(v[n], rev(dictionary)),
-              str_replace_all(v[n], dictionary_no_space),
-              str_replace_all(v[n], rev(dictionary_no_space))) %>%
+              stringr::str_replace_all(v[n], cnames),
+              stringr::str_replace_all(v[n], rev(cnames)),
+              # stringr::str_replace_all(v[n], cnames_no_space),
+              # stringr::str_replace_all(v[n], rev(cnames_no_space)),
+              stringr::str_replace_all(v[n], cnames_regex),
+              stringr::str_replace_all(v[n], rev(cnames_regex)),
+              stringr::str_replace_all(v[n], dictionary),
+              stringr::str_replace_all(v[n], rev(dictionary)),
+              stringr::str_replace_all(v[n], dictionary_no_space),
+              stringr::str_replace_all(v[n], rev(dictionary_no_space))) %>%
               paste(collapse = " ") %>%
-              str_replace_all("[A-Z]{3}[A-Z]+", "") %>%
-              str_extract_all("[A-Z]{3}", simplify = T)  %>% as.vector() %>% unique()
+              stringr::str_replace_all("[A-Z]{3}[A-Z]+", "") %>%
+              stringr::str_extract_all("[A-Z]{3}", simplify = T)  %>% as.vector() %>% unique()
         new_isos <- lapply(seq_along(isos), function(i, data) {
             iso <- data[i]
             name <- iso2name(iso)
             # Check if any country names are part of another country name (eg Guinea in PNG)
-            if (!any(str_detect(iso2name(data[-i]), name))) {
+            if (!any(stringr::str_detect(iso2name(data[-i]), name))) {
                 return (iso)
             } else {
               # Remove the country name; if it is still found, it appears 2x and therefore is actually present
-                if (str_replace(v[n], tolower(name), "") %>% str_detect(tolower(name))) {
+                if (stringr::str_replace(v[n], tolower(name), "") %>% stringr::str_detect(tolower(name))) {
                     return(iso)
                 }
             }}, data = isos) %>%
             unlist() %>% paste(collapse = ", ")
-            warning(paste0(v[n], ": ", new_isos))
+            # warning(paste0(v[n], ": ", new_isos))
             return(c(index = n, isos = new_isos))
-      }) %>% bind_rows() %>% 
+      }) %>% bind_rows() %>%
         subset(isos != "")
 
       output[as.numeric(multiple_isos$index)] <- multiple_isos$isos
-
+    }
+    if (length(region_index) > 0) {
       # Look for region or country groups, eg. Sahel or Central America
-      output_groups <- str_replace_all(v, multi_country_dictionary) %>% str_extract("%%([A-Z]{3},? ?)*%%") %>% str_extract("[^%]+")
+      output_groups <- stringr::str_replace_all(v, multi_country_dictionary) %>% stringr::str_extract("%%([A-Z]{3},? ?)*%%") %>% stringr::str_extract("[^%]+")
 
       output <- sapply(seq_along(output), function(i) {
         if (is.na(output[i])) {
           output_groups[i]
-        } else if (is.na(output_groups[i])) { 
+        } else if (is.na(output_groups[i])) {
           output[i]
         } else {
           paste(output[i], output_groups[i], sep = ", ")
         }
         })
+    }
+
+      message_df <- tibble(Original = V, New = output)[combined_index,]
+      successes <- filter(message_df, !is.na(New))
+      failures <- filter(message_df, is.na(New))
+      if (nrow(successes) > 0) message(paste0(nrow(successes), " items were matched as country groups or multi-country strings:\n"), paste0(capture.output(successes), collapse = "\n"))
+      if (nrow(failures) > 0) warning(paste(nrow(failures), ifelse(nrow(failures) == 1, "item was", "items were"), "not matched\n"), paste0(capture.output(failures), collapse = "\n"))
 
       # print("Dev Note: Edit this function to identify which of the matches that name2iso couldn't match were matched by name2match multiple_matches = T")
       return(output)
   }
-  }
 }
 
+
 name2iso <- define_name2iso()
+rm(define_name2iso)
 
 # FUNCTION TO READ MOST RECENT FILE IN A FOLDER
 # Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
@@ -297,27 +346,33 @@ name2iso <- define_name2iso()
 read_most_recent <- compiler::cmpfun(function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, return_name = F, n = 1) {
     file_names <- list.files(directory_path)
     # Reads the date portion of a filename in the format of acaps-2021-12-13
-    name_dates <- sub(".*(20[[:digit:][:punct:]]+)\\..*", "\\1", file_names) %>%
-        str_replace_all("[:punct:]", "-") %>%
-        as.Date(format = date_format) %>% sort()
-    if (n == "all") n <- length(name_dates)
-    selected_dates <- subset(name_dates, name_dates <= as_of) %>% tail(n)
-    selected_names <- subset(file_names, name_dates <= as_of) %>% tail(n)
+    file_dates <- data.frame(
+      file_names = file_names,
+      name_dates = sub(".*(20[[:digit:][:punct:]]+)\\..*", "\\1", file_names) %>%
+        stringr::str_replace_all("[:punct:]", "-") %>%
+        as.Date(format = date_format)) %>%
+        filter(!is.na(name_dates)) %>%
+        arrange(name_dates)
+    if (n == "all") n <- nrow(file_dates)
+    selected_files <- subset(file_dates, name_dates <= as_of) %>% tail(n)
 
-    data <- lapply(selected_dates, function(date) {
-      most_recent_file <- file_names[which(name_dates == date)]
+    data <- apply(selected_files, 1, function(r) {
+      most_recent_file <- r["file_names"]# file_names[which(name_dates == date)]
       data <- FUN(paste_path(directory_path, most_recent_file), ...)
+      # data <- FUN(paste_path(directory_path, most_recent_file), col_types = "dddddccD")
+      return(data)
     })
+    names(data) <- selected_files$file_names
 
     if (n == 1) data <- data[[1]]
 
     output <- list(
-      data = data, 
-      date = if (return_date) selected_dates else NULL,
-      name = if (return_name) selected_names else NULL)
+      data = data,
+      date = if (return_date) selected_files$name_dates else NULL,
+      name = if (return_name) selected_files$file_names else NULL)
     output <- output[lengths(output) != 0]
     if (length(lengths(output)) == 1) output <- output[[1]]
-    
+
     return(output)
 })
 
@@ -355,7 +410,7 @@ expr2text <- function(x) {
   ASTs <- purrr::map( as.list(sc), getAST ) %>%
     purrr::keep( ~identical(.[[1]], quote(`%>%`)) )  # Match first element to %>%
 
-  if( length(ASTs) == 0 ) return( enexpr(x) )        # Not in a pipe
+  if ( length(ASTs) == 0 ) return( enexpr(x) )        # Not in a pipe
   dplyr::last( ASTs )[[2]]    # Second element is the left-hand side
 }
 
@@ -401,11 +456,11 @@ release_delayed_errors <- function() {
 # Move this basic function elsewhere, somewhere more basic
 leading_zeros <- function(data, length, filler = "0") {
   strings <- sapply(data, function(x) {
-    if(is.na(x)) {
+    if (is.na(x)) {
       x <- 0
       warning("NAs converted to 0. Likelihood of duplicate strings")
     }
-    if(nchar(x) > length) {
+    if (nchar(x) > length) {
       stop(paste("String is longer than desired length of", length, ":", x, "in", deparse(substitute(data))))
     }
     string <- paste0(paste0(rep(filler, length - nchar(x)), collapse = ""), x)
@@ -424,9 +479,9 @@ lap_print <- function(message = NULL) {
 }
 
 add_empty_rows <- function(dataframe, total_rows, fill = NA) {
-  # Function is useful for forcing multiple dataframes to same length before column binding 
+  # Function is useful for forcing multiple dataframes to same length before column binding
   # (e.g. when making a table for printing)
-    if (is.data.frame(total_rows)) {total_rows <- nrow(total_rows) 
+    if (is.data.frame(total_rows)) {total_rows <- nrow(total_rows)
     } else {
         if (length(total_rows) > 1) total_rows <- length(total_rows)
     }
@@ -453,7 +508,7 @@ vstring <- function(string, sep = "%%") {
     rep <- as.character(eval(parse(text = stringr::str_extract(v, "[^(%%)].+[^(%%)]"))))
     if (length(rep) == 0) {rep <- "-"} else {rep}
   })
-  names(reps) <- str_replace_all(names(reps), "([\\[\\]\\(\\)\\$])", "\\\\\\1")
+  names(reps) <- stringr::str_replace_all(names(reps), "([\\[\\]\\(\\)\\$])", "\\\\\\1")
   string <- stringr::str_replace_all(string, reps)
   return(string)
 }

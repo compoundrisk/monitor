@@ -1,0 +1,12 @@
+"name","countries","isos"
+"sahel"," Burkina Faso, Cameroon, Gambia, The, Mali, Mauritania, Niger, Nigeria, Senegal, Chad","BFA, CMR, GMB, MLI, MRT, NER, SEN, TCD, NGA"
+"central america"," Belize, Costa Rica, Guatemala, Honduras, Nicaragua, Panama, El Salvador","BLZ, CRI, GTM, HND, NIC, PAN, SLV"
+"caucasus"," georgia, armenia, azerbaijan","GEO, ARM, AZE"
+"central asia","kazakhstan, kyrgyzstan, tajikistan, turkmenistan, uzbekistan","KAZ, KGZ, TJK, TKM, UZB"
+"central europe"," austria, the czech republic, germany, hungary, liechtenstein, poland, slovakia, slovenia, switzerland","AUT, DEU, HUN, LIE, POL, SVK, SVN, CHE, CZE"
+"horn of africa"," Djibouti, Eritrea, Ethiopia and Somalia","DJI, ERI, ETH, MLI, SOM"
+"east africa"," kenya, uganda, tanzania","KEN, UGA, TZA"
+"[^sl]iberia|^iberia"," portugal, spain","PRT, ESP"
+"urals"," russia, kazakhstan","RUS, KAZ"
+"north[ern]* africa"," algeria, egypt, libya, morocco, tunisia, western sahara","DZA, EGY, LBY, MAR, TUN, ESH"
+Northern Africa

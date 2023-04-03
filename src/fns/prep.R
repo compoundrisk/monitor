@@ -24,7 +24,7 @@ lapply(packages, function(p) {
 })
 
 #loading dplyr last to prevent masking select()
-library('dplyr')
+suppressMessages(library('dplyr'))
 
 source("src/fns/helpers.R")
 

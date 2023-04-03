@@ -1784,19 +1784,33 @@ gdacs_process <- function(as_of) {
   # This whole mess is because GDACS doesn't always include a year in the date
   # So in January events from December are given the current year instead of last year's year
   gdaclist <- gdacs %>% mutate(
+    date_original = date,
     date = case_when(
-      hazard != "drought" &
-      status == "active" &
-      month(access_date) == month(parse_date_time(date, orders = c("dm HM"))) ~
-        paste(parse_date_time(paste(date, year(access_date)), orders = "dm HM Y")),
-      hazard != "drought" & 
-      status == "active" &
-      month(access_date) != month(parse_date_time(date, orders = c("dm HM"))) ~ 
-        paste(parse_date_time(paste(date, year(access_date - 31)), orders = "dm HM Y")),
-      hazard == "drought" ~ str_extract(names, "\\d{4}$"),
-      T ~ paste(parse_date_time(date, orders = c("dmy")))
-    ))
-  
+      str_detect(date, "\\d{2} [:alpha:]{3} \\d{4}") ~ 
+        paste(parse_date_time(paste(date), orders = "d b Y")),
+      str_detect(date, "\\d{4}-\\d{2}-\\d{2}") ~ 
+        paste(parse_date_time(paste(date), orders = "Y m d")),
+      str_detect(date, "\\d{2} [:alpha:]{3}\\s*\\d{2}:\\d{2}") ~
+        paste(parse_date_time(paste(date), orders = "d b HM")),
+      T ~ NA_character_),
+    date = case_when(
+      year(date) != 0 ~ date,
+      year(date) == 0 & month(date) <= month(access_date) ~ 
+        paste(year(access_date), month(date), day(date)),
+      year(date) == 0 & month(date) > month(access_date) ~ 
+        paste(year(access_date) - 1, month(date), day(date),
+      T ~ NA_character_)),
+    date = parse_date_time(date, orders = "Y m d") %>% as.Date()) %>%
+    # Suppress warnings because the above is *guaranteed* to give warnings because
+    # case_when does not prevent functions from running on full vectors, and so 
+    # multipe date formats are being given to each parse_date_time call
+    # Instead, create own warning
+    suppressWarnings()
+    if (any(is.na(gdaclist$date))) {
+      failed_dates <- filter(gdaclist, is.na(date))
+      warning(paste0("Date(s) failed to parse in GDAC:\n", paste0(capture.output(failed_dates), collapse = "\n")))
+    }
+
   # Removed because I now handle event names with multiple country names with names2iso()
   # # Remove duplicate countries for drought
   # # Once I started processing country names in gdacs_collect() I also separated droughts in gdacs_collect()
@@ -1857,11 +1871,11 @@ inform_risk_collect <- function() {
   # read_csv("output/inputs-archive/inform_risk.csv", na = "x") %>%
   # write.csv("output/inputs-archive/inform_risk.csv", row.names = F)
 
-  most_recent <- read_most_recent("hosted-data/inform-risk", FUN = read_csv, as_of = Sys.Date(), , col_types = cols(), na = "x", return_date = T)
+  most_recent <- read_most_recent("hosted-data/inform-risk", FUN = read_csv, as_of = Sys.Date(), col_types = "cdcdddddddddddddddddddddddddddddddddddcd", return_date = T)
   file_date <- most_recent[[2]]
 
   inform_risk <- most_recent$data %>%
-    replace_na
+    mutate(`Countries in HVC` = str_replace(`Countries in HVC`, "^$", NA_character_))
 
   archiveInputs(inform_risk, today = file_date, group_by = c("Country"))
 }
