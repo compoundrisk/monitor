@@ -1,4 +1,3 @@
-
 ######################################################################################################
 #
 #  FUNCTIONS USED TO CREATE THE GLOBAL DATABASET ON COMPOUND DISASTER RISK
@@ -583,9 +582,9 @@ create_id <- function(data) {
         `Data Level` == "Raw Indicator Data" ~
           separated_indicators$indicator_id[match(sub("(.*) Raw", "\\1", Key), separated_indicators$Indicator)],
           # [match(sub("(.*) Raw", "\\1", Key), separate_rows(indicators_list, indicator_raw_slug, sep = ",")[,"Indicator"]]),
-        TRUE ~ 0,
+        TRUE ~ as.integer(0),
       ),
-      Index = as.integer(paste0(
+      Index = as.numeric(paste0(
         # leading_zeros(country_numbers$number[country_numbers$country == Country], 3),
         leading_zeros(str_replace_all(Country, country_numbers_vector), 3),
         # Does it make more sense to order by Data Level before Dimension, Outlook, and even Country?
