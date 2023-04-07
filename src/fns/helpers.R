@@ -219,15 +219,17 @@ define_name2iso <- function() {
 #   mutate(isos = name2iso(countries)) %>%
 #   write.csv("src/region-names.csv", row.names = F)
 
-wd <- getwd()
-setwd(getsd())
-setwd("../..")
+# wd <- getwd()
+# print(getsd())
+# setwd(getsd())
+# setwd("../..")
+# print(getwd())
 multi_country_dictionary_df <- read.csv("src/region-names.csv") %>%
   mutate(isos = paste0("%%", isos, "%%"))
 multi_country_dictionary <- multi_country_dictionary_df$isos %>%
   setNames(multi_country_dictionary_df$name)
 rm(multi_country_dictionary_df)
-setwd(wd)
+# setwd(wd)
 
   name2iso_internal <- function(v) {
     names <- countrycode::countrycode(v, destination = "iso3c", origin = "country.name", custom_match = dictionary)
