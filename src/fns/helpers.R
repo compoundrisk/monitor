@@ -224,11 +224,17 @@ define_name2iso <- function() {
 # setwd(getsd())
 # setwd("../..")
 # print(getwd())
-multi_country_dictionary_df <- read.csv("src/region-names.csv") %>%
-  mutate(isos = paste0("%%", isos, "%%"))
-multi_country_dictionary <- multi_country_dictionary_df$isos %>%
-  setNames(multi_country_dictionary_df$name)
-rm(multi_country_dictionary_df)
+
+if (file.exists("src/region-names.csv")) {
+  multi_country_dictionary_df <- read.csv("src/region-names.csv") %>%
+    mutate(isos = paste0("%%", isos, "%%"))
+  multi_country_dictionary <- multi_country_dictionary_df$isos %>%
+    setNames(multi_country_dictionary_df$name)
+  rm(multi_country_dictionary_df)
+  } else {
+    warning("`src/region-names.R` does not exist")
+    multi_country_dictionary <- c()
+  }
 # setwd(wd)
 
   name2iso_internal <- function(v) {
@@ -255,7 +261,9 @@ rm(multi_country_dictionary_df)
 
   output <- suppressWarnings(name2iso_internal(v))
   na_index <- which(is.na(output))
-  region_index <- which(stringr::str_detect(v, paste(names(multi_country_dictionary), collapse = "|")))
+  region_index <- if (!is.null(multi_country_dictionary)) {
+    which(stringr::str_detect(v, paste(names(multi_country_dictionary), collapse = "|")))
+  } else {NA}
   combined_index <- sort(unique(c(na_index, region_index)))
   # If there are no NAs and no region names detected, just return the output
   if (length(combined_index) == 0) {
@@ -263,7 +271,7 @@ rm(multi_country_dictionary_df)
   }
   if (length(na_index) > 0) {
       # names <- v[is.na(output)]
-
+      codelist <- countrycode::codelist
       cnames <- setNames(codelist$iso3c, tolower(codelist$country.name.en))
       cnames["kosovo"] <- "XKX"
       # cnames_no_space <- setNames(cnames, stringr::str_replace_all(names(cnames), " ", ""))

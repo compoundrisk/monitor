@@ -403,7 +403,7 @@ df <- df %>% unnest(c(country, iso3, crisis_id))
     }
 }
 
-acaps_risk_list_process <- function(as_of, dim, prefix) {
+acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01-01")) {
 
     df <- loadInputs("acaps_risklist", group_by = "risk_id", as_of = as_of, col_types = "cccccccDTDccccdcdcccD")
 
@@ -414,7 +414,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix) {
          collapse = "|")
 
     conflict_words <- paste(c("violen", "armed", "clash", "gang", "attack",
-        "fight", "offensive", "conflict", "fragil", ""),
+        "fight", "offensive", "conflict", "fragil"),
         collapse = "|")
 
     socio_words <- paste(c(
@@ -435,39 +435,64 @@ acaps_risk_list_process <- function(as_of, dim, prefix) {
             str_detect(tolower(vulnerability), crisis_words)) & 
             status != "Not materialised" & last_risk_update >= as_of - 60) %>%
         select(iso3, risk_level, risk_title, rationale, vulnerability, date_entered, last_risk_update, status) %>%
+        filter(last_risk_update >= as.Date(after)) %>%
+        group_by(risk_title, iso3) %>%
         mutate(
-          risk_text_full = paste(risk_title, rationale, vulnerability, sep = "\\n"),
-          # Takes excerpts from vulnerability and rationale columns; ideally would use 
-          # across() instead of duplicating for vulnerability and rationale.
-          # ALSO, should use str_extract_all instead of str_extract()
-          vulnerability = case_when(
-            str_detect(tolower(vulnerability), crisis_words) ~ paste("Vulnerability: ", paste0("'", str_extract(vulnerability, paste0("[^\\S\\r\\n\t]*[^\\.^\\n\\t]{0,40}(",crisis_words,")[^\\.\\n]{0,40}[^\\S$\\.\\n]{0,1}"))  %>% trimws(), "'")),
-            T ~ "Vulnerability: no keywords"),
-          rationale = case_when(
-            str_detect(tolower(rationale), crisis_words) ~ paste("Rationale: ", paste0("'", str_extract(rationale, paste0("[^\\S\\r\\n\t]*[^\\.^\\n\\t]{0,40}(",crisis_words,")[^\\.\\n]{0,40}[^\\S$\\.\\n]{0,1}"))  %>% trimws(), "'")),
-            T ~ "Rationale: no keywords"),
-          risk_text = paste(substr(risk_title, 1, 40), rationale, vulnerability, sep = " // ")) %>% 
-        mutate(risk_level = case_when(
+          last_risk_update = as.Date(last_risk_update),
+          risk_text_full = paste(last_risk_update, risk_title, rationale, vulnerability, sep = "\\n"),
+          # Takes excerpts from vulnerability and rationale columns
+          across(
+            .cols = c(rationale, vulnerability),
+            .fns = ~ str_extract_all(.x, paste0("[^\\S\\r\\n\t]*[^\\.^\\n\\t]{0,30}(",crisis_words,")[^\\.\\n]{0,30}[^\\S$\\.\\n]{0,1}"), simplify = T) %>% 
+              trimws() %>% paste(collapse = "//")),
+          risk_text = paste(substr(risk_title, 1, 40), "// Rationale:", rationale, "// Vulnerability:", vulnerability)) %>%
+        mutate(
+            Countryname = iso2name(iso3),
+            risk_level = case_when(
             risk_level == "High" ~ 10,
             risk_level == "Medium" ~ 7,
             risk_level == "Low" ~ 3,
-            T ~ NA_real_
-        )) %>%
-        group_by(iso3) %>%
-        slice_max(risk_level, n = 1, with_ties = T) %>%
-        group_by(iso3) %>%
-        summarize(
-            acaps_risk_level = max(risk_level),
-            acaps_risk_text = str_replace_all(paste(risk_text, collapse = " | "), "\\n", " "),
-            acaps_risk_text_full = str_replace_all(paste(risk_text_full, collapse = " | "), "\\n", " ")
-        ) %>%
-        right_join(countrylist, by = c("iso3" = "Country")) %>%
-        # select(-Countryname) %>%
-        arrange(iso3) %>%
-        rename(Country = iso3) %>%
-        add_dimension_prefix(prefix)
+            T ~ NA_real_),
+            risk_level_auto = risk_level,
+            Review = NA
+            ) %>%
+            ungroup() %>%
+        select(Countryname, iso3, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
+        # group_by(iso3) %>%
+        # slice_max(risk_level, n = 1, with_ties = T) %>%
+        # group_by(iso3) %>%
+        # summarize(
+        #     acaps_risk_level = max(risk_level),
+        #     acaps_risk_text = str_replace_all(paste(risk_text, collapse = " | "), "\\n", " "),
+        #     acaps_risk_text_full = str_replace_all(paste(risk_text_full, collapse = " | "), "\\n", " "),
+        #     acaps_risk_last_updated = as.Date(max(last_risk_update))
+        # ) %>%
+        # right_join(countrylist, by = c("iso3" = "Country")) %>%
+        # # select(-Countryname) %>%
+        # arrange(iso3) %>%
+        # rename(Country = iso3) %>%
+        # add_dimension_prefix(prefix)
 
     return(crisis_events)
+}
+
+acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
+  path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
+  read_most_recent(path, as_of = as_of) %>%
+    filter(Review) %>%
+    group_by(iso3) %>%
+    # slice_max(risk_level, n = 1, with_ties = T) %>%
+    group_by(iso3) %>%
+    summarize(
+        acaps_risk_level = max(risk_level),
+        acaps_risk_text = str_replace_all(paste(risk_text, collapse = " | "), "\\n", " "),
+        acaps_risk_text_full = str_replace_all(paste(risk_text_full, collapse = " | "), "\\n", " "),
+    ) %>%
+    right_join(countrylist, by = c("iso3" = "Country")) %>%
+    select(-Countryname) %>%
+    arrange(iso3) %>%
+    rename(Country = iso3) %>%
+    add_dimension_prefix(prefix)
 }
 
 ##### HEALTH
@@ -1726,6 +1751,26 @@ gdacs_collect <- function() {
       country = name2iso(names, multiple_matches = T)) %>%
       separate_rows(country, sep = ", ")
 
+# Add countries for cyclones
+cyclone_urls <- gdacs_web %>% html_node("#gdacs_eventtype_TC") %>%
+  html_nodes(".alert_item") %>%
+  html_nodes("a") %>%
+  html_attr("href")
+
+cyclone_countries <- cyclone_urls %>%
+  lapply(function(url) {
+    table <- read_html(url) %>%
+      html_node(".summary") %>%
+      html_table()
+    info <- table$X2 %>% setNames(table$X1)
+    name <- info["Name"]
+    countries <- info["Exposed countries"]
+  return(c(name, countries))
+  }) %>%
+  bind_rows()
+
+gdacs[match(cyclone_countries$Name, gdacs$names),"country"] <- cyclone_countries$`Exposed countries` %>% name2iso()
+
   # Clean up irregular characters
   gdacs <- mutate(gdacs,
                   access_date = Sys.Date(),
@@ -1773,7 +1818,6 @@ gdacs_process <- function(as_of) {
   #   # Read from Spark DataFrame
   # }
   
-  print("Dev note: Some GDACS dates are being turned into NAs because they don't follow the date structure")
   # gdaclist <- gdacs %>% 
   #   mutate(
   #     parsed_date = case_when(
@@ -1844,7 +1888,8 @@ gdacs_process <- function(as_of) {
                   NH_GDAC_Hazard_Status = status, 
                   NH_GDAC_Hazard_Magnitude = mag, 
                   NH_GDAC_Hazard_Severity = haz,
-                  NH_GDAC_Hazard_Type = hazard)
+                  NH_GDAC_Hazard_Type = hazard) %>%
+    separate_rows(Country, sep = ", ")
     
   gdacs <- gdacs %>%
     mutate(NH_GDAC_Hazard_Score_Norm = case_when(
