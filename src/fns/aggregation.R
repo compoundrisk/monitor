@@ -1605,7 +1605,7 @@ date_indicators <- function(crm) {
 
   new_ind_vals_raw <- crm %>%
       subset(`Data Level` == "Raw Indicator Data") %>% 
-      arrange(Index, Date) %>%
+      arrange(Key, Index, Date) %>%
       subset(first_ordered_instance(Value_Char)) %>%
       mutate(indicator_id = as.numeric(str_sub(Index, -2)))
 
@@ -1743,12 +1743,6 @@ label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboa
 }
 
 add_overall_indicators <- function(dashboard_data) {
-  indicators_o <- subset(dashboard_data, `Data Level` == "Indicator") %>%
-    mutate(Outlook = "Overall",
-          Index = Index + 400)
-          # Instead of changing Data Level, it should set the Outlook portion of the Index to 1, for overall 
-          #  Index = paste0(substr(leading_zeros(Index, 8), 1, 3), 1, substr(leading_zeros(Index, 8), 5, 8))  
-  dashboard_data <- bind_rows(dashboard_data, indicators_o)
    indicators_o <- subset(dashboard_data, `Data Level` == "Indicator") %>%
     mutate(Outlook = "Overall",
           # Index = Index + 400)
@@ -1861,13 +1855,14 @@ quick_scan <- function(
 
             if (length(dims > 0)) {
         high_indicators <- lapply(dims, function(dim) {
-            high_inds <- subset(wide_indicators, Country == country & Dimension == dim & Value >= 7)
+            high_inds <- subset(wide_indicators, Country == country & Dimension == dim & Value >= threshold_medium)
             return(high_inds)
         }) %>%
             bind_rows() %>% 
             mutate(Risk = case_when(Value >= 10 ~ "High", Value >= 7 ~ "Medium", TRUE ~ NA_character_), .after = Value) %>%
             mutate(Risk = paste0(Risk, " (", round(Value, 1), ")")) %>%
-            select(-Ind_ID, -Index, -Country, -Value)
+            select(-Ind_ID, -Index, -Country, -Value) %>%
+            distinct()
         # }
 
         cat(knitr::kable(high_indicators, format = "markdown"), file = file_md, append = T, sep = "\n")

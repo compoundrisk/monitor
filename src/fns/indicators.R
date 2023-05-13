@@ -345,37 +345,71 @@ acaps_risk_list_collect <- function() {
 
   # ))
 
-# The length of the crisis_id column doesn't always match the length of the iso3 column
-# This function assigns a crisis_id of "ISONA" to all countries in multi-country events 
-# that don't have a crisis_id. Otherwise, unnest() would fail because of differing lengths 
-# (Try by running unnest(df, country, iso3, crisis_id))
+# # The length of the crisis_id column doesn't always match the length of the iso3 column
+# # This function assigns a crisis_id of "ISONA" to all countries in multi-country events 
+# # that don't have a crisis_id. Otherwise, unnest() would fail because of differing lengths 
+# # (Try by running unnest(df, country, iso3, crisis_id))
+# dfsave <-df
+# df$country <- apply(df, 1, function(r) r$country <- paste(r$country, collapse = ", "))
 
-df$crisis_id <- apply(df, 1, function(r) {
-  if (length(r$iso3) == length(r$crisis_id) |
-      length(r$iso3) == 1) {
-    return((r$crisis_id))
-  } else if (length(r$iso3) < length(r$crisis_id)) {
-    reg_id <- r$crisis_id %>% subset(str_detect(., "REG")) 
-    r$crisis_id <- r$crisis_id %>% subset(!str_detect(., "REG"))
-      if (length(r$iso3) == length(r$crisis_id) |
-      length(r$iso3) == 1) {
-    return((paste(r$crisis_id, reg_id)))
-  } else if (length(r$iso3) < length(r$crisis_id)) {
-      print(r$risk_id)
-      stop("Fewer countries in iso3 column than crises in crisis_id column")
-  }
-  } else if (length(r$iso3) > length(r$crisis_id)) {
-  new_row <- data.frame(iso3 = r$iso3) %>%#[[1]]) %>%
-    left_join(
-      data.frame(iso3 = substr(r$crisis_id, 1, 3),
-                 crisis_id = substr(r$crisis_id, 4, 6)),
-                 by = "iso3") %>%
-      mutate(crisis_id = paste0(iso3, crisis_id))
-  # new_row <- list(new_row$iso3, new_row$crisis_id)
-  return(new_row$crisis_id)
-}})
+# # If there are fewer ISOs than crisis IDs it might be because there are multiple crisis IDs
+# # for a single country; duplicate the ISO
+# df$iso3 <- apply(df, 1, function(r) {
+#    if (length(r$iso3) >= length(r$crisis_id)) {
+#     return(r$iso3)
+#   } else if (length(r$iso3) < length(r$crisis_id)) {
+#     crisis_isos <- str_extract_all(r$crisis_id, "[A-Z]{3}", simplify = T)
+#     not_included_iso3 <- which_not(crisis_isos, r$iso3, swap = T)
+#     not_included_crisis_id <- which_not(crisis_isos, r$iso3)
+#     not_included <- c(not_included_iso3, not_included_crisis_id)
+#     if (length(not_included) == 0) {
+#       return((crisis_isos))
+#     } else {
+#       warning(paste("crisis_id and iso3 dont match on", r$risk_id))
+#       return(r$iso3)
+#     }
+#   }
+# })
 
-df <- df %>% unnest(c(country, iso3, crisis_id))
+# df$crisis_id <- apply(df, 1, function(r) {
+#   if (length(r$iso3) == length(r$crisis_id) | length(r$iso3) == 1) {
+#     return((r$crisis_id))
+#   } else if (length(r$iso3) < length(r$crisis_id)) {
+#     # If there are fewer iso3 items than crisis_id items it might be because a
+#     # region is included in the crisis IDs. Check if this is the case (and, if
+#     # so, use the country-related crisis IDs and the region ID)
+#     reg_id <- r$crisis_id %>% subset(str_detect(., "REG")) 
+#     r$crisis_id <- r$crisis_id %>% subset(!str_detect(., "REG"))
+#     if (length(r$iso3) == length(r$crisis_id) | length(r$iso3) == 1) {
+#       return((paste(r$crisis_id, reg_id)))
+#     } else if (length(r$iso3) < length(r$crisis_id)) {
+#       # Or, do they not match because there are multiple crisis IDs for the same
+#       # country?
+#       crisis_isos <- str_extract_all(r$crisis_id, "[A-Z]{3}", simplify = T) %>%
+#         unique()
+#       if (length(crisis_isos) == length(r$iso3)) {
+#         return(r$crisis_id)
+#       } else {
+#         # Print an error if the region fix still doesn't work
+#         print(r$risk_id)
+#         stop("Fewer countries in iso3 column than crises in crisis_id column")
+#       }
+#     }
+#   } else if (length(r$iso3) > length(r$crisis_id)) {
+#   new_row <- data.frame(iso3 = r$iso3) %>%#[[1]]) %>%
+#     left_join(
+#       data.frame(iso3 = substr(r$crisis_id, 1, 3),
+#                  crisis_id = substr(r$crisis_id, 4, 6)),
+#                  by = "iso3") %>%
+#       mutate(crisis_id = paste0(iso3, crisis_id))
+#   # new_row <- list(new_row$iso3, new_row$crisis_id)
+#   return(new_row$crisis_id)
+# }})
+
+df$country <- df$country %>% sapply(function(c) return(paste(c, collapse = ", ")))
+df$crisis_id <- df$crisis_id %>% sapply(function(c) return(paste(c, collapse = ", ")))
+df$iso3 <- df$iso3 %>% sapply(function(c) return(paste(c, collapse = ", ")))
+df <- df %>% separate_rows(iso3, sep = ", ")
 
 # test[1]
 
@@ -452,12 +486,11 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
             risk_level == "High" ~ 10,
             risk_level == "Medium" ~ 7,
             risk_level == "Low" ~ 3,
-            T ~ NA_real_),
-            risk_level_auto = risk_level,
-            Review = NA
-            ) %>%
+            T ~ NA_real_)
+            # risk_level_auto = risk_level
+          ) %>%
             ungroup() %>%
-        select(Countryname, iso3, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
+        select(Countryname, iso3, risk_level, risk_text, risk_text_full, last_risk_update)
         # group_by(iso3) %>%
         # slice_max(risk_level, n = 1, with_ties = T) %>%
         # group_by(iso3) %>%
@@ -473,7 +506,18 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
         # rename(Country = iso3) %>%
         # add_dimension_prefix(prefix)
 
-    return(crisis_events)
+  path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
+  most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
+  previous_review <- most_recent$data
+  crisis_events_old <- filter(crisis_events, last_risk_update <= most_recent$date)
+  crisis_events_new <- filter(crisis_events, last_risk_update > most_recent$date) %>% 
+    mutate(risk_level_auto = risk_level)
+
+  crisis_events_old <- left_join(crisis_events_old, select(previous_review, iso3, risk_text_full, risk_level, risk_level_auto, Review), by = c("iso3" = "iso3", "risk_text_full" = "risk_text_full", "risk_level" = "risk_level"))
+  crisis_events_combined <- bind_rows(crisis_events_old, crisis_events_new)
+  crisis_events_combined <- crisis_events_combined %>% select(Countryname, iso3, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
+
+  return(crisis_events_combined)
 }
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
@@ -519,273 +563,6 @@ ghsi_process <- function(as_of) {
   ghsi <- normfuncneg(ghsi, upperrisk, lowerrisk, "H_HIS_Score")
   return(ghsi)
 }
-
-# ## Oxford Openness
-# oxford_openness_collect <- function() {
-#   # Risk of Openness is the reviewed, and updated, version of Oxford Rollback. RENAME
-#   oxford_openness_risk <- read.csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-scratchpad/master/risk_of_openness_index/data/riskindex_timeseries_latest.csv") %>%
-#     mutate(Date = as.Date(Date))
-  
-#   archiveInputs(oxford_openness_risk, group_by = c("CountryCode", "Date"))
-# }
-
-# # RENAME Oxrollback to oxford_openness_risk
-# oxford_openness_process <- function(as_of) {
-#   OXrollback <- loadInputs("oxford_openness_risk", group_by = c("CountryCode", "Date"), as_of = as_of, format = "csv")
-  
-#   # Remove NAs and select columns
-#   # Risk of Openness is a time series; select most recent
-#   OXrollback <- OXrollback[!is.na(OXrollback$openness_risk),c("CountryCode", "Date", "openness_risk")] %>%
-#     # mutate(Date = as.Date(Date)) %>%
-#     arrange(desc(Date)) %>%
-#     { .[!duplicated(.$CountryCode),] } %>%
-#     dplyr::select(-Date)
-  
-#   colnames(OXrollback) <- paste0("H_", colnames(OXrollback))
-  
-#   OXrollback <- OXrollback %>%
-#     rename(
-#       H_Oxrollback_score = H_openness_risk,
-#       Country = H_CountryCode
-#     ) #%>%
-#   # mutate(
-#   #   Country = countrycode(Countryname,
-#   #   origin = "country.name",
-#   #   destination = "iso3c",
-#   #   nomatch = NULL
-#   # ))
-  
-#   upperrisk <- quantile(OXrollback$H_Oxrollback_score, probs = c(0.9), na.rm = T)
-#   lowerrisk <- quantile(OXrollback$H_Oxrollback_score, probs = c(0.1), na.rm = T)
-  
-#   OXrollback <- normfuncpos(OXrollback, upperrisk, lowerrisk, "H_Oxrollback_score")
-#   return(OXrollback)
-# }
-
-#------------------------—OWID COVID deaths and cases--------------------------
-
-# # _Add in *_collect() function_
-# owid_collect <- function() {
-#   covidweb <-
-#     read_csv(
-#       "https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
-#       col_types = cols_only(
-#         iso_code = 'c',
-#         continent = 'c',
-#         location = 'c',
-#         date = 'D',
-#         new_cases_per_million = 'd',
-#         new_cases_smoothed_per_million = 'd',
-#         new_deaths_per_million = 'd',
-#         new_deaths_smoothed_per_million = 'd'))
-#   write.csv(covidweb, paste_path(inputs_archive_path, "owid_covid.csv"), row.names = F)
-# }
-
-# owid_covid_process <- function(as_of) {
-#   # Switching to `read_csv()` may save ~2 seconds of Health's ~40 seconds; 6 → 4 secs
-#   # See warning
-#   # covidweb <- read_csv("https://raw.githubusercontent.com/owid/covid-19-data/master/public/data/owid-covid-data.csv",
-#   #                      col_types = "cccD-------dd-dd-------------------------------------------------")
-  
-#   covidweb <- read_csv(paste_path(inputs_archive_path, "owid_covid.csv"),
-#                        col_types = cols_only(
-#                          iso_code = 'c',
-#                          continent = 'c',
-#                          location = 'c',
-#                          date = 'D',
-#                          new_cases_per_million = 'd',
-#                          new_cases_smoothed_per_million = 'd',
-#                          new_deaths_per_million = 'd',
-#                          new_deaths_smoothed_per_million = 'd'))
-  
-#   # Super slow to find changed data in this 30MB file. For now, not important because
-#   # it includes its own historical data
-#   # # DELETE for first time only
-#   # owid_covid <- mutate(covidweb, access_date = Sys.Date() - 1)
-#   # write.csv(owid_covid, "output/inputs-archive/owid_covid.csv", row.names = F)
-#   # 
-#   # archiveInputs(owid_covid, group_by = c("iso_code", "date"))
-#   # # SPLIT: move above to inputs.R
-#   # covidweb <- loadInputs("owid_covid", group_by = c("iso_code", "date"), as_of = as_of, format = "csv")
-  
-#   covid <- covidweb %>%
-#     mutate(date = as.Date(date)) %>%
-#     filter(date > as_of - 28 & date <= as_of)
-  
-#   # bi-weekly growth rate for covid deaths and cases
-#   covidgrowth <- covid %>%
-#     mutate(
-#       previous2week = case_when(
-#         # "twoweek" is the current two weeks, "lasttwoweek" is the two weeks preceding them
-#         date >= as_of - 13 ~ "twoweek",
-#         TRUE ~ "lasttwoweek"
-#       )) %>%
-#     group_by(iso_code, previous2week) %>%
-#     summarise(
-#       # Should this be mean or should we divide by all number of days, 
-#       # regardless of number of records? If a country reports 1x/week, should
-#       # we divide by 14 or by 2? (Should be 14)
-#       meandeaths = mean(new_deaths_per_million, na.rm = T),
-#       meancase = mean(new_cases_per_million, na.rm = T),
-#       .groups = "drop_last") %>%
-#     filter(!is.na(meandeaths) & !is.na(meancase)) 
-  
-#   # remove countries without two weeks (seems the logical for remove is backwards?)
-#   # Slow (~4 seconds)
-#   covidgrowth <- covidgrowth %>%
-#     mutate(remove = iso_code %in% 
-#              as.data.frame(covidgrowth %>% 
-#                              dplyr::count(iso_code) %>% 
-#                              filter(n == 2) %>% 
-#                              dplyr::select(iso_code))$iso_code) %>%
-#     filter(remove == TRUE) %>% 
-#     select(-remove)
-  
-#   # #############
-  
-#   # # Could go with one of these simpler methods (probably the second) but not necessary
-  
-#   # cg <- pivot_wider(covidgrowth, names_from = previous2week, values_from = c(meandeaths, meancase)) %>%
-#   #   mutate(growthdeath = meandeaths_twoweek - meandeaths_lasttwoweek,
-#   #         growthcase = meancase_twoweek - meancase_lasttwoweek
-#   #         growthratedeaths = case_when(mean_deaths_lasttwoweek)
-#   #   )
-  
-#   # cg <- covidgrowth %>% group_by(iso_code) %>%
-#   #   summarize(
-#   #     meandeaths = subset(meandeaths, previous2week == "twoweek"),
-#   #     meandeaths_previous = subset(meandeaths, previous2week == "lasttwoweek"),
-#   #     growthdeath = meandeaths - meandeaths_previous,
-#   #     growthratedeaths = growthdeath / meandeaths_previous,
-  
-#   #     meancase = subset(meancase, previous2week == "twoweek"),
-#   #     meancase_previous = subset(meancase, previous2week == "lasttwoweek"),
-#   #     growthcase = meancase - meancase_previous,
-#   #     growthratecase = growthcase / meancase_previous,
-#   #   )
-#   # #############
-  
-#   # Calculate variables of interest
-#   covidgrowth <- covidgrowth %>%
-#     mutate(
-#       growthdeath = meandeaths[previous2week == "twoweek"] - meandeaths,
-#       growthratedeaths = case_when(
-#         meandeaths[previous2week == "lasttwoweek"] == 0 ~ 0.01,
-#         meandeaths > 0 ~ growthdeath / meandeaths[previous2week == "lasttwoweek"] * 100,
-#         TRUE ~ NA_real_
-#       ),
-#       growthcase = meancase[previous2week == "twoweek"] - meancase,
-#       growthratecases = case_when(
-#         meandeaths[previous2week == "lasttwoweek"] == 0 ~ 0.01,
-#         meancase > 0 ~ growthcase / meancase[previous2week == "lasttwoweek"] * 100,
-#         TRUE ~ NA_real_),
-#       meandeaths_current = meandeaths + growthdeath,
-#       meancase_current = meancase + growthcase) %>%
-#     dplyr::filter(previous2week != "twoweek") %>%
-#     # dplyr::select(-previous2week, -growthcase, -growthdeath)
-#     dplyr::select(-growthcase, -growthdeath, -meandeaths, -meancase, -previous2week)
-  
-#   # Normalised scores for deaths
-#   covidgrowth <- normfuncpos(covidgrowth, 100, 0, "growthratedeaths")
-#   covidgrowth <- normfuncpos(covidgrowth, 100, 0, "growthratecases")
-  
-#   covidgrowth <- covidgrowth %>%
-#     rename(
-#       Country = iso_code,
-#       H_Covidgrowth_biweeklydeaths = growthratedeaths,
-#       H_Covidgrowth_biweeklycases = growthratecases,
-#       H_Covidgrowth_deathsnorm = growthratedeaths_norm,
-#       H_Covidgrowth_casesnorm = growthratecases_norm)
-  
-#   # Varibles on number of cases
-#   covidcurrent <- covid %>% 
-#     group_by(iso_code) %>%
-#     top_n(n = 1, date) %>%
-#     # filter(date == Sys.Date() - 1) %>%
-#     # filter(date == max(date)) %>% # This does not select the most recent date for each country
-#     dplyr::select(iso_code, new_cases_smoothed_per_million, new_deaths_smoothed_per_million) %>%
-#     rename(Country = iso_code)
-  
-#   covidcurrent <- normfuncpos(covidcurrent, 500, 0, "new_cases_smoothed_per_million")
-#   covidcurrent <- normfuncpos(covidcurrent, 5, 0, "new_deaths_smoothed_per_million")
-  
-#   covidcurrent <- covidcurrent %>%
-#     rename(
-#       H_new_cases_smoothed_per_million = new_cases_smoothed_per_million,
-#       H_new_deaths_smoothed_per_million = new_deaths_smoothed_per_million,
-#       H_new_cases_smoothed_per_million_norm = new_cases_smoothed_per_million_norm,
-#       H_new_deaths_smoothed_per_million_norm = new_deaths_smoothed_per_million_norm)
-  
-#   owid <- left_join(covidcurrent, covidgrowth, by = "Country")
-#   owid <- subset(owid, Country %in% countrylist$Country)
-  
-#   # # In case we want to put a minimum threshold for total deaths
-#   # pop <- wpp.by.year(wpp.indicator("tpop"), 2020) %>% 
-#   #   rename(Country = charcode, population = value) %>% 
-#   #   mutate(Country = countrycode(Country,
-#   #                              origin = "iso2c", 
-#   #                              destination = "iso3c",
-#   #                              warn = F),
-#   #        population = population / 1000)
-  
-#   # owid <- left_join(owid, pop)
-  
-#   # owid[which(owid$Country == "LIE"), "population"] <- 0.0387
-#   # owid[which(owid$Country == "DMA"), "population"] <- 0.0720
-#   # owid[which(owid$Country == "KNA"), "population"] <- 0.0532
-#   # owid[which(owid$Country == "MHL"), "population"] <- 0.0592
-#   # # owid[which(owid$Country == "NRU"), "population"] <- 0.0108
-#   # owid[which(owid$Country == "PLW"), "population"] <- 0.0181
-#   # # owid[which(owid$Country == "TUV"), "population"] <- 0.0118
-  
-#   # owid <- owid %>%
-#   #   mutate(death_count = population * meandeaths_current)
-  
-#   owid <- mutate(owid,
-#                  H_Covidgrowth_deathsnorm = case_when(
-#                    H_Covidgrowth_deathsnorm > 7 & 
-#                      H_new_deaths_smoothed_per_million < 0.15
-#                    ~ 7,
-#                    TRUE ~ H_Covidgrowth_deathsnorm),
-#                  H_Covidgrowth_casesnorm = case_when(
-#                    H_Covidgrowth_casesnorm > 7 & 
-#                      H_new_cases_smoothed_per_million < 10 ~ 7,
-#                    TRUE ~ H_Covidgrowth_casesnorm)) %>%
-#     select(Country, starts_with("H_"))
-  
-#   return(owid)
-# }
-
-#--------------------------—Oxford Response Tracker----------------------------
-# _Add in *_collect() function_
-# Oxres_process <- function(as_of) {
-#   # SLOW: 10 seconds with w/ `read.csv`, 5 with `read_csv`
-#   # see warning
-#   Oxres <- read_csv("https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv",
-#                     col_types = "cccccdddddddddddddddddddddddddddddddddcdddddddddddd")
-  
-#   Oxres$Date <- as.Date(as.character(Oxres$Date), "%Y%m%d")
-  
-#   # Not including inputsArchive because dataset is large and includes historical data.
-#   # Still SPLIT?
-  
-#   #Select latest data
-#   Ox_cov_resp <- Oxres %>%
-#     group_by(CountryCode) %>%
-#     filter(Date == max(Date)) %>%
-#     dplyr::select(
-#       CountryCode, Date, GovernmentResponseIndex, GovernmentResponseIndexForDisplay,
-#       EconomicSupportIndex, EconomicSupportIndexForDisplay, ContainmentHealthIndex,
-#       ContainmentHealthIndexForDisplay, `E1_Income support`, E1_Flag
-#     )
-  
-#   colnames(Ox_cov_resp) <- c("Country", paste0("H_", colnames(Ox_cov_resp[,-1])))
-  
-#   #Create normalised scores
-#   Ox_cov_resp <- normfuncneg(Ox_cov_resp, 15, 80, "H_GovernmentResponseIndexForDisplay")
-#   Ox_cov_resp <- normfuncneg(Ox_cov_resp, 0, 100, "H_EconomicSupportIndexForDisplay")
-#   return(Ox_cov_resp)
-# }
 
 #----------------------------------—WHO DONS--------------------------------------------------------------
 dons_collect <- function() {
@@ -1371,18 +1148,18 @@ eiu_process <- function(as_of) {
     subset(`SERIES NAME` %in% c("Macroeconomic risk", "Financial risk", "Foreign trade & payments risk")) %>%
     pivot_longer(-c(`SERIES NAME`, MONTH), names_to = "Country", values_to = "Values") %>%
     pivot_wider(names_from = `SERIES NAME`, values_from = Values) %>%
-    mutate(Macroeconomic_risk = (`Financial risk` + `Macroeconomic risk` + `Foreign trade & payments risk`) / 3,
-           .keep = "unused")
+    mutate(Macroeconomic_risk = (`Financial risk` + `Macroeconomic risk` + `Foreign trade & payments risk`) / 3)
   
   eiu_latest_month <- eiu_data_long %>%
     group_by(Country) %>%
     slice_max(MONTH, n = 1) %>%
-    summarize(Macroeconomic_risk = mean(Macroeconomic_risk))
+    # summarize(Macroeconomic_risk = mean(Macroeconomic_risk))
+    summarize(across(-MONTH, ~ mean(.x, na.rm = T)))
   eiu_one_year <- eiu_data_long %>%
     group_by(Country) %>%
     slice_max(MONTH, n = 13) %>%
     slice_min(MONTH, n = 12) %>%
-    summarize(Macroeconomic_risk_12 = mean(Macroeconomic_risk))
+    summarize(across(-MONTH, ~ mean(.x, na.rm = T), .names = "{.col}_12"))
   # eiu_three_month <- eiu_data_long %>%
   #     group_by(Country) %>%
   #     slice_max(MONTH, n = 4) %>%
@@ -1399,7 +1176,8 @@ eiu_process <- function(as_of) {
     rename(EIU_Score = `Macroeconomic_risk`,
            EIU_Score_12m = `Macroeconomic_risk_12`) %>%
     rename_with(.col = -Country, .fn = ~ paste0("M_", .)) %>%
-    mutate(Country = name2iso(Country))
+    mutate(Country = name2iso(Country)) %>%
+    { .[,sort(names(.))] }
   
   #   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_12m_change, 0.95), quantile(eiu_joint$M_EIU_12m_change, 0.10), "M_EIU_12m_change")
@@ -1980,12 +1758,13 @@ iri_collect <- function(as_of = Sys.Date()) {
   if(!identical(values(continuity_new), values(continuity_old))) {
     file.rename("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
   }
-  
+  file.remove("tmp-continuity.tiff")
   forecast_new <- raster("tmp-forecast.tiff")
   forecast_old <- read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = raster, as_of = as_of)
   if(!identical(values(forecast_new), values(forecast_old))) {
     file.rename("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
   }
+  file.remove("tmp-forecast.tiff")
   # }
 }
 
@@ -2661,6 +2440,7 @@ ifes <- bind_rows(ifes_upcoming, ifes_past) %>%
   archiveInputs(ifes, group_by = NULL)
 
   #   # Using the API
+  #   # I've abandoned this for now because it doesn't appear there is any useful additional data from the API
   # # 2022-08-10 Learned that while the url is elections_demo it is in fact the current data
   # ifes_data <- system(paste0("curl -X GET https://electionguide.org/api/v1/elections_demo/ -H 'Authorization: Token ", readLines(".access/ifes-authorization.txt", warn = F),"'"),
   #  intern = T) %>%

@@ -536,3 +536,11 @@ paste_and <- function(v) {
 duplicated2way <- duplicated_all <- function(x) {
   duplicated(x) | duplicated(x, fromLast = T)
 }
+
+paste_df <- function(df1, df2) {
+    matrix(paste(
+        as.matrix(df1),
+        as.matrix(df2)) %>% trimws(),
+    ncol = ncol(df1),
+    dimnames = dimnames(df1))
+}

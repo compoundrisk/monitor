@@ -143,7 +143,7 @@ socio_sheet <- aggregate_dimension(
   # Fix warnings
   imf_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   # acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_") %>% delay_error(return = NA, on = error_delay))
-  acaps_risk_list_reviewed_process(dim = "socioeconomic", prefix = "S_", as_of = as_of))
+  acaps_risk_list_reviewed_process(dim = "Socioeconomic", prefix = "S_", as_of = as_of))
 multi_write.csv(socio_sheet, "socio-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Socio sheet is aggregated and saved.")
 
@@ -160,7 +160,7 @@ natural_hazards_sheet <- aggregate_dimension(
   locust_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acaps_category_process(as_of, category = "natural", prefix = "NH_") %>% delay_error(return = NA, on = error_delay),
   # acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_") %>% delay_error(return = NA, on = error_delay))
-  acaps_risk_list_reviewed_process(dim = "natural", prefix = "NH_", as_of = as_of))
+  acaps_risk_list_reviewed_process(dim = "Natural Hazard", prefix = "NH_", as_of = as_of))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Natural hazards sheet is aggregated and saved.")
 
@@ -178,7 +178,7 @@ fragility_sheet <- aggregate_dimension(
   acled_events_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   eiu_security_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   # acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_") %>% delay_error(return = NA, on = error_delay),
-  acaps_risk_list_reviewed_process(dim = "conflict", prefix = "Fr_", as_of = as_of),
+  acaps_risk_list_reviewed_process(dim = "Conflict and Fragility", prefix = "Fr_", as_of = as_of),
   # reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)),
   pseudo_reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_path))
