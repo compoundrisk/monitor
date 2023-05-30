@@ -487,7 +487,8 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
             risk_level == "Medium" ~ 7,
             risk_level == "Low" ~ 3,
             T ~ NA_real_)
-            # risk_level_auto = risk_level
+            # risk_level_auto = risk_level,
+            # Review = NA
           ) %>%
             ungroup() %>%
         select(Countryname, iso3, risk_level, risk_text, risk_text_full, last_risk_update)
@@ -505,7 +506,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
         # arrange(iso3) %>%
         # rename(Country = iso3) %>%
         # add_dimension_prefix(prefix)
-
+  if (as_of >= as.Date("2023-04-19")) {
   path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
   most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
   previous_review <- most_recent$data
@@ -517,7 +518,10 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
   crisis_events_combined <- bind_rows(crisis_events_old, crisis_events_new)
   crisis_events_combined <- crisis_events_combined %>% select(Countryname, iso3, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
 
-  return(crisis_events_combined)
+  return(crisis_events_combined) 
+  } else {
+    return(crisis_events)
+  }
 }
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {

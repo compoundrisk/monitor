@@ -226,15 +226,16 @@ define_name2iso <- function() {
 # print(getwd())
 
 if (file.exists("src/region-names.csv")) {
-  multi_country_dictionary_df <- read.csv("src/region-names.csv") %>%
+  multi_country_dictionary_df <- read_csv("src/region-names.csv", col_types = "c") %>%
     mutate(isos = paste0("%%", isos, "%%"))
+} else {
+  message("`src/region-names.R` downloaded from online repository")
+  multi_country_dictionary_df <- read_csv("https://raw.githubusercontent.com/compoundrisk/monitor/databricks/src/region-names.csv", col_types = "c") %>%
+    mutate(isos = paste0("%%", isos, "%%"))
+}
   multi_country_dictionary <- multi_country_dictionary_df$isos %>%
     setNames(multi_country_dictionary_df$name)
   rm(multi_country_dictionary_df)
-  } else {
-    warning("`src/region-names.R` does not exist")
-    multi_country_dictionary <- c()
-  }
 # setwd(wd)
 
   name2iso_internal <- function(v) {
