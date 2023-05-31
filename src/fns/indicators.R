@@ -526,7 +526,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
   path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
-  read_most_recent(path, as_of = as_of) %>%
+  output <- read_most_recent(path, as_of = as_of) %>%
     filter(Review) %>%
     group_by(iso3) %>%
     # slice_max(risk_level, n = 1, with_ties = T) %>%
@@ -541,6 +541,7 @@ acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
     arrange(iso3) %>%
     rename(Country = iso3) %>%
     add_dimension_prefix(prefix)
+  return(output)
 }
 
 ##### HEALTH
@@ -697,7 +698,7 @@ ifrc_epidemics <- df %>% mutate(
 }
 
 ifrc_process <- function(as_of) {
-df <- loadInputs("ifrc_epidemics", group_by = "id", as_of = as_of, col_types = "ccdiccDDlllDilcllllcc") %>% 
+df <- loadInputs("ifrc_epidemics", group_by = "id", as_of = as_of, col_types = "ccddclDDlllDdlcccclccDd") %>% 
   select(Country = countries,
     severity_level = ifrc_severity_level, severity_level_color = ifrc_severity_level_display,
     disaster_start_date, updated_at, created_at, id, summary, name) %>%
@@ -996,7 +997,8 @@ fao_wfp_web_collect <- function() {
       object = "comMap",
       action = "getData",
       timeout = "600",
-      cClientSession = "F2C6472F-E99C-4E2D-86CE102C4C94B29C")
+      cClientSession = "15C88C2E-F332-433F-A1B5C7FAD800C75D",
+      `_` = "1685558559160")
 
     response <- VERB("GET", url, body = payload, query = queryString,
         content_type("application/octet-stream"),

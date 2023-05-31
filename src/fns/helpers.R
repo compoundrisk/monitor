@@ -545,3 +545,12 @@ paste_df <- function(df1, df2) {
     ncol = ncol(df1),
     dimnames = dimnames(df1))
 }
+
+initials <- function(v) {
+  v %>% lapply(function(x) {
+    if (!str_detect(x, "\\s|-")) return(x) else {
+      inits <- str_extract_all(x, "(^|\\s|-)([A-Z])", simplify = T) %>% str_extract_all("[A-Z]", simplify = T) %>% paste(collapse = "")
+      return(inits)
+    }
+  })  %>% unlist()
+}

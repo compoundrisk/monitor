@@ -9,5 +9,5 @@
 "[^sl]iberia|^iberia"," portugal, spain","PRT, ESP"
 "urals"," russia, kazakhstan","RUS, KAZ"
 "north[ern]* africa"," algeria, egypt, libya, morocco, tunisia, western sahara","DZA, EGY, LBY, MAR, TUN, ESH"
-"turan depression", "kazakhstan, turkmenistan, uzbekistan","KAZ, TKM, UZB"
-"central south america", "Argentina, Bolivia, Brazil, Chile, Paraguay, Uruguay","ARG, BOL, BRA, CHL, PRY, URY"
+"turan depression","kazakhstan, turkmenistan, uzbekistan","KAZ, TKM, UZB"
+"central south america","Argentina, Bolivia, Brazil, Chile, Paraguay, Uruguay","ARG, BOL, BRA, CHL, PRY, URY"
