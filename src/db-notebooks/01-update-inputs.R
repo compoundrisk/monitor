@@ -41,37 +41,9 @@ error_delay <- if (error_delay) T else F
 
 # COMMAND ----------
 
-# source("libraries.R")
-
-# COMMAND ----------
-
-# Set up Spark connection
-# sc <- spark_connect(method = "databricks")
-# DBI::dbSendQuery(sc,"CREATE DATABASE IF NOT EXISTS crm")
-# sparklyr::tbl_change_db(sc, "crm")
-
-# COMMAND ----------
-
-## Direct Github location (data folder)
-# github <- "https://raw.githubusercontent.com/bennotkin/compoundriskdata/master/"
-
-# COMMAND ----------
-
-# Each *_collect() function gathers data from a foreign source (including
-# from the bennotkin fork of the CRM Github repo), and archives the new data 
-# into inputs-archive/<indicator-name>.csv
-
-# COMMAND ----------
-
 # HEALTH
 lap_start()
-acaps_collect() %>% delay_error(return = NA, on = error_delay)
-# Add in OWID
-# owid_collect() %>% delay_error(return = NA, on = error_delay)
-# Add in Oxford Response Tracker
 ghsi_collect() %>% delay_error(return = NA, on = error_delay)
-# oxford_openness_collect()
-# inform_covid_collect() %>% delay_error(return = NA, on = error_delay)
 dons_collect() %>% delay_error(return = NA, on = error_delay)
 ifrc_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Health dimension finished collecting")
@@ -112,6 +84,7 @@ gdacs_collect()  %>% delay_error(return = NA, on = error_delay)
 inform_risk_collect()  %>% delay_error(return = NA, on = error_delay)
 iri_collect() %>% delay_error(return = NA, on = error_delay)
 locust_collect() %>% delay_error(return = NA, on = error_delay)
+inform_severity_collect() %>% delay_error(return = NA, on = error_delay)
 acaps_risk_list_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Natural hazards dimension finished collecting")
 

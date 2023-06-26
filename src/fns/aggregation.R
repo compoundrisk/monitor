@@ -1587,61 +1587,53 @@ append_if_exists <- function(data, path, col_types = NULL) {
 # #          # `Risk Change` = as.numeric(Risk) - as.numeric(`Previous Risk`)
 # #          )
 
-# add last_changed to indicator_list.csv
-# functionalize this more precisely
-date_indicators <- function(crm) {
-  new_ind_vals <- crm %>%
-      subset(`Data Level` == "Indicator") %>%
-      arrange(Index, Date) %>%
-      subset(first_ordered_instance(Value)) %>%
-      mutate(indicator_id = as.numeric(str_sub(Index, -2)))
-
-  last_changed <- new_ind_vals %>%
-      group_by(indicator_id) %>%
-      slice_max(Date, with_ties = F) %>%
-      ungroup() %>%
-      # mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
-      select(indicator_id, `Last Changed` = Date)
-
-  new_ind_vals_raw <- crm %>%
-      subset(`Data Level` == "Raw Indicator Data") %>% 
-      arrange(Key, Index, Date) %>%
-      subset(first_ordered_instance(Value_Char)) %>%
-      mutate(indicator_id = as.numeric(str_sub(Index, -2)))
-
-  last_changed_raw <- new_ind_vals_raw %>%
-      group_by(indicator_id) %>%
-      slice_max(Date, with_ties = F) %>%
-      ungroup() %>%
-      # mutate(indicator_id = as.numeric(str_sub(Index, -2))) %>%
-      select(indicator_id, `Last Changed` = Date)
-
-# Was going to bind_rows instead of join but it actually is better
-# to use raw because then a change in method won't change the dates
-# 
-# last_changed_both <- bind_rows(last_changed, last_changed_raw) %>%
-#   group_by(indicator_id) %>%
-#   slice_max(`Last Changed`) %>%
-#   mutate(`Last Changed` = case_when())
-
-last_changed <- left_join(last_changed, last_changed_raw,
-    by = c("indicator_id" = "indicator_id"), suffix = c("", "_raw")) %>%
-    mutate(`Last Changed` = case_when(
-        `Last Changed_raw` == "2022-04-05" ~ `Last Changed`,
-        is.na(`Last Changed_raw`) ~ `Last Changed`,
-        T ~ `Last Changed_raw`)) %>%
-        select(-`Last Changed_raw`)
+# Add last_changed to indicator_list.csv
+date_indicators <- function() {
+# See commit 1a225e7 for previous version that looks at changed indicator values (raw and normalized) in the dashboard data
+last_changed <- indicators_list %>%
+  separate_longer_delim(inputs_archive, delim = ", ") %>%
+  apply(1, function(indicator) {
+    dir <- indicator["inputs_archive"]
+    path <- paste0(inputs_archive_path, dir)
+    if (str_detect(dir, ".csv")) {
+      dates <- read_csv(path, col_select = "access_date", col_types = "D")
+      max_date <- max(dates$access_date, na.rm = T) %>% as.Date()
+    } else if (dir == "iri") {
+      continuity_date <- read_most_recent(paste_path(path, "continuity"), FUN = paste, as_of = as_of, return_date = T)$date
+      forecast_date <- read_most_recent(paste_path(path, "forecast"), FUN = paste, as_of = as_of, return_date = T)$date
+      max_date <- min(continuity_date, forecast_date)
+    } else if (dir == "inform-severity") {
+      max_date <- read_most_recent(path, FUN = paste, as_of = as_of, return_date = T, date_format = "%Y%m%d")$date
+    } else if (str_detect(dir, "acaps-risk-list-reviewed")) {
+      path <- paste_path("hosted-data", dir)
+      max_date <- read_most_recent(path, FUN = paste, as_of = as_of, return_date = T)$date
+    } else {
+      max_date <- read_most_recent(path, FUN = paste, as_of = as_of, return_date = T)$date
+    }
+    # max_date <- tryCatch({
+    #   path <- paste0(inputs_archive_path, dir, ".csv")
+    #   dates <- read_csv(path, col_select = "access_date", col_types = "D")
+    #   max_date <- max(dates$access_date) %>% as.Date()
+    # },
+    # error = function(e) {return(NA)})
+    v <- data.frame(
+      indicator_id = as.numeric(indicator["indicator_id"]),
+      # indicator = indicator["Indicator"],
+      inputs_archive = dir,
+      last_changed = max_date)
+    return(v)
+  }) %>% bind_rows() %>%
+  group_by(indicator_id) %>%
+  summarize(`Last Changed` = paste(unique(last_changed), collapse = ", "))
 
   ind_list <- as.data.frame(read_csv("src/indicators-list.csv", col_types = "ccdcccddcclcccll")) %>%
     # select(-`Last Changed`)
     subset(active)
-  ind_list <- left_join(ind_list, last_changed, ) %>%
+  ind_list <- left_join(ind_list, last_changed, by = "indicator_id") %>%
       relocate(`Last Changed`, .after = Updates) %>%
       arrange(desc(Timeframe), Dimension)
   return(ind_list)
 }
-
-
 
 countFlagChanges <- function(data, early = Sys.Date() - 1 , late = Sys.Date()) {
   data <- data %>%
@@ -1679,51 +1671,9 @@ countFlagChanges <- function(data, early = Sys.Date() - 1 , late = Sys.Date()) {
 
 # Add in-crisis labels
 label_crises <- function(df = read.csv(paste_path(output_directory, "crm-dashboard-data.csv"))) {
-  acaps_high_severity <- function() {
-    # SPLIT UP INTO INPUTS SECTION
-    # Load website
-    h <- new_handle()
-    handle_setopt(h, ssl_verifyhost = 0, ssl_verifypeer=0)
-    curl_download(url="https://www.acaps.org/countries", "acaps.html", handle = h)
-    acaps <- read_html("acaps.html")
-    unlink("acaps.html")
-    
-  # Scrape ACAPS website
-  parent_nodes <- acaps %>% 
-      html_nodes(".severity__country")
 
-  # Scrape crisis data for each listed country
-  acaps_list <- lapply(parent_nodes, function(node) {
-      country <- node %>%
-          html_node(".severity__country__label") %>%
-          html_text()
-      country_level <- node %>%
-          html_node(".severity__country__value") %>%
-          html_text() %>%
-          as.numeric()
-
-      df <- data.frame(
-              Countryname = country,
-              value = country_level
-              # crisis = crises,
-              # value = values
-      )
-      return(df)
-      }) %>%
-      bind_rows() %>%
-      mutate(
-        Countryname = case_when(
-          Countryname == "CAR" ~ "Central African Republic",
-          TRUE ~ Countryname),
-        Country = name2iso(Countryname),
-        .before = 1)
-
-  high_severity_countries <- pull(subset(acaps_list, value >= 4, select = Country))
-    return(high_severity_countries)
-  }
-
-  in_crisis <- acaps_high_severity()
-  # in_crisis <- acaps[which(rowSums(acaps[,3:6])>0),2]
+  in_crisis <- inform_severity_process(as_of = as_of, dimension = "all", prefix = "") %>%
+    filter(inform_severity == 10)
 
   crisis_rows <- countrylist %>%
       mutate(

@@ -147,29 +147,40 @@ get_script_path <- function() {
 }
 getsd <- function() stringr::str_replace(get_script_path(), "/[^/]*$", "")
 
-define_iso2name <- function() {
-# Writes the iso2name function using the latest country code list
-
+get_country_groups_dictionary <- function() {
   # Check if country_groups already is defined, and if it has the appropriate columns
   if (ifelse(exists("country_groups"), "Economy" %in% names(country_groups), F)) {
     dictionary <- country_groups$Economy
     names(dictionary) <- country_groups$Code
   } else if ( file.exists("src/country-groups.csv")) {
-    warning("`country_groups` is not defined or does not have variable `Economy`")
+    # message("`country_groups` is not defined or does not have variable `Economy`")
     country_groups <- read_csv("src/country-groups.csv", col_types = "ccccccccc")
     dictionary <- country_groups$Economy
     names(dictionary) <- country_groups$Code
   } else {
     warning("`src/country-groups.csv` does not exist and `country_groups` is not defined")
-    dictionary <- c(
-        "XKX" = "Kosovo",
-        "CIV" = "Cote d'Ivoire",
-        "COD" = "Congo, DR",
-        "COG" = "Congo, Republic")
+    dictionary <- tryCatch({
+      country_groups <- read_csv("https://github.com/compoundrisk/monitor/raw/databricks/src/country-groups.csv", col_types = "ccccccccc")
+      dictionary <- country_groups$Economy
+      names(dictionary) <- country_groups$Code
+      dictionary
+    },
+      error = function(e) {
+        dictionary <- c(
+          "XKX" = "Kosovo",
+          "CIV" = "Cote d'Ivoire",
+          "COD" = "Congo, DR",
+          "COG" = "Congo, Republic")
+        return(dictionary)
+        })
   }
+  return(dictionary)
+}
 
+define_iso2name <- function() {
+  # Writes the iso2name function using the latest country code list
   compiler::cmpfun(function(v) {
-    names <- countrycode::countrycode(v, origin = "iso3c", destination = "country.name", custom_match = dictionary)
+    names <- countrycode::countrycode(v, origin = "iso3c", destination = "country.name", custom_match = get_country_groups_dictionary())
     return(names)
   })
 }
@@ -177,20 +188,8 @@ define_iso2name <- function() {
 iso2name <- define_iso2name()
 
 define_name2iso <- function() {
-
-    # Check if country_groups already is defined, and if it has the appropriate columns
-  if (ifelse(exists("country_groups"), "Economy" %in% names(country_groups), F)) {
-    dictionary <- country_groups$Code
-    names(dictionary) <- country_groups$Economy
-  } else if ( file.exists("src/country-groups.csv")) {
-    warning("`country_groups` is not defined or does not have variable `Economy`")
-    country_groups <- read_csv("src/country-groups.csv", col_types = "ccccccccc")
-    dictionary <- country_groups$Code
-    names(dictionary) <- country_groups$Economy
-  } else {
-    warning("`src/country-groups.csv` does not exist and `country_groups` is not defined")
-    dictionary <- c()
-  }
+  dictionary <- get_country_groups_dictionary()
+  dictionary <- setNames(names(dictionary), dictionary)
   dictionary <- c(
     dictionary, c(
     "Kosovo" = "XKX",
@@ -200,30 +199,6 @@ define_name2iso <- function() {
     ))
   dictionary <- dictionary[unique(names(dictionary))]
   names(dictionary) <- tolower(names(dictionary))
-
-  # multi_country_dictionary <- list(
-  #   "Sahel" = c("BFA", "CMR", "TCD", "MLI", "MRT", "NER", "NGA", "SEN", "GMB"),
-  #   "Central America" = name2iso(c('Guatemala', 'Belize', 'Honduras', 'El Salvador', 'Nicaragua', 'Costa Rica', 'Panama'))
-  # )
-  # multi_country_dictionary <- c(
-  #   # The %% marks either end of the string, and is removed later on
-  #   "sahel" = paste(sort(c("BFA", "CMR", "TCD", "MLI", "MRT", "NER", "NGA", "SEN", "GMB")), collapse = ", ") %>% {paste0("%%", ., "%%")},
-  #   "central america" = paste(sort(c("GTM", "BLZ", "HND", "SLV", "NIC", "CRI", "PAN")), collapse = ", ") %>% {paste0("%%", ., "%%")},
-  #   "[^ls]iberia" = paste(sort(c("ESP", "PRT")), collapse = ", ") %>% {paste0("%%", ., "%%")},
-  #   "north africa" = paste(sort(c("ESH", "MAR", "DZA", "TUN", "LBY", "EGY")), collapse = ", ") %>% {paste0("%%", ., "%%")},
-  #   "central europe" = paste(sort(c(AUT, DEU, HUN, LIE, POL, SVK, SVN, CHE, CZE)), collapse = ", ") %>% {paste0("%%", ., "%%")}
-  #   )
-
-# read.csv("src/region-names.csv") %>%
-#   filter(!is.na(countries) & countries != "") %>%
-#   mutate(isos = name2iso(countries)) %>%
-#   write.csv("src/region-names.csv", row.names = F)
-
-# wd <- getwd()
-# print(getsd())
-# setwd(getsd())
-# setwd("../..")
-# print(getwd())
 
 if (file.exists("src/region-names.csv")) {
   multi_country_dictionary_df <- read_csv("src/region-names.csv", col_types = "c") %>%
@@ -354,12 +329,16 @@ rm(define_name2iso)
 # Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
 # Also could mean saving all live-downloaded data somewhere
 # I need to save the filename so I can use the date in it as the access_date
-read_most_recent <- compiler::cmpfun(function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, return_name = F, n = 1) {
+read_most_recent <- compiler::cmpfun(function(directory_path, FUN = read.csv, ..., as_of, date_format = "%Y-%m-%d", return_date = F, return_name = F, n = 1, exclude_string = NULL) {
     file_names <- list.files(directory_path)
+    if (!is.null(exclude_string)) {
+      file_names <- file_names[str_detect(file_names, exclude_string, negate = T)]
+    }
     # Reads the date portion of a filename in the format of acaps-2021-12-13
     file_dates <- data.frame(
       file_names = file_names,
-      name_dates = sub(".*(20[[:digit:][:punct:]]+)\\..*", "\\1", file_names) %>%
+      # name_dates = sub(".*(20[[:digit:][:punct:]]+)\\..*", "\\1", file_names) %>%
+      name_dates = str_extract(file_names, "20\\d{2}[:punct:]?\\d{1,2}[:punct:]?\\d{1,2}") %>%
         stringr::str_replace_all("[:punct:]", "-") %>%
         as.Date(format = date_format)) %>%
         filter(!is.na(name_dates)) %>%
@@ -465,7 +444,7 @@ release_delayed_errors <- function() {
 }
 
 # Move this basic function elsewhere, somewhere more basic
-leading_zeros <- function(data, length, filler = "0") {
+leading_zeros <- function(data, length, filler = "0", trailing = F) {
   strings <- sapply(data, function(x) {
     if (is.na(x)) {
       x <- 0
@@ -474,7 +453,11 @@ leading_zeros <- function(data, length, filler = "0") {
     if (nchar(x) > length) {
       stop(paste("String is longer than desired length of", length, ":", x, "in", deparse(substitute(data))))
     }
-    string <- paste0(paste0(rep(filler, length - nchar(x)), collapse = ""), x)
+    if (trailing == F) {
+      string <- paste0(paste0(rep(filler, length - nchar(x)), collapse = ""), x)
+    } else {
+      string <- paste0(x, paste0(rep(filler, length - nchar(x)), collapse = ""))
+    }
     return(string)
   })
   return(strings)

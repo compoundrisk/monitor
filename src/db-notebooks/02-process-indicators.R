@@ -62,7 +62,6 @@ dim_archive_path <- ensure_directory_exists(archive_directory, "dimensions", ret
 # COMMAND ----------
 
 # For while we process a firewall request for ACAPS risk list and IFRC
-# write.csv(ifrc_process(as_of = as_of), "hosted-data/ifrc-epidemics-temp.csv", row.names = F)
 write.csv(acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_"), "hosted-data/acaps-socio-temp-auto.csv", row.names = F)
 write.csv(acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_"), "hosted-data/acaps-natural-temp-auto.csv", row.names = F)
 write.csv(acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_"), "hosted-data/acaps-conflict-temp-auto.csv", row.names = F)
@@ -75,19 +74,9 @@ write.csv(acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix 
 lap_start()
 health_sheet <- aggregate_dimension(
   "Health", # Important for these dimension names to match the names to match what's in indicators-list.csv
-  # acaps_category_process(as_of, category = "health", prefix = "H_") %>%
-    # delay_error(return = NA, on = error_delay),
   ghsi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  # oxford_openness_process(as_of = as_of),
-  # owid_covid_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  # Oxres_process(as_of = as_of),
-  # inform_covid_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   dons_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   ifrc_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
-# Does it make sense to move all output writing to the end, in one spot?
-# Write to a temporary directory, and then move everything to the intended spot?
-# (/output/scheduled/ or /output/manual/run-date/)
-# Do I even need to
 multi_write.csv(health_sheet, "health-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Health sheet is aggregated and saved.")
 
@@ -136,13 +125,10 @@ lap_start()
 socio_sheet <- aggregate_dimension(
   "Socioeconomic Vulnerability",
   inform_socio_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  # income_support_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   mpo_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   macrofin_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  # phone_process(as_of = as_of),
   # Fix warnings
   imf_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  # acaps_risk_list_process(as_of, dim = "Socioeconomic", prefix = "S_") %>% delay_error(return = NA, on = error_delay))
   acaps_risk_list_reviewed_process(dim = "Socioeconomic", prefix = "S_", as_of = as_of))
 multi_write.csv(socio_sheet, "socio-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Socio sheet is aggregated and saved.")
@@ -158,7 +144,7 @@ natural_hazards_sheet <- aggregate_dimension(
   inform_nathaz_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   iri_process(drop_geometry = T, as_of = as_of) %>% delay_error(return = NA, on = error_delay), # Rename iri_forecast)
   locust_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  acaps_category_process(as_of, category = "natural", prefix = "NH_") %>% delay_error(return = NA, on = error_delay),
+  inform_severity_process(as_of, dimension = "Natural Hazard", prefix = "NH_") %>% delay_error(return = NA, on = error_delay),
   # acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_") %>% delay_error(return = NA, on = error_delay))
   acaps_risk_list_reviewed_process(dim = "Natural Hazard", prefix = "NH_", as_of = as_of))
 multi_write.csv(natural_hazards_sheet, "natural_hazards-sheet.csv", c(dim_path, dim_archive_path))
@@ -177,9 +163,7 @@ fragility_sheet <- aggregate_dimension(
   acled_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acled_events_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   eiu_security_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  # acaps_risk_list_process(as_of, dim = "Conflict and Fragility", prefix = "Fr_") %>% delay_error(return = NA, on = error_delay),
   acaps_risk_list_reviewed_process(dim = "Conflict and Fragility", prefix = "Fr_", as_of = as_of),
-  # reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay)),
   pseudo_reign_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 multi_write.csv(fragility_sheet, "fragility-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Fragility sheet is aggregated and saved.")
@@ -279,7 +263,7 @@ write_excel_source_files(
   archive = T,
   directory_path = paste_path(output_directory, "crm-excel/")) # Task: move this so it can use the `output_directory` variable at top of file
 
-ind_list <- date_indicators(all_runs)
+ind_list <- date_indicators()
 # write.csv(ind_list, "indicators-list-dated.csv", row.names = F, na = "")
 write.csv(ind_list, paste_path(output_directory, "crm-excel", "indicators-list-dated.csv"), row.names = F, na = "")
 write.csv(ind_list, paste_path(archive_directory, "indicators-list-dated.csv"), row.names = F, na = "")

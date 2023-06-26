@@ -162,126 +162,109 @@ add_new_input_cols <- function(df1, df2) {
 #--------------------—INDICATOR SPECIFIC FUNCTIONS-----------------------------
 
 #--------------------—LOAD ACAPS realtime database-----------------------------
-acaps_collect <- function() {
-  h <- new_handle()
-  handle_setopt(h, ssl_verifyhost = 0, ssl_verifypeer = 0)
-  file_path <- paste_path(inputs_archive_path, "acaps", paste0("acaps-", Sys.Date(), ".html"))
-  curl_download(url = "https://www.acaps.org/countries",
-                file_path,
-                handle = h)
-  # Remove if text in ".severities" <div> of html is identical in previous run
-  new <- read_html(file_path) %>%
-    html_nodes(".severities") %>% html_text()
-  previous <- read_most_recent(paste_path(inputs_archive_path, "acaps"), FUN = read_html, as_of = Sys.Date() - 1) %>%
-    html_nodes(".severities") %>% html_text()
-  if (identical(new, previous)) {
-    unlink(file_path)
+inform_severity_collect <- function() {
+  # Method using INFORM Severity's own site; previous method used acaps.org
+  if (!dir.exists(paste_path(inputs_archive_path, "inform-severity"))) {
+    dir.create(paste_path(inputs_archive_path, "inform-severity"))
+  }
+  
+  existing_files <- list.files("output/inputs-archive/inform-severity") #%>%
+    # str_extract(".*---(.*$)", group = T)
+  
+  urls <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Severity/Results-and-data") %>%
+    html_elements("a") %>%
+    html_attr("href") %>%
+    { .[str_detect(., "xlsx") & !is.na(.)] } %>%
+    { data.frame(url = paste0("https://drmkc.jrc.ec.europa.eu", .))} %>%
+    mutate(
+      # year_month =
+      #   str_extract(url, "([A-Za-z]+.20\\d\\d).?[A-Za-z0-9]*.xlsx", group = T) %>%
+      #   my() %>% as.yearmon(),
+      # file_name = paste0(year_month, "::", str_extract(url, "[^/]*.xlsx")),
+      file_name = str_extract(url, "[^/]*.xlsx"),
+      url = str_replace_all(url, " ", "%20")) %>%
+    filter(file_name %ni% existing_files) %>%
+    .[nrow(.):1,] %>%
+    filter(!is.na(url))
+    
+  if (nrow(urls) > 0) {
+  urls %>% apply(1, function(url) {
+    # inform_severity <-
+    #   curl_and_delete( 
+    #     url[["url"]],
+    #     FUN = read_xlsx, sheet = "INFORM Severity - all crises",
+    #     skip = 1, range = "A2:U500", na = "x",
+    #     col_types = "text") %>%
+    #   filter(!is.na(COUNTRY)) %>%
+    #   mutate(
+    #     # file_name = url["file_name"],
+    #     `Last updated` = as.Date(as.numeric(`Last updated`), origin = "1899-12-30")
+    #   )
+    # # latest <- max(inform_severity$`Last updated`, na.rm = T)
+    # file_name <- str_extract(url["file_name"], "(.*).xlsx", group = T)
+    # # file_name <- paste0(inputs_archive_path, "inform-severity/", latest, "---", file_name, ".csv")
+    # file_name <- paste0(inputs_archive_path, "inform-severity/", file_name, ".csv")
+    # write_csv(inform_severity, file_name)
+    curl_download(url["url"], destfile = paste0(inputs_archive_path, "inform-severity/", url["file_name"]))
+  })
   }
 }
 
 ## Add in *_collect() function for ACAPS
-acaps_process <- function(as_of) {
-  acaps <- read_most_recent(paste_path(inputs_archive_path, "acaps"), FUN = read_html, as_of = as_of)
-  
-  # Scrape ACAPS website
-  parent_nodes <- acaps %>% 
-    html_nodes(".severity__country")
-  
-  # Scrape crisis data for each listed country
-  acaps_list <- lapply(parent_nodes, function(node) {
-    country <- node %>%
-      html_node(".severity__country__label") %>%
-      html_text()
-    country_level <- node %>%
-      html_node(".severity__country__value") %>%
-      html_text() %>%
-      as.numeric()
-    crises <- node %>%
-      html_nodes(".severity__country__crisis__label") %>%
-      html_text()
-    values <- node %>%
-      html_nodes(".severity__country__crisis__value") %>%
-      html_text() %>% 
-      as.numeric()
-    if (length(crises) != length(values)) {
-      stop(paste("Node lengths for labels and values do not match for", country))
-    }
-    
-    df <- data.frame(
-      Countryname = country,
-      crisis = crises,
-      value = values)
-    return(df)
-  }) %>%
-    bind_rows() %>%
-    subset(!str_detect(tolower(crisis), "country level")) %>%
-    mutate(
-      Countryname = case_when(
-        Countryname == "CAR" ~ "Central African Republic",
-        TRUE ~ Countryname),
-      Country = name2iso(Countryname),
-      .before = 1)
-  
-  select_acaps_countries <- function(data, string, minimum, category) {
-    selected <- data %>%
-      filter(str_detect(tolower(crisis), string)) %>%
-      filter(value >= minimum) %>%
-      group_by(Country)
-    if (nrow(selected > 0)) {
-     selected <- selected %>%
-        summarise(
-        crisis = paste(paste0(crisis, " (", value, ")"), collapse = "; "),
-        value = max(value, na.rm = T)) %>%
-      mutate(category = category, .after = Country)
-    }
-    return(selected)
+inform_severity_process <- function(as_of, dimension, prefix) {
+  if (dimension %ni% c("Natural Hazard", "Conflict and Fragility", "Food", "Health", "all")) {
+    stop('Dimension name must be one of following: "Natural Hazard", "Conflict and Fragility", "Food", "Health" or "all"')
   }
-  
-  # Conflict countries
-  conflict_list <- select_acaps_countries(
-    acaps_list,
-    string = "conflict|Crisis|crisis|Conflict|Refugees|refugees|Migration|migration|violence|violence|Boko Haram",
-    minimum = 4,
-    category = "conflict")
-  
-  # Food security countries
-  food_list <- select_acaps_countries(
-    acaps_list,
-    string = "Food|food|famine|famine",
-    minimum = 4,
-    category = "food")
-  
-  # Natural hazard countries
-  natural_list <- select_acaps_countries(
-    acaps_list,
-    string = "flood|drought|cyclone|landslide|earthquake|volcan",
-    minimum = 3,
-    category = "natural")
-  
-  # Epidemic countries
-  health_list <- select_acaps_countries(
-    acaps_list,
-    string = "epidemic",
-    minimum = 3,
-    category = "health")
-  
-  acaps_sheet <- bind_rows(conflict_list, food_list, natural_list, health_list) %>%
-    mutate(inform_severity = case_when(
-      !is.na(value) ~ 10,
-      TRUE ~ 0)) %>%
-    rename(inform_severity_text = crisis)
-  
-  return(acaps_sheet)
-}
 
-acaps_category_process <- function(as_of, category, prefix) {
-  acaps_sheet <- acaps_process(as_of = as_of)
+  column_names <- read_most_recent(
+    paste_path(inputs_archive_path, "inform-severity"),
+    FUN = read_xlsx, as_of = as_of, date_format = "%Y%m%d",
+    sheet = "INFORM Severity - all crises",
+    range = "A2:Z2", col_names = letters) %>% unlist()
+  all_crises <-
+    read_most_recent(
+      paste_path(inputs_archive_path, "inform-severity"),
+      FUN = read_xlsx, as_of = as_of, date_format = "%Y%m%d",
+      sheet = "INFORM Severity - all crises",
+      skip = 1, range = "A5:Z500", col_names = column_names, na = "x") %>%
+    filter(!is.na(COUNTRY)) %>%
+    select(CRISIS, ISO3, any_of(c("DRIVERS", "TYPE OF CRISIS")), `INFORM Severity Index`, `Last updated`) %>%
+    mutate(`Last updated` = as.Date(`Last updated`)) %>%
+    rename(
+      DRIVERS = any_of("TYPE OF CRISIS"),
+      inform_severity = `INFORM Severity Index`,
+      inform_severity_text = CRISIS)
   
-  output <- acaps_sheet[which(acaps_sheet$category == category),] %>%
-    right_join(countrylist, by = "Country") %>%
-    mutate(inform_severity = case_when(
-      is.na(inform_severity) ~ 0,
-      TRUE ~ inform_severity)) %>%
+  keywords <- c(
+    "Natural Hazard" = "flood|drought|cyclone|landslide|earthquake|volcan",
+    "Conflict and Fragility" = "conflict|crisis|refugees|migration|violence|boko haram",
+    "Food" = "food|famine",
+    "Health" = "epidemic",
+    "all" = ".*")
+
+  thresholds <- c(
+    "Natural Hazard" = 3,
+    "Conflict and Fragility" = 4,
+    "Food" = 4,
+    "Health" = 3,
+    "all" = 4)
+
+  crisis_words <- keywords[dimension]
+  minimum <- thresholds[dimension]
+
+  # Right now I'm using the country level data sheet from ACAPS, but maybe I should be doing it by crisis instead so that the index is forthe specific category
+  select_crises <- all_crises %>%
+    filter(str_detect(tolower(DRIVERS), crisis_words) & inform_severity >= minimum) %>%
+    group_by(ISO3)
+  if (nrow(select_crises > 0)) {
+    select_crises <- select_crises %>%
+      summarise(
+        inform_severity_text = paste(paste0(inform_severity_text, " (", inform_severity, ")"), collapse = "; "),
+        inform_severity = 10)
+  }
+
+  output <- left_join(countrylist, select_crises, by = c("Country" = "ISO3")) %>%
+    replace_NAs_0("inform_severity") %>%
     dplyr::select(Country, inform_severity, inform_severity_text) %>%
     add_dimension_prefix(prefix)
     
@@ -507,18 +490,18 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
         # rename(Country = iso3) %>%
         # add_dimension_prefix(prefix)
   if (as_of >= as.Date("2023-04-19")) {
-  path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
-  most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
-  previous_review <- most_recent$data
-  crisis_events_old <- filter(crisis_events, last_risk_update <= most_recent$date)
-  crisis_events_new <- filter(crisis_events, last_risk_update > most_recent$date) %>% 
-    mutate(risk_level_auto = risk_level)
+    path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
+    most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
+    previous_review <- most_recent$data
+    crisis_events_old <- filter(crisis_events, last_risk_update <= most_recent$date)
+    crisis_events_new <- filter(crisis_events, last_risk_update > most_recent$date) %>% 
+      mutate(risk_level_auto = risk_level)
 
-  crisis_events_old <- left_join(crisis_events_old, select(previous_review, iso3, risk_text_full, risk_level, risk_level_auto, Review), by = c("iso3" = "iso3", "risk_text_full" = "risk_text_full", "risk_level" = "risk_level"))
-  crisis_events_combined <- bind_rows(crisis_events_old, crisis_events_new)
-  crisis_events_combined <- crisis_events_combined %>% select(Countryname, iso3, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
+    crisis_events_old <- left_join(crisis_events_old, select(previous_review, iso3, risk_text_full, risk_level, risk_level_auto, Review), by = c("iso3" = "iso3", "risk_text_full" = "risk_text_full", "risk_level" = "risk_level"))
+    crisis_events_combined <- bind_rows(crisis_events_old, crisis_events_new)
+    crisis_events_combined <- crisis_events_combined %>% select(Countryname, iso3, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
 
-  return(crisis_events_combined) 
+    return(crisis_events_combined) 
   } else {
     return(crisis_events)
   }
@@ -526,11 +509,13 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
   path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
-  output <- read_most_recent(path, as_of = as_of) %>%
-    filter(Review) %>%
+  output <- read_most_recent(path, as_of = as_of, n = "all") %>%
+    bind_rows() %>%
+    mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%y")) %>%
+    filter(Review & last_risk_update >= as_of - 60) %>%
     group_by(iso3) %>%
     # slice_max(risk_level, n = 1, with_ties = T) %>%
-    group_by(iso3) %>%
+    # group_by(iso3) %>%
     summarize(
         acaps_risk_level = max(risk_level),
         acaps_risk_text = str_replace_all(paste(risk_text, collapse = " | "), "\\n", " "),
@@ -1531,7 +1516,12 @@ gdacs_collect <- function() {
       hazard = rep(hazard, len)))
   }) %>% 
     bind_rows() %>% #separate_rows(names, sep = "-|, ") %>% 
-    mutate(names = trimws(names),
+    mutate(names = trimws(names)) %>%
+    filter(names != "Off shore")
+    
+  cyclones <- filter(gdacs, str_detect(names, "^[A-Z]+-23$"))
+  gdacs_no_cyclones <- filter(gdacs, !str_detect(names, "^[A-Z]+-23$")) %>%
+    mutate(
       country = name2iso(names, multiple_matches = T)) %>%
       separate_rows(country, sep = ", ")
 
@@ -1551,9 +1541,12 @@ cyclone_countries <- cyclone_urls %>%
     countries <- info["Exposed countries"]
   return(c(name, countries))
   }) %>%
-  bind_rows()
+  bind_rows() %>%
+  filter(`Exposed countries` != "Off-shore")
 
-gdacs[match(cyclone_countries$Name, gdacs$names),"country"] <- cyclone_countries$`Exposed countries` %>% name2iso()
+cyclones[match(cyclone_countries$Name, cyclones$names),"country"] <- cyclone_countries$`Exposed countries` %>% name2iso()
+
+gdacs <- bind_rows(gdacs_no_cyclones, cyclones)
 
   # Clean up irregular characters
   gdacs <- mutate(gdacs,
@@ -1763,14 +1756,12 @@ iri_collect <- function(as_of = Sys.Date()) {
   continuity_old <- read_most_recent(paste_path(inputs_archive_path, "iri/continuity"), FUN = raster, as_of = as_of)
   if(!identical(values(continuity_new), values(continuity_old))) {
     file.rename("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
-  }
-  file.remove("tmp-continuity.tiff")
+  } else file.remove("tmp-continuity.tiff")
   forecast_new <- raster("tmp-forecast.tiff")
   forecast_old <- read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = raster, as_of = as_of)
   if(!identical(values(forecast_new), values(forecast_old))) {
     file.rename("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
-  }
-  file.remove("tmp-forecast.tiff")
+  } else file.remove("tmp-forecast.tiff")
   # }
 }
 
@@ -1930,13 +1921,24 @@ iri_process_temp <- function() {
 }
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
-# List of countries and risk factors associated with locusts (FAO), see:http://www.fao.org/ag/locusts/en/info/info/index.html
+# List of countries and risk factors associated with locusts (FAO), see: http://www.fao.org/ag/locusts/en/info/info/index.html
 locust_collect <- function() {
-  locust_risk <- read_csv("hosted-data/fao-locust/fao-locust.csv", col_types = cols())
-  locust_risk <- locust_risk %>%
-    dplyr::select(Country, NH_locust_norm)
-  
-  fao_locust <- locust_risk
+  if (
+    read_html("https://www.fao.org/ag/locusts/en/info/info/index.html") %>%
+      html_element(".RightPageColumn") %>%
+      html_element("div.graphics") %>%
+      html_element("img") %>%
+      html_attr("src") %>%
+      str_detect("calmE")) {
+        # fao_locust <- countrylist %>%
+        #   mutate(Country = Country, NH_locust_norm = 0, .keep = "none")
+        fao_locust <- data.frame(Country = "Date check", NH_locust_norm = 0)
+      } else stop("Locust threat is not calm. See http://www.fao.org/ag/locusts/en/info/info/index.html")
+
+  # locust_risk <- read_csv("hosted-data/fao-locust/fao-locust.csv", col_types = cols())
+  # locust_risk <- locust_risk %>%
+  #   dplyr::select(Country, NH_locust_norm)
+  # fao_locust <- locust_risk
   
   archiveInputs(fao_locust, group_by = c("Country"))
 }
@@ -2097,7 +2099,8 @@ acled_collect <- function() {
   three_year <- as.Date(as.yearmon(Sys.Date() - 45) - 3.2)
   
   # Get ACLED API URL
-  acled_url <- paste0("https://api.acleddata.com/acled/read/?key=buJ7jaXjo71EBBB!!PmJ&email=bnotkin@worldbank.org&event_date=",
+  credentials <- read_csv(".access/acled.csv", col_types = "c")
+  acled_url <- paste0("https://api.acleddata.com/acled/read/?key=", credentials$key, "&email=", credentials$username, "&event_date=",
                       three_year,
                       "&event_date_where=>&fields=event_id_cnty|iso|fatalities|event_type|event_date&limit=0")
   
