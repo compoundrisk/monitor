@@ -1591,7 +1591,7 @@ append_if_exists <- function(data, path, col_types = NULL) {
 date_indicators <- function() {
 # See commit 1a225e7 for previous version that looks at changed indicator values (raw and normalized) in the dashboard data
 last_changed <- indicators_list %>%
-  separate_rows(inputs_archive, delim = ", ") %>%
+  separate_rows(inputs_archive, sep = ", ") %>%
   apply(1, function(indicator) {
     dir <- indicator["inputs_archive"]
     path <- paste0(inputs_archive_path, dir)
