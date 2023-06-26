@@ -1999,11 +1999,11 @@ fsi_collect <- function() {
     fsi <- most_recent$data
     file_date <- most_recent$date
     
-    archiveInputs(fsi, group_by = "Country", col_types = "cTcddddddddddddd", today = file_date)
+    archiveInputs(fsi, group_by = "Country", col_types = "cdcddddddddddddd", today = file_date)
 }
 
 fsi_process <- function(as_of) {
-  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = "cTcddddddddddddd") %>%
+  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = "cdcddddddddddddd") %>%
         mutate(Country = name2iso(Country), FSI = Total, .keep = "none") %>%
         normfuncpos(quantile(.$FSI, .98), quantile(.$FSI, .4), "FSI")
   return(fsi)
