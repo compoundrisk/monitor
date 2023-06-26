@@ -2099,7 +2099,7 @@ acled_collect <- function() {
   three_year <- as.Date(as.yearmon(Sys.Date() - 45) - 3.2)
   
   # Get ACLED API URL
-  credentials <- read_csv(".access/acled.csv", col_types = "c")
+  credentials <- read_csv(paste_path(mounted_path, ".access/acled.csv"), col_types = "c")
   acled_url <- paste0("https://api.acleddata.com/acled/read/?key=", credentials$key, "&email=", credentials$username, "&event_date=",
                       three_year,
                       "&event_date_where=>&fields=event_id_cnty|iso|fatalities|event_type|event_date&limit=0")
