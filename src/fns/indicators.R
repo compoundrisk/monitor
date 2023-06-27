@@ -1755,12 +1755,12 @@ iri_collect <- function(as_of = Sys.Date()) {
   continuity_new <- raster("tmp-continuity.tiff")
   continuity_old <- read_most_recent(paste_path(inputs_archive_path, "iri/continuity"), FUN = raster, as_of = as_of)
   if(!identical(values(continuity_new), values(continuity_old))) {
-    file.rename("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
+    file.copy("tmp-continuity.tiff", paste0(inputs_archive_path, "iri/continuity/iri-continuity-", as_of, ".tiff"))
   } else file.remove("tmp-continuity.tiff")
   forecast_new <- raster("tmp-forecast.tiff")
   forecast_old <- read_most_recent(paste_path(inputs_archive_path, "iri/forecast"), FUN = raster, as_of = as_of)
   if(!identical(values(forecast_new), values(forecast_old))) {
-    file.rename("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
+    file.copy("tmp-forecast.tiff", paste0(inputs_archive_path, "iri/forecast/iri-forecast-", as_of, ".tiff"))
   } else file.remove("tmp-forecast.tiff")
   # }
 }

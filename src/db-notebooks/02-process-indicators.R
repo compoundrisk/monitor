@@ -109,13 +109,12 @@ macro_sheet <- aggregate_dimension(
 # a 7 on the MFR watchlist is a medium emerging and should also be a medium overall
 macro_sheet <- macro_sheet %>%
   mutate(
-    `Overall_Macro Fiscal` = case_when(
+  `Overall_Macro Fiscal` = case_when(
       M_MFR == 7 ~ 6.9,
       T ~ `Overall_Macro Fiscal`),
     `Overall_Macro Fiscal_Labels` = assign_ternary_labels(`Overall_Macro Fiscal`, high = 7, medium = 5, low = 0)  %>% as.factor())
 multi_write.csv(macro_sheet, "macro-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Macro sheet is aggregated and saved.")
-
 
 # COMMAND ----------
 
