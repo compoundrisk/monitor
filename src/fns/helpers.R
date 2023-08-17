@@ -195,7 +195,8 @@ define_name2iso <- function() {
     "Kosovo" = "XKX",
     "Micronesia" = "FSM",
     "Türkiye" = "TUR",
-    "Turkiye" = "TUR"
+    "Turkiye" = "TUR",
+    "São Tomé and Príncipe" = "STP"
     ))
   dictionary <- dictionary[unique(names(dictionary))]
   names(dictionary) <- tolower(names(dictionary))
@@ -219,7 +220,7 @@ if (file.exists("src/region-names.csv")) {
     return(names)
   }
 
-  function(v, multiple_matches = F) {
+  function(v, multiple_matches = F, region_names = F) {
   # This new multiple_matches = T argument makes this a much more complicated function,
   # though perhaps it could be written more simply. If the arg is set to TRUE, the function
   # looks at all NAs and tries to find all the matches it can with the country names list.
@@ -237,7 +238,7 @@ if (file.exists("src/region-names.csv")) {
 
   output <- suppressWarnings(name2iso_internal(v))
   na_index <- which(is.na(output))
-  region_index <- if (!is.null(multi_country_dictionary)) {
+  region_index <- if (!is.null(multi_country_dictionary) & region_names == T) {
     which(stringr::str_detect(v, paste(names(multi_country_dictionary), collapse = "|")))
   } else {NA}
   combined_index <- sort(unique(c(na_index, region_index)))
@@ -295,7 +296,7 @@ if (file.exists("src/region-names.csv")) {
 
       output[as.numeric(multiple_isos$index)] <- multiple_isos$isos
     }
-    if (length(region_index) > 0) {
+    if (length(region_index) > 0 & region_names == T) {
       # Look for region or country groups, eg. Sahel or Central America
       output_groups <- stringr::str_replace_all(v, multi_country_dictionary) %>% stringr::str_extract("%%([A-Z]{3},? ?)*%%") %>% stringr::str_extract("[^%]+")
 

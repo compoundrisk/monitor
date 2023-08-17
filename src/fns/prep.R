@@ -16,12 +16,15 @@ if (dir.exists("/dbfs")) {
   .libPaths(c("lib", .libPaths()))
 }
 
-lapply(packages, function(p) {
-  # if (!require(p, character.only = T, quietly = T)) {
-  #   install.packages(p, lib = "lib")
-  # }
-  suppressMessages(library(p, character.only = T, quietly = T))
-})
+invisible(
+  sapply(packages, function(p) {
+    if (!require(p, character.only = T, quietly = T)) {
+    install.packages(p, lib = "lib")
+    }
+    suppressMessages(library(p, character.only = T, quietly = T))
+    return(NULL)
+  })
+)
 
 #loading dplyr last to prevent masking select()
 suppressMessages(library('dplyr'))

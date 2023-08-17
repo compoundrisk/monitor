@@ -40,8 +40,8 @@ normfuncpos <- compiler::cmpfun(function(df, upperrisk, lowerrisk, col1) {
 # - When bringing in input archives, in order to select most recent, might make sense to use `memory = FALSE` in `spark_read_csv()`.
 
 #---------------------------------
-archiveInputs <- compiler::cmpfun(function(data,
-                          path = paste0(inputs_archive_path, deparse(substitute(data)), ".csv"), 
+archiveInputs <- compiler::cmpfun(function(new_data,
+                          path = paste0(inputs_archive_path, deparse(substitute(new_data)), ".csv"), 
                           newFile = F,
                           # group_by defines the groups for which most recent data should be taken
                           group_by = "CountryCode",
@@ -51,16 +51,18 @@ archiveInputs <- compiler::cmpfun(function(data,
                           # large = F) 
 ){
   if (newFile) {
-    path <- path # Need to use path argument before we change `data` – otherwise path is changed
-    data <- data %>% mutate(access_date = today) #%>%
+    path <- path # Need to use path argument before we change `new_data` – otherwise path is changed (because `deparse(substitute())`)
+    new_data <- new_data %>% mutate(access_date = today) #%>%
     # group_by(across(all_of(group_by))) # not needed for first save
-    write.csv(data, path, row.names = F)
-    if(return == T) return(data)
+    write.csv(new_data, path, row.names = F)
+    if(return == T) return(new_data)
   } else {
     
     # Read in the existing file for the input, which will be appended with new data
     prev <- suppressMessages(read_csv(path, col_types = col_types)) %>%
-      mutate(access_date = as.Date(access_date))
+      mutate(access_date = as.Date(access_date)) %>%
+      # In case new columns have been added, want access_date as last column for col_type purposes
+      select(-access_date, access_date)
     
     # Select the most recently added data for each unless group_by is set to false
     if(is.null(group_by)) {
@@ -74,17 +76,17 @@ archiveInputs <- compiler::cmpfun(function(data,
     # Round all numeric columns to an excessive 10 places so that rows aren't counted as different
     # just because of digit cropping (such as with MPO)
     most_recent <- mutate(most_recent, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 8)))
-    data <- mutate(data, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 8)))
+    new_data <- mutate(new_data, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 8)))
     
     # Add access_date for new data
-    data <- mutate(data, access_date = today)
+    new_data <- mutate(new_data, access_date = today)
     
-    # Row bind `most_recent` and `data`, in order to make comparison (probably a better way)
+    # Row bind `most_recent` and `new_data`, in order to make comparison (probably a better way)
     # Could quicken a bit by only looking at columns that matter (ie. don't compare
     # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
     # new dates. Those automatically get added. 
     # if(!large) {
-    bound <- bind_rows(most_recent, data)
+    bound <- bind_rows(most_recent, new_data)
     data_fresh <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
       filter(access_date == today) %>% 
       distinct()
@@ -92,9 +94,9 @@ archiveInputs <- compiler::cmpfun(function(data,
     #   # (Other way) Paste all columns together in order to compare via %in%, and then select the
     #   # data rows that aren't in 
     #   # This way was ~2x slower for a 200 row table, but faster (4.7 min compared to 6) for 80,000 rows
-    #   data_paste <- do.call(paste0, select(data, -access_date))
+    #   data_paste <- do.call(paste0, select(new_data, -access_date))
     #   most_recent_paste <- do.call(paste0, select(most_recent, -access_date))
-    #   data_fresh <- data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
+    #   data_fresh <- new_data[which(!sapply(1:length(data_paste), function(x) data_paste[x] %in% most_recent_paste)),]
     # }
     # Append new data to CSV
     combined <- bind_rows(prev, data_fresh) %>% distinct()
@@ -425,13 +427,13 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
     df <- loadInputs("acaps_risklist", group_by = "risk_id", as_of = as_of, col_types = "cccccccDTDccccdcdcccD")
 
     natural_words <- paste(c(
-        "flood", "drought", "natural", " rain", "monsoon", "dry", "fire",
+        "flood", "drought", "natural", " rain", "monsoon", "dry", "(?<!cease)fire(?!d |wood)",
         "earthquak", "tropic", "cyclon", "volcan", "scarcity", "weather",
         "temperat", "landslid"),
          collapse = "|")
 
     conflict_words <- paste(c("violen", "armed", "clash", "gang", "attack",
-        "fight", "offensive", "conflict", "fragil"),
+        "fight", "offensive", "conflict", "fragil", "protection concern"),
         collapse = "|")
 
     socio_words <- paste(c(
@@ -446,17 +448,17 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
     crisis_words <- keywords[dim]
 
     crisis_events <- as_tibble(df) %>% 
+      mutate(last_risk_update = as.Date(last_risk_update)) %>%
         subset(
             (str_detect(tolower(risk_title), crisis_words) |
             str_detect(tolower(rationale), crisis_words) |
             str_detect(tolower(vulnerability), crisis_words)) & 
             status != "Not materialised" & last_risk_update >= as_of - 60) %>%
-        select(iso3, risk_level, risk_title, rationale, vulnerability, date_entered, last_risk_update, status) %>%
+        select(iso3, all_countries = country, risk_level, risk_title, rationale, vulnerability, date_entered, last_risk_update, status) %>%
         filter(last_risk_update >= as.Date(after)) %>%
         group_by(risk_title, iso3) %>%
         mutate(
-          last_risk_update = as.Date(last_risk_update),
-          risk_text_full = paste(last_risk_update, risk_title, rationale, vulnerability, sep = "\\n"),
+          risk_text_full = paste(last_risk_update, risk_title, paste("Rationale:", rationale), paste("Vulnerability:", vulnerability), sep = "\\n"),
           # Takes excerpts from vulnerability and rationale columns
           across(
             .cols = c(rationale, vulnerability),
@@ -474,7 +476,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
             # Review = NA
           ) %>%
             ungroup() %>%
-        select(Countryname, iso3, risk_level, risk_text, risk_text_full, last_risk_update)
+        select(Countryname, iso3, all_countries, risk_level, risk_text, risk_text_full, last_risk_update)
         # group_by(iso3) %>%
         # slice_max(risk_level, n = 1, with_ties = T) %>%
         # group_by(iso3) %>%
@@ -499,7 +501,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
 
     crisis_events_old <- left_join(crisis_events_old, select(previous_review, iso3, risk_text_full, risk_level, risk_level_auto, Review), by = c("iso3" = "iso3", "risk_text_full" = "risk_text_full", "risk_level" = "risk_level"))
     crisis_events_combined <- bind_rows(crisis_events_old, crisis_events_new)
-    crisis_events_combined <- crisis_events_combined %>% select(Countryname, iso3, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
+    crisis_events_combined <- crisis_events_combined %>% select(Countryname, iso3, all_countries, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
 
     return(crisis_events_combined) 
   } else {
@@ -509,10 +511,10 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
   path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
-  output <- read_most_recent(path, as_of = as_of, n = "all") %>%
+  output <- read_most_recent(path, as_of = Sys.Date(), n = "all") %>%
     bind_rows() %>%
     mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%y")) %>%
-    filter(Review & last_risk_update >= as_of - 60) %>%
+    filter(Review & between(last_risk_update, as_of - 60, last_risk_update)) %>%
     group_by(iso3) %>%
     # slice_max(risk_level, n = 1, with_ties = T) %>%
     # group_by(iso3) %>%
@@ -887,7 +889,7 @@ fpi_collect_many <- function(as_of = Sys.Date()) {
     as_of = Sys.Date(), format = "csv", col_type = "dddddccDD") %>% 
     .$access_date %>% max()
   new_dates <- read_most_recent("hosted-data/food-price-inflation", 
-    n = "all", FUN = paste, as_of = Sys.Date(), return_date = T)$date %>%
+    n = "all", FUN = paste, as_of = as_of, return_date = T)$date %>%
     .[. > oldest_date]
   lapply(new_dates, fpi_collect)
 }
@@ -1111,46 +1113,73 @@ mfr_process <- function(as_of = as_of) {
 }
 
 #---------------------------—Economist Intelligence Unit---------------------------------
-eiu_collect <- function() {
-  # url <- "https://github.com/bennotkin/compoundriskdata/blob/master/Indicator_dataset/RBTracker.xls?raw=true"
-  # destfile <- "RBTracker.xls"
-  # curl::curl_download(url, destfile)
-  # eiu <- read_excel(destfile, sheet = "Data Values", skip = 3)
-  # file.remove("RBTracker.xls")
+eiu_collect <- function(as_of = Sys.Date(), print_date = F) {
+  most_recent <- read_most_recent("hosted-data/eiu", FUN = read_csv, col_types = "c",
+    as_of = as_of, return_date = T)
   
-  # first_of_month <- str_replace(Sys.Date(), "\\d\\d$", "01") %>% as.Date()
-  
-  # eiu <- read_xls("hosted-data/RBTracker.xls", sheet = "Data Values", skip = 3)
-  most_recent <- read_most_recent("hosted-data/eiu", FUN = read_excel, as_of = Sys.Date(), return_date = T, sheet = "Data Values", skip = 3)
-  eiu <- most_recent$data
-  file_date <- most_recent$date
-  
-  archiveInputs(eiu, group_by = c("SERIES NAME", "MONTH"), today = file_date)
+  eiu <- most_recent$data[-1,] %>%
+    # { setNames(., c("Series", "Code", name2iso(names(.)[3:ncol(.)]))) } %>% # Alt method, same speed
+    rename(Series = Geography, Code = `...2`) %>%
+    rename_with(.cols = c(-Series, -Code), ~ name2iso(.x)) %>% # Maybe better to do this in eiu_process()
+    # mutate(across(c(-Series, -Code), ~ as.numeric(.x)))
+    # I pivot longer and then wide to make countries observations and series variables;
+    # Most series will have data for each country-month, but most countries won't have
+    # for each series-month
+    pivot_longer(cols = c(-1, -2), names_to = "Country", values_to = "Values") %>%
+    mutate(across(c(Series, Code, Country), ~ as.factor(.x))) %>%
+    { full_join(
+        filter(., Series != "Review month"),
+        filter(., Series == "Review month") %>% select(Country, Month = Values),
+        by = "Country") } %>%
+      select(-Series) %>%
+      mutate(
+        Month = as.factor(Month),
+        Values = suppressWarnings(as.numeric(Values))) %>%
+      filter(!is.na(Values)) %>%
+      pivot_wider(names_from = Code, values_from = Values) %>%
+    select(Country, Month, everything())
+
+  if (!file.exists(paste_path(inputs_archive_path, "eiu.csv"))) {
+    newFile <- T
+    print("No file eiu.csv, being created.")
+  } else newFile <- F
+
+  archiveInputs(eiu, group_by = c("Country", "Month"), col_types = "ffddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    today = most_recent$date, newFile = newFile)
+  if (print_date) print(most_recent$date)
+}
+
+eiu_collect_many <- function(as_of = Sys.Date()) {
+  if (!file.exists(paste_path(inputs_archive_path, "eiu.csv"))) {
+    oldest_date <- read_most_recent("hosted-data/eiu", 
+    n = "all", FUN = paste, as_of = as_of, return_date = T)$date %>% min()
+    eiu_collect(as_of = oldest_date)
+  }
+  oldest_date <- loadInputs("eiu", group_by = c("Country", "Month"), 
+    as_of = Sys.Date(), format = "csv", col_type = "ffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>% 
+    .$access_date %>% max()
+  new_dates <- read_most_recent("hosted-data/eiu", 
+    n = "all", FUN = paste, as_of = as_of, return_date = T)$date %>%
+    .[. > oldest_date]
+  lapply(new_dates, eiu_collect, print_date = T)
 }
 
 eiu_process <- function(as_of) {
-  eiu_data <- loadInputs("eiu", group_by = c("SERIES NAME", "MONTH"), 
-    as_of = as_of, col_types = "ccDddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>%
-    select(-access_date) %>%
-    subset(MONTH <= as_of)
-  
-  eiu_data_long <- eiu_data %>%
-    select(-`SERIES CODE`) %>%
-    subset(`SERIES NAME` %in% c("Macroeconomic risk", "Financial risk", "Foreign trade & payments risk")) %>%
-    pivot_longer(-c(`SERIES NAME`, MONTH), names_to = "Country", values_to = "Values") %>%
-    pivot_wider(names_from = `SERIES NAME`, values_from = Values) %>%
-    mutate(Macroeconomic_risk = (`Financial risk` + `Macroeconomic risk` + `Foreign trade & payments risk`) / 3)
-  
-  eiu_latest_month <- eiu_data_long %>%
+  eiu_data <- loadInputs("eiu", group_by = c("Month", "Country"), 
+    as_of = as_of, col_types = "ffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>%
+    mutate(Month = as.yearmon(Month)) %>%
+    filter(Month > as.yearmon(as_of) - 1.5)
+  eiu_data <- eiu_data %>% select(Country, Month, Financial = FR00, Trade_and_Payments = PR00, Macroeconomic = MR00) %>%
+    mutate(EIU_Score = (Financial + Trade_and_Payments + Macroeconomic)/3)
+
+  eiu_latest_quarter <- eiu_data %>%
     group_by(Country) %>%
-    slice_max(MONTH, n = 1) %>%
-    # summarize(Macroeconomic_risk = mean(Macroeconomic_risk))
-    summarize(across(-MONTH, ~ mean(.x, na.rm = T)))
-  eiu_one_year <- eiu_data_long %>%
+    slice_max(Month, n = 1)
+  eiu_one_year <- eiu_data %>%
     group_by(Country) %>%
-    slice_max(MONTH, n = 13) %>%
-    slice_min(MONTH, n = 12) %>%
-    summarize(across(-MONTH, ~ mean(.x, na.rm = T), .names = "{.col}_12"))
+    slice_max(Month, n = 5) %>%
+    slice_min(Month, n = 4) %>%
+    summarize(across(-Month, ~ mean(.x, na.rm = T), .names = "{.col}_12m"))
   # eiu_three_month <- eiu_data_long %>%
   #     group_by(Country) %>%
   #     slice_max(MONTH, n = 4) %>%
@@ -1158,17 +1187,15 @@ eiu_process <- function(as_of) {
   #     summarize(Macroeconomic_risk_3 = mean(Macroeconomic_risk))
   
   eiu_joint <-
-    reduce(list(eiu_latest_month, eiu_one_year),#, eiu_three_month),
+    reduce(list(eiu_latest_quarter, eiu_one_year),#, eiu_three_month),
            full_join, by = "Country") %>%
     mutate(
-      EIU_12m_change = Macroeconomic_risk - Macroeconomic_risk_12
+      EIU_12m_change = EIU_Score - EIU_Score_12m,
       #   EIU_3m_change = Macroeconomic_risk - Macroeconomic_risk_3
     ) %>%
-    rename(EIU_Score = `Macroeconomic_risk`,
-           EIU_Score_12m = `Macroeconomic_risk_12`) %>%
-    rename_with(.col = -Country, .fn = ~ paste0("M_", .)) %>%
-    mutate(Country = name2iso(Country)) %>%
-    { .[,sort(names(.))] }
+    rename_with(.col = c(-Country, -Month), .fn = ~ paste0("M_", .))
+    # mutate(Country = name2iso(Country))
+
   
   #   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_12m_change, 0.95), quantile(eiu_joint$M_EIU_12m_change, 0.10), "M_EIU_12m_change")
@@ -1178,8 +1205,8 @@ eiu_process <- function(as_of) {
   eiu_joint <- eiu_joint %>% 
     mutate(M_EIU_12m_change_norm = case_when(
       M_EIU_12m_change_norm >= 7 & M_EIU_Score < 50 ~ 7,
-      T ~ M_EIU_12m_change_norm
-    ))
+      T ~ M_EIU_12m_change_norm)) %>%
+    { .[,sort(names(.))] }
 
   return(eiu_joint)
 }
@@ -1201,6 +1228,12 @@ inform_socio_process <- function(as_of) {
 }
 
 #--------------------------—MPO: Poverty projections----------------------------------------------------
+# Uses World Bank API, but it doesn't include projections
+# yr <- year(Sys.Date())
+# request_url <- paste0("http://api.worldbank.org/v2/country/all/indicator/SI.POV.DDAY?format=json&date=", yr-1, ":", yr)
+# response <- httr::GET(request_url)
+# df <- httr::content(response, "text", encoding = "UTF-8") %>% jsonlite::fromJSON()
+
 mpo_collect <- function() {
   most_recent <- read_most_recent("hosted-data/mpo", FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
   file_date <- most_recent[[2]]
@@ -1308,7 +1341,7 @@ mfr_collect <- function() {
 
 macrofin_process <- function(as_of) {
   macrofin <- loadInputs("macrofin", group_by = c("ISO3"), 
-    as_of = as_of, format = "csv", col_types = "cccccccccccDc")
+    as_of = as_of, format = "csv", col_types = "ccccccccccccD")
   
   macrofin <- macrofin %>%
     # dplyr::select(Country = ISO3, Household.risks, Macroeconomic.risks, Monetary.and.financial.conditions, Risk.appetite) %>%
@@ -1404,57 +1437,81 @@ imf_process <- function(as_of) {
 #---------------------------------
 
 eiu_security_process <- function(as_of) {
-  eiu_data <- loadInputs("eiu", group_by = c("SERIES NAME", "MONTH"), 
-    as_of = as_of, col_types = "ccDddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>%
-        select(-access_date) %>%
-        subset(MONTH <= as_of)
+  eiu_data <- loadInputs("eiu", group_by = c("Month", "Country"), 
+    as_of = as_of, col_types = "ffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>%
+    mutate(Month = as.yearmon(Month)) %>%
+    filter(Month > as.yearmon(as_of) - 1.5)
 
-    series_names <- c("1. Armed conflict", "2. Terrorism", "3. Violent demonstrations",
-        "5. Violent crime", "6. Organised crime",
-        "7. Kidnapping/extortion", "8. Cyber security, likelihood of attacks")
+    series_names <- c(
+      "Armed_Conflict" = "SR01",
+      "Terrorism" = "SR02",
+      "Violent_Demonstrations" = "SR03",
+      "Violent_Crime" = "SR05",
+      "Organised_Crime" = "SR06",
+      "Kidnapping_Extortion" = "SR07",
+      "Cyber_Security" = "SR08")
 
-    eiu_long <- eiu_data %>%
-        select(-`SERIES CODE`) %>%
-        subset(`SERIES NAME` %in% series_names) %>%
-        pivot_longer(-c(`SERIES NAME`, MONTH), names_to = "Country", values_to = "Values") %>%
-        rename(Series = `SERIES NAME`) %>%
-        group_by(Country, Series)
+    eiu_data <- eiu_data %>% select(Country, Month, all_of(series_names))
 
-    eiu_1_month <- eiu_long %>%
-        slice_max(MONTH, n = 1) %>%
-        select(Country, Series, one_month = Values)
-    eiu_1_year <- eiu_long %>%
-        slice_max(MONTH, n = 13) %>%
-        slice_min(MONTH, n = 12) %>%
-        summarize(one_year_mean = mean(Values))
+    eiu_latest_quarter <- eiu_data %>%
+      group_by(Country) %>%
+      slice_max(Month, n = 1) %>%
+      ungroup() %>%
+      mutate(Security_1q = rowMeans(select(., c(-Country, -Month))))
+    eiu_one_year <- eiu_data %>%
+      group_by(Country) %>%
+      slice_max(Month, n = 5) %>%
+      slice_min(Month, n = 4) %>%
+      summarize(across(-Month, ~ mean(.x, na.rm = T), .names = "{.col}_12m")) %>%
+      mutate(Security_12m = rowMeans(select(., -Country)))
 
-    eiu_aggregate <- 
-        # reduce(list(eiu_1_month, eiu_3_month, eiu_1_year, eiu_3_year),#, eiu_three_month),
-        reduce(list(eiu_1_month, eiu_1_year),#, eiu_three_month),
-            full_join, by = c("Country", "Series")) %>%
-            ungroup() %>% group_by(Country) %>%
-            summarize(across(contains("_"), ~ mean(.x))) %>%
-        mutate(
-            security_1_month = one_month,
-            security_1_year = one_year_mean,
-            security_change_12_1 = one_month - one_year_mean,
-            .keep = "unused"
-            ) %>%
-        # full_join(sec_risk) %>% 
-        arrange(desc(security_change_12_1))
+    eiu_aggregate <-
+      reduce(list(eiu_latest_quarter, eiu_one_year),#, eiu_three_month),
+            full_join, by = "Country") %>%
+      mutate(Security_Change = Security_1q - Security_12m) %>%
+      select(Country, -Month, Security_Change, Security_1q, Security_12m, everything())
+
+    # eiu_long <- eiu_data %>%
+    #   select(-`SERIES CODE`) %>%
+    #   subset(`SERIES NAME` %in% series_names) %>%
+    #   pivot_longer(-c(`SERIES NAME`, MONTH), names_to = "Country", values_to = "Values") %>%
+    #   rename(Series = `SERIES NAME`) %>%
+    #   group_by(Country, Series)
+
+    # eiu_1_month <- eiu_long %>%
+    #     slice_max(MONTH, n = 1) %>%
+    #     select(Country, Series, one_month = Values)
+    # eiu_1_year <- eiu_long %>%
+    #     slice_max(MONTH, n = 13) %>%
+    #     slice_min(MONTH, n = 12) %>%
+    #     summarize(one_year_mean = mean(Values))
+
+    # eiu_aggregate <- 
+    #     # reduce(list(eiu_1_month, eiu_3_month, eiu_1_year, eiu_3_year),#, eiu_three_month),
+    #     reduce(list(eiu_1_month, eiu_1_year),#, eiu_three_month),
+    #         full_join, by = c("Country", "Series")) %>%
+    #         ungroup() %>% group_by(Country) %>%
+    #         summarize(across(contains("_"), ~ mean(.x))) %>%
+    #     mutate(
+    #         security_1_month = one_month,
+    #         security_1_year = one_year_mean,
+    #         security_change_12_1 = one_month - one_year_mean,
+    #         .keep = "unused"
+    #         ) %>%
+    #     # full_join(sec_risk) %>% 
+    #     arrange(desc(security_change_12_1))
 
     eiu_security_risk <- 
-        normfuncpos(eiu_aggregate, 0.2, 0, "security_change_12_1") %>%
+        normfuncpos(eiu_aggregate, 0.2, 0, "Security_Change") %>%
         # normfuncpos(quantile(eiu_aggregate$security, 0.95), quantile(eiu_aggregate$security, 0.05), "security") %>%
         # select(Country, security, security_norm, change_12_1, change_12_1_norm) %>%
-        select(Country, security_1_month, security_change_12_1, security_change_12_1_norm) %>%
-        mutate(security_change_12_1_norm = case_when(
-            security_1_month <= 2 & security_change_12_1_norm > 7 ~ 7,
-            T ~ security_change_12_1_norm)) %>% 
-            arrange(desc(security_change_12_1_norm)) %>%
-    mutate(Country = name2iso(Country)) %>%
-    rename(eiu_security_change_12_1_norm = security_change_12_1_norm,
-           eiu_security_change_12_1 = security_change_12_1) %>%
+        select(Country, Security_1q, Security_Change, Security_Change_norm) %>%
+        mutate(Security_Change_norm = case_when(
+            Security_1q <= 2 & Security_Change_norm > 7 ~ 7,
+            T ~ Security_Change_norm)) %>% 
+            arrange(desc(Security_Change_norm), desc(Security_Change)) %>%
+    rename(EIU_Security_Change_norm = Security_Change_norm,
+           EIU_Security_Change = Security_Change) %>%
            add_dimension_prefix("Fr_")
 
     return(eiu_security_risk)
@@ -1468,85 +1525,95 @@ gdacs_collect <- function() {
   gdacs_web <- read_html(gdacs_url) %>%
     html_node("#containerAlertList")
 
-  alert_classes <- c(
-    ".alert_EQ_Green", ".alert_EQ_PAST_Green", ".alert_EQ_Orange", ".alert_EQ_PAST_Orange", ".alert_EQ_Red", ".alert_EQ_PAST_Red",
-    ".alert_TC_Green", ".alert_TC_PAST_Green", ".alert_TC_Orange", ".alert_TC_PAST_Orange", ".alert_TC_Red", ".alert_TC_PAST_Red",
-    ".alert_FL_Green", ".alert_FL_PAST_Green", ".alert_FL_Orange", ".alert_FL_PAST_Orange", ".alert_FL_Red", ".alert_FL_PAST_Red",
-    ".alert_VO_Green", ".alert_VO_PAST_Green", ".alert_VO_Orange", ".alert_VO_PAST_Orange", ".alert_VO_Red", ".alert_VO_PAST_Red",
-    ".alert_DR_Green", ".alert_DR_PAST_Green", ".alert_DR_Orange", ".alert_DR_PAST_Orange", ".alert_DR_Red", ".alert_DR_PAST_Red"
+  event_types <- c(
+    "#gdacs_eventtype_EQ",
+    "#gdacs_eventtype_TC",
+    "#gdacs_eventtype_FL",
+    "#gdacs_eventtype_VO",
+    "#gdacs_eventtype_DR"
+    # "#gdacs_eventtype_WF",
   )
-  
+
   # Function to create database with hazard specific information
-  gdacs <- lapply(alert_classes, function(i) {
-    names <- gdacs_web %>%
-      html_nodes(i) %>%
-      html_nodes(".alert_item_name, .alert_item_name_past") %>%
-      html_text()
+  gdacs <- lapply(event_types, function(type) {
+    event_html <- gdacs_web %>%
+        html_nodes(type)
     
-    mag <- gdacs_web %>%
-      html_nodes(i) %>%
+    names <- event_html %>%
+        html_nodes(".alert_item_name, .alert_item_name_past") %>%
+        html_text()
+
+    urls <- event_html %>%
+      html_nodes(".alert_item") %>%
+      html_nodes("a") %>%
+      html_attr("href")
+
+    mag <- event_html %>%
       html_nodes(".magnitude, .magnitude_past") %>%
       html_text() %>%
       str_trim()
     
-    date <- gdacs_web %>%
-      html_nodes(i) %>%
+    date <- event_html %>%
       html_nodes(".alert_date, .alert_date_past") %>%
       html_text() %>%
       str_trim()
     date <- gsub(c("-  "), "", date)
     date <- gsub(c("\r\n       "), "", date)
 
-    color <- str_extract(tolower(i), "red|orange|green")
-    hazard = str_extract(i, "EQ|TC|FL|VO|DR") %>%
-      str_replace_all(c(
-        "EQ" = "earthquake",
-        "TC" = "cyclone",
-        "FL" = "flood",
-        "VO" = "volcano",
-        "DR" = "drought"))
-    status <- if (hazard != "drought" & str_detect(tolower(i), "past")) "past" else "active"
-    len <- length(names)
-    
-    if (hazard == "drought") date <- as.character(Sys.Date() - 7 * as.numeric(str_extract(date, "\\d+")))
+    hazard <- str_extract(type, "EQ|TC|FL|VO|DR") %>%
+        str_replace_all(c(
+          "EQ" = "earthquake",
+          "TC" = "cyclone",
+          "FL" = "flood",
+          "VO" = "volcano",
+          "DR" = "drought"))
 
-    return(cbind.data.frame(names, mag, date, 
-      status = rep(status, len),
-      haz = rep(color, len),
-      hazard = rep(hazard, len)))
+    alert_class <- event_html %>%
+      html_nodes("a > div:first-child") %>%
+      html_attr("class")
+
+    color <- str_extract(tolower(alert_class), "red|orange|green")
+
+    status <- case_when(
+      hazard != "drought" & str_detect(tolower(alert_class), "past") ~ "past", T ~ "active")
+
+    events <- data.frame(names, mag, date, status, haz = color, hazard =rep(hazard, length(names)), urls)
+
+    return(events)
   }) %>% 
     bind_rows() %>% #separate_rows(names, sep = "-|, ") %>% 
     mutate(names = trimws(names)) %>%
     filter(names != "Off shore")
-    
-  cyclones <- filter(gdacs, str_detect(names, "^[A-Z]+-23$"))
-  gdacs_no_cyclones <- filter(gdacs, !str_detect(names, "^[A-Z]+-23$")) %>%
+
+  gdacs_no_cyclones <- filter(gdacs, hazard != "cyclone") %>%
     mutate(
       country = name2iso(names, multiple_matches = T)) %>%
       separate_rows(country, sep = ", ")
 
-# Add countries for cyclones
-cyclone_urls <- gdacs_web %>% html_node("#gdacs_eventtype_TC") %>%
-  html_nodes(".alert_item") %>%
-  html_nodes("a") %>%
-  html_attr("href")
+  # Add countries for cyclones and other countryless events
+  gdacs_no_countries <- bind_rows(
+    filter(gdacs, hazard == "cyclone"),
+    filter(gdacs_no_cyclones, is.na(country))
+  )
 
-cyclone_countries <- cyclone_urls %>%
-  lapply(function(url) {
+  gdacs_no_countries$country <- gdacs_no_countries$urls %>% lapply(function(url) {
     table <- read_html(url) %>%
       html_node(".summary") %>%
       html_table()
     info <- table$X2 %>% setNames(table$X1)
-    name <- info["Name"]
+    names(info) <- str_replace_all(names(info), c("Countries:" = "Exposed countries", "Name:" = "Name"))
+    # name <- info["Name"]
     countries <- info["Exposed countries"]
-  return(c(name, countries))
-  }) %>%
-  bind_rows() %>%
-  filter(`Exposed countries` != "Off-shore")
+  return(countries)
+  })
+  gdacs_found_countries <- gdacs_no_countries %>% filter(country != "Off-shore") %>%
+    mutate(country = name2iso(country)) %>%
+    separate_rows(country, sep = ", ")
 
-cyclones[match(cyclone_countries$Name, cyclones$names),"country"] <- cyclone_countries$`Exposed countries` %>% name2iso()
-
-gdacs <- bind_rows(gdacs_no_cyclones, cyclones)
+  gdacs <- bind_rows(
+    gdacs_no_cyclones %>% filter(!is.na(country)),
+    gdacs_found_countries
+  )
 
   # Clean up irregular characters
   gdacs <- mutate(gdacs,
@@ -1562,10 +1629,12 @@ gdacs <- bind_rows(gdacs_no_cyclones, cyclones)
   
   # Add all currently online events to gdacs file unless most recent access_date and
   # current data are fully identical
-  gdacs_prev <- read_csv(paste_path(inputs_archive_path, "gdacs.csv"), col_types = "ccccccDc")
+  gdacs_prev <- read_csv(paste_path(inputs_archive_path, "gdacs.csv"), col_types = "c") %>%
+    mutate(access_date = as.Date(access_date))
   gdacs_prev_recent <- filter(gdacs_prev, access_date == max(access_date)) %>% distinct()
   if(!identical(select(gdacs_prev_recent, -access_date), select(gdacs, -access_date))) {
-    gdacs <- bind_rows(gdacs_prev, gdacs) %>% distinct()
+    gdacs <- bind_rows(gdacs_prev, gdacs) %>% distinct() %>%
+      select(-access_date, access_date)
     write.csv(gdacs, paste_path(inputs_archive_path, "gdacs.csv"), row.names = F)
   }
   # # There may be a more efficient approach that gives all currently online events a TRUE `current` variable, and
@@ -1586,7 +1655,7 @@ gdacs <- bind_rows(gdacs_no_cyclones, cyclones)
 gdacs_process <- function(as_of) {
   # if (format == "csv") {
     # Read in CSV
-    gdacs <- read_csv(paste_path(inputs_archive_path, "gdacs.csv"), col_types = "ccccccDc") %>%
+    gdacs <- read_csv(paste_path(inputs_archive_path, "gdacs.csv"), col_types = "c") %>%
       mutate(access_date = as.Date(access_date)) %>%
       filter(access_date <= as_of) %>%
       filter(access_date == max(access_date))
@@ -1613,6 +1682,8 @@ gdacs_process <- function(as_of) {
         paste(parse_date_time(paste(date), orders = "Y m d")),
       str_detect(date, "\\d{2} [:alpha:]{3}\\s*\\d{2}:\\d{2}") ~
         paste(parse_date_time(paste(date), orders = "d b HM")),
+      str_detect(date, "Week") ~
+        paste(as_of - 7*as.numeric(str_extract(date, '(\\d+) Week', group = T))),
       T ~ NA_character_),
     date = case_when(
       year(date) != 0 ~ date,
@@ -1955,6 +2026,38 @@ locust_process <- function(as_of) {
 ####    FRAGILITY
 
 #-------------------------—FCS---------------------------------------------
+fcs_create_file <- function(list, date) {
+  fcv_statuses <- lapply(seq_along(list), function(i, fcv_status) { 
+    df <- data.frame(list[i])
+    df <- df %>% mutate(
+      FCV_status = names(df) %>% str_replace_all("\\.", " ")
+      ) %>% 
+    rename(Country = 1) %>%
+    mutate(Country = name2iso(Country))
+    return(df)
+    }) %>%
+    bind_rows()
+
+  fcs <- country_groups %>% 
+    mutate(
+        Countryname = Economy,
+        Country = Code,
+        `IDA-status` = case_when(
+            `Lending category` == "IDA" ~ "Yes",
+            T ~ "NA"),
+    .keep = "none") %>%
+    subset(Country %in% countrylist$Country) %>%
+    left_join(fcv_statuses, by = "Country")
+  file_name <- paste0("hosted-data/fcs/fcs-list-", date, ".csv")
+
+  write.csv(fcs, file_name, row.names = F)
+}
+
+# fcs_create_file(
+#   list = list(
+#     "conflict" = c("Afghanistan", "Burkina Faso", "Cameroon", "Central African Republic", "Congo, Democratic Republic of", "Ethiopia", "Iraq", "Mali", "Mozambique", "Myanmar", "Niger", "Nigeria", "Somalia", "South Sudan", "Sudan", "Syrian Arab Republic", "Ukraine", "West Bank and Gaza (territory)", "Yemen, Republic of"),
+#     "institutional and social fragility" = c("Burundi", "Chad", "Comoros", "Congo, Republic of", "Eritrea", "Guinea-Bissau", "Haiti", "Kiribati", "Kosovo", "Lebanon", "Libya", "Marshall Islands", "Micronesia, Federated States of", "Papua New Guinea", "São Tomé and Príncipe", "Solomon Islands", "Timor-Leste", "Tuvalu", "Venezuela, RB", "Zimbabwe")),
+#   date = "2023-07-10")
 
 fcs_collect <- function() {
   most_recent <- read_most_recent("hosted-data/fcs", FUN = read_csv, 
