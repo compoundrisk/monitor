@@ -47,9 +47,9 @@ archiveInputs <- compiler::cmpfun(function(new_data,
                           group_by = "CountryCode",
                           today = Sys.Date(),
                           return = F,
-                          col_types = NULL
+                          col_types = cols(.default = "c")
                           # large = F) 
-){
+                          ) {
   if (newFile) {
     path <- path # Need to use path argument before we change `new_data` – otherwise path is changed (because `deparse(substitute())`)
     new_data <- new_data %>% mutate(access_date = today) #%>%
@@ -59,8 +59,9 @@ archiveInputs <- compiler::cmpfun(function(new_data,
   } else {
     
     # Read in the existing file for the input, which will be appended with new data
-    prev <- suppressMessages(read_csv(path, col_types = col_types)) %>%
-      mutate(access_date = as.Date(access_date)) %>%
+    prev <- suppressMessages(read_csv(path, col_types = col_types))
+    if (nrow(problems(prev)) > 0) stop("Column types do not match.")
+    prev <- prev %>% mutate(access_date = as.Date(access_date)) %>%
       # In case new columns have been added, want access_date as last column for col_type purposes
       select(-access_date, access_date)
     
@@ -72,15 +73,18 @@ archiveInputs <- compiler::cmpfun(function(new_data,
         group_by(across(all_of(group_by))) %>%
         slice_max(order_by = access_date)
     }
-    
+
     # Round all numeric columns to an excessive 10 places so that rows aren't counted as different
     # just because of digit cropping (such as with MPO)
-    most_recent <- mutate(most_recent, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 8)))
+    # most_recent <- mutate(most_recent, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 8)))
     new_data <- mutate(new_data, across(.cols = where(is.numeric), .fns = ~ round(.x, digits = 8)))
     
     # Add access_date for new data
     new_data <- mutate(new_data, access_date = today)
-    
+    if (class(col_types) == "col_spec") {
+      new_data <- mutate(new_data, across(-access_date, ~ as.character(.x)))
+    }
+
     # Row bind `most_recent` and `new_data`, in order to make comparison (probably a better way)
     # Could quicken a bit by only looking at columns that matter (ie. don't compare
     # CountryCode and CountryName both). Also, for historical datasets, don't need to compare
@@ -649,51 +653,60 @@ dons_process <- function(as_of) {
 #---------------------------------—IFRC Epidemics---------------------------------
 
 ifrc_collect <- function() {
-url <- "https://goadmin.ifrc.org/api/v2/event"
-queryString <- list(
-  limit = "1000",
-  ordering = "-disaster_start_date",
-  disaster_start_date__gte = "2022-09-27T00:00:00.000Z",
-  dtype = "1",
-  offset = "0")
-payload <- ""
-encode <- "raw"
-response <- httr::VERB("GET", url, body = payload,
-                 add_headers(Origin = 'https://go.ifrc.org', Accept_Encoding = 'gzip, deflate, br',
-                 Host = 'goadmin.ifrc.org',
-                #  User_Agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15', 
-                 Accept_Language = 'en', Referer = 'https://go.ifrc.org/', Connection = 'keep-alive', ''), query = queryString, content_type("application/octet-stream"), accept("*/*"), encode = encode)
+  url <- "https://goadmin.ifrc.org/api/v2/event"
+  queryString <- list(
+    limit = "1000",
+    ordering = "-disaster_start_date",
+    disaster_start_date__gte = "2022-09-27T00:00:00.000Z",
+    dtype = "1",
+    offset = "0")
+  payload <- ""
+  encode <- "raw"
+  response <- httr::VERB("GET", url, body = payload,
+                  add_headers(Origin = 'https://go.ifrc.org', Accept_Encoding = 'gzip, deflate, br',
+                  Host = 'goadmin.ifrc.org',
+                  #  User_Agent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15', 
+                  Accept_Language = 'en', Referer = 'https://go.ifrc.org/', Connection = 'keep-alive', ''), query = queryString, content_type("application/octet-stream"), accept("*/*"), encode = encode)
 
-json <- content(response, "text")
-df <- jsonlite::fromJSON(json)$results 
-df$dtype <- df$dtype$name
-df$countries <- lapply(df$countries, function(i) {return(i$iso3)}) %>% unlist()
-ifrc_epidemics <- df %>% mutate(
-  disaster_start_date = as.Date(disaster_start_date),
-  created_at = as.Date(created_at),
-  updated_at = as.Date(updated_at),
-  num_affected = as.numeric(num_affected)) %>%
-  select(-field_reports, -appeals)
+  json <- content(response, "text", encoding = "UTF-8")
+  df <- jsonlite::fromJSON(json)$results 
+  df$dtype <- df$dtype$name
+  df$countries <- lapply(df$countries, function(i) {return(i$iso3)}) %>% unlist()
+  ifrc_epidemics <- df %>% mutate(
+    disaster_start_date = as.Date(disaster_start_date),
+    created_at = as.Date(created_at),
+    updated_at = as.Date(updated_at),
+    num_affected = as.numeric(num_affected)) %>%
+    select(-field_reports, -appeals)
 
-    # Delete this after one run on Databricks
-    if (!file.exists(paste_path(inputs_archive_path, "ifrc_epidemics.csv"))) {
-      print("No file ifrc_epidemics.csv, being created.")
-      archiveInputs(ifrc_epidemics, group_by = "id", newFile = T, col_types = "ccdiccDDlllDilcllllcc")
-    } else {
-      archiveInputs(ifrc_epidemics, group_by = "id", col_types = "ccdiccDDlllDilcllllcc")
-    }
+  # Delete this after one run on Databricks
+  if (!file.exists(paste_path(inputs_archive_path, "ifrc_epidemics.csv"))) {
+    print("No file ifrc_epidemics.csv, being created.")
+    archiveInputs(ifrc_epidemics, group_by = "id", newFile = T)
+  } else {
+    archiveInputs(ifrc_epidemics, group_by = "id")
+  }
 }
 
-ifrc_process <- function(as_of) {
-df <- loadInputs("ifrc_epidemics", group_by = "id", as_of = as_of, col_types = "ccddclDDlllDdlcccclccDd") %>% 
-  select(Country = countries,
-    severity_level = ifrc_severity_level, severity_level_color = ifrc_severity_level_display,
-    disaster_start_date, updated_at, created_at, id, summary, name) %>%
-    mutate(ifrc_epidemics = 10, ifrc_epidemics_text = name) %>%
-    add_dimension_prefix("H_")
+# Code for cleaning up ifrc_epidemics.csv archive file
+# df <- read_csv('output/inputs-archive/ifrc_epidemics.csv', col_types = cols(.default = "c"))
+# df %>% select(-access_date) %>% filter(!duplicated(.))
+# df %>% filter(id == '6200') %>% select(-access_date) %>% filter(!duplicated(.)) %>% .[22:23]
+# repaired <- df %>% group_by(id) %>% mutate(translation_module_original_language = base::unique(translation_module_original_language) %>% subset(!is.na(.)))    
+# # repaired <- repaired %>% group_by(id) %>% mutate(active_deployments = base::unique(active_deployments) %>% subset(!is.na(.)))    
+# repaired <- repaired[!duplicated(select(repaired, -access_date)),]
+# write.csv(repaired, 'output/inputs-archive/ifrc_epidemics.csv', row.names = F)
 
-epidemics <- left_join(countrylist, df, by = "Country") %>% as_tibble() %>% arrange(H_ifrc_epidemics)
-return(epidemics)
+ifrc_process <- function(as_of) {
+  df <- loadInputs("ifrc_epidemics", group_by = "id", as_of = as_of, col_types = cols(.default = "c")) %>% 
+    select(Country = countries,
+      severity_level = ifrc_severity_level, severity_level_color = ifrc_severity_level_display,
+      disaster_start_date, updated_at, created_at, id, summary, name) %>%
+      mutate(ifrc_epidemics = 10, ifrc_epidemics_text = name) %>%
+      add_dimension_prefix("H_")
+
+  epidemics <- left_join(countrylist, df, by = "Country") %>% as_tibble() %>% arrange(H_ifrc_epidemics)
+  return(epidemics)
 }
 
 
@@ -1215,7 +1228,7 @@ eiu_process <- function(as_of) {
 #---------------------------—Alternative socio-economic data (based on INFORM)
 inform_socio_process <- function(as_of) {
   inform_risk <- loadInputs("inform_risk", group_by = c("Country"), 
-    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcDddddcd") %>%
+    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcddddcdD") %>%
     distinct()
   
   inform_data <- inform_risk %>%
@@ -1775,7 +1788,7 @@ inform_risk_collect <- function() {
 
 inform_nathaz_process <- function(as_of) {
   inform_risk <- loadInputs("inform_risk", group_by = c("Country"),
-    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcDddddcd") %>%
+    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcddddcdD") %>%
     distinct()
   # Rename country
   informnathaz <- inform_risk %>%
