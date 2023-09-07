@@ -496,18 +496,26 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
         # rename(Country = iso3) %>%
         # add_dimension_prefix(prefix)
   if (as_of >= as.Date("2023-04-19")) {
+    # Compare to the most recent reviewed ACAPS Risk List file
     path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
     most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
     previous_review <- most_recent$data
+    # Separate today's crisis_events file into events that were updated before the last manual review and after the last manual review
     crisis_events_old <- filter(crisis_events, last_risk_update <= most_recent$date)
     crisis_events_new <- filter(crisis_events, last_risk_update > most_recent$date) %>% 
       mutate(risk_level_auto = risk_level)
+    
+    # Previously I was including previously reviewed items in the output, but I don't
+    # need to because acaps_risk_list_reviewed_process() reads all reviewed files
+    # crisis_events_old <- left_join(crisis_events_old, select(previous_review, iso3, risk_text_full, risk_level, risk_level_auto, Review), by = c("iso3" = "iso3", "risk_text_full" = "risk_text_full", "risk_level" = "risk_level"))
+    # crisis_events_combined <- bind_rows(crisis_events_old, crisis_events_new)
+    # crisis_events_combined <- crisis_events_combined %>% select(Countryname, iso3, all_countries, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
+    # return(crisis_events_combined) 
 
-    crisis_events_old <- left_join(crisis_events_old, select(previous_review, iso3, risk_text_full, risk_level, risk_level_auto, Review), by = c("iso3" = "iso3", "risk_text_full" = "risk_text_full", "risk_level" = "risk_level"))
-    crisis_events_combined <- bind_rows(crisis_events_old, crisis_events_new)
-    crisis_events_combined <- crisis_events_combined %>% select(Countryname, iso3, all_countries, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update, Review)
+    crisis_events_new <- crisis_events_new %>% select(Countryname, iso3, all_countries, risk_level, risk_level_auto, risk_text, risk_text_full, last_risk_update) %>%
+      mutate(Review = "NA")
+    return(crisis_events_new)
 
-    return(crisis_events_combined) 
   } else {
     return(crisis_events)
   }
@@ -518,7 +526,7 @@ acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
   output <- read_most_recent(path, as_of = Sys.Date(), n = "all") %>%
     bind_rows() %>%
     mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%y")) %>%
-    filter(Review & between(last_risk_update, as_of - 60, last_risk_update)) %>%
+    dplyr::filter(Review & between(last_risk_update, as_of - 60, last_risk_update)) %>%
     group_by(iso3) %>%
     # slice_max(risk_level, n = 1, with_ties = T) %>%
     # group_by(iso3) %>%
@@ -2479,6 +2487,11 @@ gic_process <- function(as_of) {
   # and, in fact, true of all datasets that record events.
   coups_raw <- read_csv(paste_path(inputs_archive_path, "gic.csv"), col_types = "cdddddddc")
   
+  # Manually add in coups before they are added to dataset
+  if (max(coups_raw$access_date) < as.Date("2023-9-05")) {
+    coups_raw <- coups_raw %>% bind_rows(data.frame(country = "Gabon", year = 2023, month = 8, day = 30, coup = 2, version = "manual", access_date = as.Date("2023-09-05"), date = "2023-08-30"))
+  }
+
   coups <- coups_raw %>%
     mutate(
       date = as.Date(paste(year, month, day, sep = "-")),

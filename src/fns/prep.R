@@ -18,9 +18,9 @@ if (dir.exists("/dbfs")) {
 
 invisible(
   sapply(packages, function(p) {
-    if (!require(p, character.only = T, quietly = T)) {
-    install.packages(p, lib = "lib")
-    }
+    # if (!require(p, character.only = T, quietly = T)) {
+    # install.packages(p, lib = "lib")
+    # }
     suppressMessages(library(p, character.only = T, quietly = T))
     return(NULL)
   })
