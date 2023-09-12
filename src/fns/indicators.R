@@ -775,19 +775,35 @@ proteus_process <- function(as_of) {
 
 #Load database
 fews_collect <- function(as_of = Sys.Date()) {
-  most_recent <- read_most_recent("hosted-data/fews", 
-    FUN = read_csv, col_types = cols(), as_of = as_of, return_date = T)
-  file_date <- most_recent[[2]]
-  fewsnet <- most_recent$data
-  archiveInputs(fewsnet,  group_by = c("admin_code", "year_month"), today = file_date)
+  most_recent <- read_most_recent("hosted-data/fews", FUN = read_csv, as_of = as_of,
+    col_types = cols(.default = "c"), return_name = T)
+  
+  new_path <- paste_path(inputs_archive_path, "fews", most_recent$name)
+  if (file.exists(new_path)) {
+    message(paste(new_path, "already exists. File not rewritten."))
+  } else {
+    write_csv(most_recent$data, new_path)
+  }
+}
+
+fews_collect_many <- function(as_of = Sys.Date()) {
+  if (!dir.exists(paste_path(inputs_archive_path, "fews"))) {
+    dir.create(paste_path(inputs_archive_path, "fews"))
+  }
+  existing_files <- list.files(paste_path(inputs_archive_path, "fews"))
+  new_dates <- read_most_recent("hosted-data/fews", FUN = paste, as_of = as_of,
+    n = "all", return_date = T, return_name = T) %>%
+    { .[["date"]][.$name %ni% existing_files] }
+  lapply(new_dates, fews_collect) %>% invisible()
 }
 
 fews_process <- function(as_of) {
-  fewswb <- loadInputs("fewsnet", group_by = c("admin_code", "year_month"), 
-    as_of = as_of, format = "csv", col_types = "cdcdddddddddcddcD") %>%
+  fewswb <- read_most_recent(paste_path(inputs_archive_path, "fews"), 
+    FUN = read_csv, col_types = cols(.default = "c"), as_of = as_of) %>%
     mutate(year_month = as.yearmon(year_month, "%Y_%m")) %>%
-    subset(as.Date(year_month) > as_of - 2 * 365) # Might be able to replace this with a shorter timespan
-  
+    subset(as.Date(year_month) > as_of - 2 * 365) %>% # Might be able to replace this with a shorter timespan
+    mutate(across(.cols = c(admin_code, pop, contains("fews")), ~ as.numeric(.x)))
+ 
   #Calculate country totals
   fewsg <- fewswb %>%
     #  dplyr::select(-X) %>%
@@ -836,6 +852,7 @@ fews_process <- function(as_of) {
       .fns = ~ sum(.x, na.rm = T),
       .names = "total{.col}"),
       .groups = "drop_last") %>%
+    # Try moving above to fews_collect()
     # Calculate percentage change for proportions in IPC3+ or IPC4+
     mutate(pctchangeipc3for = pctabs(totalipc3pluspercfor), # Latest ipc3+ forecast proportion - previous proportion
            pctchangeipc4for = pctperc(totalipc4pluspercfor), # Percentage growth in ipc4+ forecast proportion from previous proportion
@@ -912,7 +929,7 @@ fpi_collect_many <- function(as_of = Sys.Date()) {
   new_dates <- read_most_recent("hosted-data/food-price-inflation", 
     n = "all", FUN = paste, as_of = as_of, return_date = T)$date %>%
     .[. > oldest_date]
-  lapply(new_dates, fpi_collect)
+  lapply(new_dates, fpi_collect) %>% invisible()
 }
 
 # dates <- list.files("hosted-data/food-price-inflation") %>%
