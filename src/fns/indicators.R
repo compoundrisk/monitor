@@ -1022,21 +1022,23 @@ fao_wfp_web_collect <- function() {
       object = "comMap",
       action = "getData",
       timeout = "600",
-      cClientSession = "15C88C2E-F332-433F-A1B5C7FAD800C75D",
-      `_` = "1685558559160")
+      cClientSession = "EC1389A6-4944-4A17-9D57C3E99A8B59DC",
+      `_` = "1695157340852")
 
     response <- VERB("GET", url, body = payload, query = queryString,
         content_type("application/octet-stream"),
         set_cookies(
-            `cfid` = "cf5be69a-98d3-496f-aed4-deef0d844775",
-            `cftoken` = "0", `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_LV` = "1669922581475", 
-            `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_TC` = "1669922581475", 
-            `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_HC` = "2"),
+          `cfid` = "ef082612-c8b5-4cf8-9e0f-89e1b92300c0",
+          `cftoken` = "0",
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_LV` = "1695157862783",
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_TC` = "1695157785631",
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_HC` = "6"),
         encode = encode)
 
     full_text <- content(response, "text")
     if (full_text %>% str_detect('TOCOLOR\\\\+":1')) {
         no_data <- F
+        print(paste("Data found at outlook =", outlook))
       } else {
         outlook <- outlook - 1
     }
@@ -1047,6 +1049,8 @@ fao_wfp_web_collect <- function() {
     cat(full_text, file = file_name)
   }
 }
+
+read_html(full_text)
 
 fao_wfp_web_process <- function(as_of) {
   full_text <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"), FUN = read_file, as_of = as_of, return_date = T, return_name = T)
@@ -1074,7 +1078,7 @@ fao_wfp_web_process <- function(as_of) {
       #     })
       return(c('Country' = country, 'Color' = color, 'F_FAO_WFP_Concern' = concern))
   }) %>% bind_rows() %>%
-  mutate(Countryname = Country, Country = name2iso(Countryname), .before = 1) %>%
+  mutate(Countryname = Country, Country = name2iso(Countryname, region_names = T), .before = 1) %>%
   mutate(F_FAO_WFP_Hunger_Hotspot = case_when(
     F_FAO_WFP_Concern == "highest" ~ 10,
     F_FAO_WFP_Concern == "very high" ~  7,
@@ -1253,12 +1257,12 @@ eiu_process <- function(as_of) {
 #---------------------------—Alternative socio-economic data (based on INFORM)
 inform_socio_process <- function(as_of) {
   inform_risk <- loadInputs("inform_risk", group_by = c("Country"), 
-    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcddddcdD") %>%
+    as_of = as_of, format = "csv", col_types = cols(.default = "c")) %>%
     distinct()
   
   inform_data <- inform_risk %>%
-    dplyr::select(Country, "Socio-Economic Vulnerability") %>%
-    rename(S_INFORM_vul = "Socio-Economic Vulnerability")
+    dplyr::select(Country, `Socio-Economic Vulnerability`) %>%
+    mutate(S_INFORM_vul = as.numeric(`Socio-Economic Vulnerability`), .keep = "unused")
   
   inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
   inform_data <- normfuncpos(inform_data, 7, 0, "S_INFORM_vul")
@@ -1802,23 +1806,24 @@ inform_risk_collect <- function() {
   # read_csv("output/inputs-archive/inform_risk.csv", na = "x") %>%
   # write.csv("output/inputs-archive/inform_risk.csv", row.names = F)
 
-  most_recent <- read_most_recent("hosted-data/inform-risk", FUN = read_csv, as_of = Sys.Date(), col_types = "cdcdddddddddddddddddddddddddddddddddddcd", return_date = T)
+  most_recent <- read_most_recent("hosted-data/inform-risk", FUN = read_csv, as_of = Sys.Date(),
+  col_types = cols(.default = "c"), na = c("", "NA", "x"), return_date = T)
   file_date <- most_recent[[2]]
 
   inform_risk <- most_recent$data %>%
-    mutate(`Countries in HVC` = str_replace(`Countries in HVC`, "^$", NA_character_))
+    mutate(across(-c(Country, `RISK CLASS`, `Countries in HVC`), ~ as.numeric(.x)))
 
   archiveInputs(inform_risk, today = file_date, group_by = c("Country"))
 }
 
 inform_nathaz_process <- function(as_of) {
   inform_risk <- loadInputs("inform_risk", group_by = c("Country"),
-    as_of = as_of, format = "csv", col_types = "cddddddddddddddddddddddddddddddddcddddcdD") %>%
+    as_of = as_of, format = "csv", col_types = cols(.default = "c")) %>%
     distinct()
   # Rename country
   informnathaz <- inform_risk %>%
     dplyr::select(Country, Natural) %>%
-    rename(NH_Hazard_Score = Natural) %>%
+    mutate(NH_Hazard_Score = as.numeric(Natural), .keep = "unused") %>%
     drop_na(Country, NH_Hazard_Score)
   
   # Normalise scores
