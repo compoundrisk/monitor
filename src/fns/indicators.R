@@ -1050,8 +1050,6 @@ fao_wfp_web_collect <- function() {
   }
 }
 
-read_html(full_text)
-
 fao_wfp_web_process <- function(as_of) {
   full_text <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"), FUN = read_file, as_of = as_of, return_date = T, return_name = T)
 
