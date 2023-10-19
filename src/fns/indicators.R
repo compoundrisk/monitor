@@ -174,8 +174,10 @@ inform_severity_collect <- function() {
     dir.create(paste_path(inputs_archive_path, "inform-severity"))
   }
   
-  existing_files <- list.files("output/inputs-archive/inform-severity") #%>%
-    # str_extract(".*---(.*$)", group = T)
+  existing_files <- list.files("output/inputs-archive/inform-severity") %>%
+    str_replace("^\\d{8}--", "")
+  existing_files_misnamed <- list.files("output/inputs-archive/inform-severity") %>%
+    subset(!str_detect(., "^\\d{8}"))
   
   urls <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Severity/Results-and-data") %>%
     html_elements("a") %>%
@@ -183,36 +185,23 @@ inform_severity_collect <- function() {
     { .[str_detect(., "xlsx") & !is.na(.)] } %>%
     { data.frame(url = paste0("https://drmkc.jrc.ec.europa.eu", .))} %>%
     mutate(
-      # year_month =
-      #   str_extract(url, "([A-Za-z]+.20\\d\\d).?[A-Za-z0-9]*.xlsx", group = T) %>%
-      #   my() %>% as.yearmon(),
-      # file_name = paste0(year_month, "::", str_extract(url, "[^/]*.xlsx")),
       file_name = str_extract(url, "[^/]*.xlsx"),
       url = str_replace_all(url, " ", "%20")) %>%
-    filter(file_name %ni% existing_files) %>%
-    .[nrow(.):1,] %>%
+    filter(file_name %ni% existing_files | file_name %in% existing_files_misnamed) %>%
+    .[nrow(.):1,] %>% # Reverses order
     filter(!is.na(url))
     
   if (nrow(urls) > 0) {
-  urls %>% apply(1, function(url) {
-    # inform_severity <-
-    #   curl_and_delete( 
-    #     url[["url"]],
-    #     FUN = read_xlsx, sheet = "INFORM Severity - all crises",
-    #     skip = 1, range = "A2:U500", na = "x",
-    #     col_types = "text") %>%
-    #   filter(!is.na(COUNTRY)) %>%
-    #   mutate(
-    #     # file_name = url["file_name"],
-    #     `Last updated` = as.Date(as.numeric(`Last updated`), origin = "1899-12-30")
-    #   )
-    # # latest <- max(inform_severity$`Last updated`, na.rm = T)
-    # file_name <- str_extract(url["file_name"], "(.*).xlsx", group = T)
-    # # file_name <- paste0(inputs_archive_path, "inform-severity/", latest, "---", file_name, ".csv")
-    # file_name <- paste0(inputs_archive_path, "inform-severity/", file_name, ".csv")
-    # write_csv(inform_severity, file_name)
-    curl_download(url["url"], destfile = paste0(inputs_archive_path, "inform-severity/", url["file_name"]))
-  })
+    urls %>% apply(1, function(url) {
+      destfile <- paste0(inputs_archive_path, "inform-severity/", url["file_name"])
+      curl_download(url["url"], destfile = destfile)
+      if (!str_detect(url["file_name"], "^20\\d{6}")) {
+        # Rename file with YYYYMMDD prefix if it doesn't alreay have one
+        # Using "--" to signal the prefix is not a part of the original file name
+        write_date <- format(as.Date(pull(read_xlsx(destfile, range = "A3", col_names = "date")), format = "%d/%m/%Y"), "%Y%m%d--")
+        file.rename(destfile, paste0(inputs_archive_path, "inform-severity/", write_date, url["file_name"]))
+      }
+    })
   }
 }
 
@@ -1153,6 +1142,20 @@ mfr_process <- function(as_of = as_of) {
 }
 
 #---------------------------—Economist Intelligence Unit---------------------------------
+# # EIU's review months are currently incorrect: the listed months are one month too early
+# # While they fix, I need to replace each month with month+1: e.g. May 2023 -> June 2023
+# downloaded <- read.csv("/Users/bennotkin/Downloads/EIU_OR_RiskTracker_ByGeography-AugSelected-2023-09-01.csv", colClasses = "character", header = F)
+# names(downloaded) <- downloaded[1,]
+# downloaded <- downloaded[-1,]
+# downloaded[2,-c(1,2)] <- paste(as.yearmon(unlist(downloaded[2,-c(1,2)])) + 1/12)
+# write.csv(downloaded, "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-AugSelected-2023-09-01.csv", row.names = F)
+
+# downloaded <- read.csv("/Users/bennotkin/Downloads/EIU_OR_RiskTracker_ByGeography-SeptSelected-2023-10-01.csv", colClasses = "character", header = F)
+# names(downloaded) <- downloaded[1,]
+# downloaded <- downloaded[-1,]
+# downloaded[2,-c(1,2)] <- paste(as.yearmon(unlist(downloaded[2,-c(1,2)])) + 1/12)
+# write.csv(downloaded, "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-SeptSelected-2023-10-01.csv", row.names = F)
+
 eiu_collect <- function(as_of = Sys.Date(), print_date = F) {
   most_recent <- read_most_recent("hosted-data/eiu", FUN = read_csv, col_types = "c",
     as_of = as_of, return_date = T)
