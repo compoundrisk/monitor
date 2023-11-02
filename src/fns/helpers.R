@@ -179,8 +179,9 @@ get_country_groups_dictionary <- function() {
 
 define_iso2name <- function() {
   # Writes the iso2name function using the latest country code list
+  dictionary <- get_country_groups_dictionary()
   compiler::cmpfun(function(v) {
-    names <- countrycode::countrycode(v, origin = "iso3c", destination = "country.name", custom_match = get_country_groups_dictionary())
+    names <- countrycode::countrycode(v, origin = "iso3c", destination = "country.name", custom_match = dictionary)
     return(names)
   })
 }
@@ -537,4 +538,24 @@ initials <- function(v) {
       return(inits)
     }
   })  %>% unlist()
+}
+
+yaml_as_df <- function(yaml, print = F) {
+  items <- names(yaml)
+  keys <-  unique(unlist(sapply(yaml, names)))
+  tib <- bind_cols(lapply(keys, function(k) tibble({{k}} := rep(list(NA), length(items)))))
+  for (j in colnames(tib)) {
+    for (i in seq_along(items)) {
+      tib[i, j] <- list(yaml[[i]][j])
+    }
+    tib[[j]][sapply(tib[[j]], is.null)] <- NA
+    if (all(lengths(tib[[j]])<=1)) tib[j] <- unlist(tib[j])
+  }
+  tib <- bind_cols(item = items, tib)
+  # This method is much simpler but is 4x slower
+  # tib <- bind_rows(lapply(yaml, function(item) {
+  #   tidyr::pivot_wider(tibble::enframe(item), names_from = name, values_from = value)
+  # }))
+  if(print) print(as.data.frame(tib), right = F)
+  return(tib)
 }
