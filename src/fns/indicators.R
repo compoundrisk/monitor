@@ -1238,8 +1238,8 @@ eiu_process <- function(as_of) {
       EIU_12m_change = EIU_Score - EIU_Score_12m,
       #   EIU_3m_change = Macroeconomic_risk - Macroeconomic_risk_3
     ) %>%
-    rename_with(.col = c(-Country, -Month), .fn = ~ paste0("M_", .))
-    # mutate(Country = name2iso(Country))
+    rename_with(.col = c(-Country, -Month), .fn = ~ paste0("M_", .)) %>%
+    filter(!is.na(M_EIU_Score))
 
   
   #   eiu_joint <- normfuncpos(eiu_joint, quantile(eiu_joint$M_EIU_Score, 0.95), quantile(eiu_joint$M_EIU_Score, 0.10), "M_EIU_Score")
