@@ -763,15 +763,18 @@ proteus_process <- function(as_of) {
 #------------------—FEWSNET (with CRW threshold)---
 
 #Load database
-fews_collect <- function(as_of = Sys.Date()) {
-  most_recent <- read_most_recent("hosted-data/fews", FUN = read_csv, as_of = as_of,
-    col_types = cols(.default = "c"), return_name = T)
+fews_collect <- function() {
+  # Learn download URL from resource metadata
+  url <- 'https://datacatalogapi.worldbank.org/ddhxext/ResourceView?resource_unique_id=DR0091743'
+  queryString <- list('resource_unique_id' = "DR0091743")
+  response <- VERB("GET", url, query = queryString)
+  metadata <- fromJSON(content(response, "text"))
+  version_date <- as.Date(str_extract(basename(metadata$distribution$url), "20\\d{2}-\\d{1,2}-\\d{1,2}"))
+  local_most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = Sys.Date(), return_date = T, return_name = T)
   
-  new_path <- paste_path(inputs_archive_path, "fews", most_recent$name)
-  if (file.exists(new_path)) {
-    message(paste(new_path, "already exists. File not rewritten."))
-  } else {
-    write_csv(most_recent$data, new_path)
+  if (version_date != local_most_recent$date) {
+    filename <- file.path(inputs_archive_path, "fews", paste0("fews-", version_date, ".csv"))
+    curl::curl_download(url = metadata$distribution$url, destfile = filename)
   }
 }
 
@@ -784,37 +787,6 @@ fews_collect_many <- function(as_of = Sys.Date()) {
     n = "all", return_date = T, return_name = T) %>%
     { .[["date"]][.$name %ni% existing_files] }
   lapply(new_dates, fews_collect) %>% invisible()
-}
-
-fews_collect_web <- function() {
-  # Only want to download the large file if we haven't checked recently
-  api_checks_file <- file.path(inputs_archive_path, "fews", "api-checks.csv")
-  if (!file.exists(api_checks_file)) write_csv(data.frame(date = "2023-08-23", new = TRUE, md5sum =  "f2eef1e1d3af23a7531e9419a4db55cb"), api_checks_file)
-  api_checks <- read_csv(api_checks_file, col_types = "Dlc")
-  last_check <- tail(api_checks, n = 1)
-
-  if ((last_check$new && Sys.Date() - last_check$date > 30) |
-      (!last_check$new && Sys.Date() - last_check$date > 7)) {
-
-  # most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = as_of, return_date = T, return_name = T)
-
-  url <- "https://datacatalogapi.worldbank.org/ddhxext/ResourceFileData"
-  queryString <- list('resource_unique_id' = "DR0091743")
-  response <- VERB("GET", url, query = queryString)
-  fews <- fromJSON(content(response, "text"))$Details
-
-  new_filename <- file.path(inputs_archive_path, "fews", paste0("fews-", Sys.Date(), ".csv"))
-  write_csv(fews, new_filename)
-  md5sum = tools::md5sum(new_filename)
-
-  # Delete the new file if it matches the most recent file
-  if (last_check$md5sum == md5sum) {
-    file.remove(new_filename)
-    write_csv(data.frame(date = Sys.Date(), new = F, md5sum = md5sum), file.path(inputs_archive_path, "fews", "api-checks.csv"), append = T)
-  } else {
-    write_csv(data.frame(date = Sys.Date(), new = T, md5sum = md5sum), file.path(inputs_archive_path, "fews", "api-checks.csv"), append = T)
-  }
-  }
 }
 
 fews_process <- function(as_of) {
@@ -1175,17 +1147,16 @@ mfr_process <- function(as_of = as_of) {
 #---------------------------—Economist Intelligence Unit---------------------------------
 # # EIU's review months are currently incorrect: the listed months are one month too early
 # # While they fix, I need to replace each month with month+1: e.g. May 2023 -> June 2023
-# downloaded <- read.csv("/Users/bennotkin/Downloads/EIU_OR_RiskTracker_ByGeography-AugSelected-2023-09-01.csv", colClasses = "character", header = F)
-# names(downloaded) <- downloaded[1,]
-# downloaded <- downloaded[-1,]
-# downloaded[2,-c(1,2)] <- paste(as.yearmon(unlist(downloaded[2,-c(1,2)])) + 1/12)
-# write.csv(downloaded, "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-AugSelected-2023-09-01.csv", row.names = F)
-
-# downloaded <- read.csv("/Users/bennotkin/Downloads/EIU_OR_RiskTracker_ByGeography-SeptSelected-2023-10-01.csv", colClasses = "character", header = F)
-# names(downloaded) <- downloaded[1,]
-# downloaded <- downloaded[-1,]
-# downloaded[2,-c(1,2)] <- paste(as.yearmon(unlist(downloaded[2,-c(1,2)])) + 1/12)
-# write.csv(downloaded, "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-SeptSelected-2023-10-01.csv", row.names = F)
+adjust_months <- function(in_file, out_file) {
+  downloaded <- read.csv(in_file, colClasses = "character", header = F)
+  names(downloaded) <- downloaded[1,]
+  downloaded <- downloaded[-1,]
+  downloaded[2,-c(1,2)] <- paste(as.yearmon(unlist(downloaded[2,-c(1,2)])) + 1/12)
+  write.csv(downloaded, out_file, row.names = F)
+}
+# adjust_months(
+#   in_file = "/Users/bennotkin/Downloads/EIU_OR_RiskTracker_ByGeography-10.csv",
+#   out_file = "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-2023-12-01.csv")
 
 eiu_collect <- function(as_of = Sys.Date(), print_date = F) {
   most_recent <- read_most_recent("hosted-data/eiu", FUN = read_csv, col_types = "c",
