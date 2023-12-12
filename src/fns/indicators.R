@@ -786,6 +786,37 @@ fews_collect_many <- function(as_of = Sys.Date()) {
   lapply(new_dates, fews_collect) %>% invisible()
 }
 
+fews_collect_web <- function() {
+  # Only want to download the large file if we haven't checked recently
+  api_checks_file <- file.path(inputs_archive_path, "fews", "api-checks.csv")
+  if (!file.exists(api_checks_file)) write_csv(data.frame(date = "2023-08-23", new = TRUE, md5sum =  "f2eef1e1d3af23a7531e9419a4db55cb"), api_checks_file)
+  api_checks <- read_csv(api_checks_file, col_types = "Dlc")
+  last_check <- tail(api_checks, n = 1)
+
+  if ((last_check$new && Sys.Date() - last_check$date > 30) |
+      (!last_check$new && Sys.Date() - last_check$date > 7)) {
+
+  # most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = as_of, return_date = T, return_name = T)
+
+  url <- "https://datacatalogapi.worldbank.org/ddhxext/ResourceFileData"
+  queryString <- list('resource_unique_id' = "DR0091743")
+  response <- VERB("GET", url, query = queryString)
+  fews <- fromJSON(content(response, "text"))$Details
+
+  new_filename <- file.path(inputs_archive_path, "fews", paste0("fews-", Sys.Date(), ".csv"))
+  write_csv(fews, new_filename)
+  md5sum = tools::md5sum(new_filename)
+
+  # Delete the new file if it matches the most recent file
+  if (last_check$md5sum == md5sum) {
+    file.remove(new_filename)
+    write_csv(data.frame(date = Sys.Date(), new = F, md5sum = md5sum), file.path(inputs_archive_path, "fews", "api-checks.csv"), append = T)
+  } else {
+    write_csv(data.frame(date = Sys.Date(), new = T, md5sum = md5sum), file.path(inputs_archive_path, "fews", "api-checks.csv"), append = T)
+  }
+  }
+}
+
 fews_process <- function(as_of) {
   fewswb <- read_most_recent(paste_path(inputs_archive_path, "fews"), 
     FUN = read_csv, col_types = cols(.default = "c"), as_of = as_of) %>%
