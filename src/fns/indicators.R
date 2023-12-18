@@ -170,13 +170,15 @@ add_new_input_cols <- function(df1, df2) {
 #--------------------—LOAD ACAPS realtime database-----------------------------
 inform_severity_collect <- function() {
   # Method using INFORM Severity's own site; previous method used acaps.org
-  if (!dir.exists(paste_path(inputs_archive_path, "inform-severity"))) {
-    dir.create(paste_path(inputs_archive_path, "inform-severity"))
+  inform_directory <- file.path(inputs_archive_path, "inform-severity")
+
+  if (!dir.exists(inform_directory)) {
+    dir.create(inform_directory)
   }
   
-  existing_files <- list.files("output/inputs-archive/inform-severity") %>%
+  existing_files <- list.files(inform_directory) %>%
     str_replace("^\\d{8}--", "")
-  existing_files_misnamed <- list.files("output/inputs-archive/inform-severity") %>%
+  existing_files_misnamed <- list.files(inform_directory) %>%
     subset(!str_detect(., "^\\d{8}"))
   
   urls <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Severity/Results-and-data") %>%
@@ -193,13 +195,13 @@ inform_severity_collect <- function() {
     
   if (nrow(urls) > 0) {
     urls %>% apply(1, function(url) {
-      destfile <- paste0(inputs_archive_path, "inform-severity/", url["file_name"])
+      destfile <- file.path(inform_directory, url["file_name"])
       curl_download(url["url"], destfile = destfile)
       if (!str_detect(url["file_name"], "^20\\d{6}")) {
         # Rename file with YYYYMMDD prefix if it doesn't alreay have one
         # Using "--" to signal the prefix is not a part of the original file name
         write_date <- format(as.Date(pull(read_xlsx(destfile, range = "A3", col_names = "date")), format = "%d/%m/%Y"), "%Y%m%d--")
-        file.rename(destfile, paste0(inputs_archive_path, "inform-severity/", write_date, url["file_name"]))
+        file.rename(destfile, file.path(inform_directory, paste0(write_date, url["file_name"])))
       }
     })
   }
