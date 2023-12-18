@@ -185,7 +185,7 @@ inform_severity_collect <- function() {
     { .[str_detect(., "xlsx") & !is.na(.)] } %>%
     { data.frame(url = paste0("https://drmkc.jrc.ec.europa.eu", .))} %>%
     mutate(
-      file_name = str_extract(url, "[^/]*.xlsx"),
+      file_name = str_extract(url, "[^/]*?.xlsx"),
       url = str_replace_all(url, " ", "%20")) %>%
     filter(file_name %ni% existing_files | file_name %in% existing_files_misnamed) %>%
     .[nrow(.):1,] %>% # Reverses order
@@ -763,20 +763,32 @@ proteus_process <- function(as_of) {
 #------------------—FEWSNET (with CRW threshold)---
 
 #Load database
-fews_collect <- function() {
-  # Learn download URL from resource metadata
-  url <- 'https://datacatalogapi.worldbank.org/ddhxext/ResourceView?resource_unique_id=DR0091743'
-  queryString <- list('resource_unique_id' = "DR0091743")
-  response <- VERB("GET", url, query = queryString)
-  metadata <- fromJSON(content(response, "text"))
-  version_date <- as.Date(str_extract(basename(metadata$distribution$url), "20\\d{2}-\\d{1,2}-\\d{1,2}"))
-  local_most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = Sys.Date(), return_date = T, return_name = T)
+fews_collect <- function(as_of = Sys.Date()) {
+  most_recent <- read_most_recent("hosted-data/fews", FUN = read_csv, as_of = as_of,
+    col_types = cols(.default = "c"), return_name = T)
   
-  if (version_date != local_most_recent$date) {
-    filename <- file.path(inputs_archive_path, "fews", paste0("fews-", version_date, ".csv"))
-    curl::curl_download(url = metadata$distribution$url, destfile = filename)
+  new_path <- paste_path(inputs_archive_path, "fews", most_recent$name)
+  if (file.exists(new_path)) {
+    message(paste(new_path, "already exists. File not rewritten."))
+  } else {
+    write_csv(most_recent$data, new_path)
   }
 }
+
+# fews_collect <- function() {
+#   # Learn download URL from resource metadata
+#   url <- 'https://datacatalogapi.worldbank.org/ddhxext/ResourceView?resource_unique_id=DR0091743'
+#   queryString <- list('resource_unique_id' = "DR0091743")
+#   response <- VERB("GET", url, query = queryString)
+#   metadata <- fromJSON(content(response, "text"))
+#   version_date <- as.Date(str_extract(basename(metadata$distribution$url), "20\\d{2}-\\d{1,2}-\\d{1,2}"))
+#   local_most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = Sys.Date(), return_date = T, return_name = T)
+  
+#   if (version_date != local_most_recent$date) {
+#     filename <- file.path(inputs_archive_path, "fews", paste0("fews-", version_date, ".csv"))
+#     curl::curl_download(url = metadata$distribution$url, destfile = filename)
+#   }
+# }
 
 fews_collect_many <- function(as_of = Sys.Date()) {
   if (!dir.exists(paste_path(inputs_archive_path, "fews"))) {
