@@ -561,50 +561,50 @@ ghsi_process <- function(as_of) {
 
 #----------------------------------—WHO DONS--------------------------------------------------------------
 dons_collect <- function() {
-  dons_raw <- read_html("https://www.who.int/emergencies/disease-outbreak-news")
+  url <- "https://www.who.int/api/emergencies/"
+  params <- list(
+    "sf_provider" = "dynamicProvider372",
+    "sf_culture" = "en",
+    "$orderby" = "PublicationDateAndTime desc",
+    "$format" = "json",
+    "$select" = "DonId,Title,OverrideTitle,UseOverrideTitle,regionscountries,FormattedDate,Overview,UrlName",
+    "$top" = "20")
+  response <- request(url) %>%
+    req_url_path_append("diseaseoutbreaknews") %>%
+    req_url_query(!!!params) %>%
+    req_perform() %>%
+    resp_body_json()
+  dons_news <- response[[2]] %>%
+    lapply(unlist) %>% bind_rows()
   
-  dons_select <- dons_raw %>%
-    html_nodes(".sf-list-vertical") %>%
-    html_nodes("h4") #%>%
-  #html_text()
+  # Get country names and codes from regionscountries field
+  country_filter <- paste0(
+    "regionscountries/any(a:a eq ",
+    paste(unique(dons_news$regionscountries), collapse = " or a eq "),
+    ")")
+  country_ids <- request(url) %>%
+    req_url_path_append("countries") %>%
+    req_url_query(
+      "$filter" = country_filter,
+      "$select" = "Code,WhoCode,Title,regionscountries") %>%
+    req_perform() %>%
+    resp_body_json() %>%
+    .[[2]] %>%
+    lapply(unlist) %>% bind_rows() %>%
+    rename(who_country_alert = Code, country = Title)
   
-  dons_date <- dons_select %>%
-    html_nodes("span:nth-child(2)") %>%
-    html_text()
-  
-  dons_text <- dons_select %>%
-    html_nodes(".trimmed") %>%
-    html_text()
-  
-  dons_urls <- dons_raw %>%
-    html_nodes(".sf-list-vertical") %>%
-    html_nodes("a") %>%
-    html_attr("href")
-  
-  # Check if notification is announcing *end* of outbreak
-  first_sentences <- sapply(dons_urls, function(url) {
-    p <- read_html(url) %>% 
-      html_nodes("article")  %>%
-      html_node("div:first-child") %>%
-      html_node("p:first-child") %>%
-      html_text()
-    sentence <- sub("(.*?\\.) [A-Z].*", "\\1", p)
-    return(sentence)
-  })
-  declared_over <- grepl("declared the end of|declared over", first_sentences, ignore.case = T)
-  
-  who_dons <- data.frame(
-    text = dons_text,
-    date = dons_date,
-    url = dons_urls,
-    declared_over
-  ) %>%
-    mutate(disease = trimws(sub("\\s[-——ｰ–].*", "", text)),
-           country = trimws(sub(".*[-——ｰ–]", "", text)),
-           country = trimws(sub(".*-", "", country)),
-           date = dmy(date)) %>%
-    separate_rows(country, sep = ",") %>%
-    mutate(who_country_alert = name2iso(country))
+  who_dons <- left_join(dons_news, country_ids, by = "regionscountries") %>%
+    mutate(
+      text = case_when(as.logical(UseOverrideTitle) ~ OverrideTitle, T ~ Title),
+      date = dmy(FormattedDate),
+      disease = trimws(sub("\\s[-——ｰ–].*", "", text)),
+      country = country,
+      who_country_alert = who_country_alert,
+      url = file.path("https://www.who.int/emergencies/disease-outbreak-news/item", UrlName),
+      first_sentence = str_extract(str_replace_all(Overview, "<.*?>", ""), "(.*?\\.) [A-Z].*", group = T),
+      declared_over = str_detect(tolower(first_sentence), "declared the end of|declared over"),
+      .keep = "none") %>%
+      select(-first_sentence)
   
   archiveInputs(who_dons, group_by = NULL)
 }
