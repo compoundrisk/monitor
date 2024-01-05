@@ -1,14 +1,8 @@
 packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "httr",
-              "ggplot2", "jsonlite","lubridate", "maps", "matrixStats", "purrr", 
+              "httr2", "ggplot2", "jsonlite","lubridate", "maps", "matrixStats", "purrr", 
               "raster", "readr", "readxl", "remotes", "rvest", "sf",
               "sjmisc", "stats", "stringr", "tidyr", "xml2",
               "wppExplorer", "zoo")
-              
-# packages <- c("curl", "DBI", "EnvStats", "exactextractr", "countrycode", "ggplot2", 
-#               "jsonlite","lubridate", "maps", "matrixStats", "purrr", "raster",
-#               "readr", "readxl", "remotes", "rgdal", "rmarkdown", "rvest", "sf",
-#               "sjmisc", "sparklyr", "stats", "stringr", "tidyr", "xml2",
-#               "wppExplorer", "zoo")
 
 if (dir.exists("/dbfs")) {
   .libPaths(c("/dbfs/mnt/CompoundRiskMonitor/lib", .libPaths()))
