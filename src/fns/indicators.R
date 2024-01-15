@@ -576,7 +576,7 @@ dons_collect <- function() {
     resp_body_json()
   dons_news <- response[[2]] %>%
     lapply(unlist) %>% bind_rows()
-  
+
   # Get country names and codes from regionscountries field
   country_filter <- paste0(
     "regionscountries/any(a:a eq ",
@@ -592,7 +592,7 @@ dons_collect <- function() {
     .[[2]] %>%
     lapply(unlist) %>% bind_rows() %>%
     rename(who_country_alert = Code, country = Title)
-  
+
   who_dons <- left_join(dons_news, country_ids, by = "regionscountries") %>%
     mutate(
       text = case_when(as.logical(UseOverrideTitle) ~ OverrideTitle, T ~ Title),
@@ -980,32 +980,32 @@ fpi_process <- function (as_of) {
 }
 
 #-------------------------—FAO/WFP HOTSPOTS----------------------------
-fao_wfp_collect <- function() {
-  fao_wfp <- read_csv("hosted-data/fao-wfp/fao-wfp.csv", col_types = cols())
-  fao_wfp <- fao_wfp %>%
-    mutate(Country = name2iso(Country))
+# fao_wfp_collect <- function() {
+#   fao_wfp <- read_csv("hosted-data/fao-wfp/fao-wfp.csv", col_types = cols())
+#   fao_wfp <- fao_wfp %>%
+#     mutate(Country = name2iso(Country))
   
-  fao_all <- countrylist
-  fao_all[fao_all$Country %in% fao_wfp$Country,"F_fao_wfp_warning"] <- 10
-  fao_all$Forecast_End <- max(fao_wfp$Forecast_End, na.rm = T)
+#   fao_all <- countrylist
+#   fao_all[fao_all$Country %in% fao_wfp$Country,"F_fao_wfp_warning"] <- 10
+#   fao_all$Forecast_End <- max(fao_wfp$Forecast_End, na.rm = T)
   
-  fao_wfp <- fao_all
+#   fao_wfp <- fao_all
   
-  start_date <- min(
-    (as.yearmon(fao_all$Forecast_End[1]) - 3/12) %>% as.Date(),
-    Sys.Date())
+#   start_date <- min(
+#     (as.yearmon(fao_all$Forecast_End[1]) - 3/12) %>% as.Date(),
+#     Sys.Date())
   
-  archiveInputs(fao_wfp, group_by = c("Country"), today = start_date)
-}
+#   archiveInputs(fao_wfp, group_by = c("Country"), today = start_date)
+# }
 
-fao_wfp_process <- function(as_of) {
-  # Kind of unnecessary
-  fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"), 
-    as_of = as_of, format = "csv", col_types = "ccdDD") %>%
-    select(-Countryname) %>%
-    filter(Forecast_End >= as_of)
-  return(fao_wfp)
-}
+# fao_wfp_process <- function(as_of) {
+#   # Kind of unnecessary
+#   fao_wfp <- loadInputs("fao_wfp", group_by = c("Country"), 
+#     as_of = as_of, format = "csv", col_types = "ccdDD") %>%
+#     select(-Countryname) %>%
+#     filter(Forecast_End >= as_of)
+#   return(fao_wfp)
+# }
 
 fao_wfp_web_collect <- function() {
 
@@ -1028,17 +1028,17 @@ fao_wfp_web_collect <- function() {
       object = "comMap",
       action = "getData",
       timeout = "600",
-      cClientSession = "EC1389A6-4944-4A17-9D57C3E99A8B59DC",
-      `_` = "1695157340852")
+      cClientSession = "6216C788-462B-4F1B-88F33A01C97F15DC",
+      `_` = "1699039352859")
 
     response <- VERB("GET", url, body = payload, query = queryString,
         content_type("application/octet-stream"),
         set_cookies(
-          `cfid` = "ef082612-c8b5-4cf8-9e0f-89e1b92300c0",
+          `cfid` = "91e70de2-19a1-4f7e-91a9-84a2d857a2f7",
           `cftoken` = "0",
-          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_LV` = "1695157862783",
-          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_TC` = "1695157785631",
-          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_HC` = "6"),
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_LV` = "1699039845381",
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_TC` = "1699039845381",
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_HC` = "2"),
         encode = encode)
 
     full_text <- content(response, "text")
@@ -1169,8 +1169,8 @@ adjust_months <- function(in_file, out_file) {
   write.csv(downloaded, out_file, row.names = F)
 }
 # adjust_months(
-#   in_file = "/Users/bennotkin/Downloads/EIU_OR_RiskTracker_ByGeography-10.csv",
-#   out_file = "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-2023-12-01.csv")
+#   in_file = "/Users/bennotkin/Downloads/EIU_OR_RiskTracker_ByGeography-9.csv",
+#   out_file = "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-2024-01-01.csv")
 
 eiu_collect <- function(as_of = Sys.Date(), print_date = F) {
   most_recent <- read_most_recent("hosted-data/eiu", FUN = read_csv, col_types = "c",
@@ -2054,24 +2054,26 @@ iri_process_temp <- function() {
 #-------------------------------------—Locust outbreaks----------------------------------------------
 # List of countries and risk factors associated with locusts (FAO), see: http://www.fao.org/ag/locusts/en/info/info/index.html
 locust_collect <- function() {
-  if (
-    read_html("https://www.fao.org/ag/locusts/en/info/info/index.html") %>%
-      html_element(".RightPageColumn") %>%
-      html_element("div.graphics") %>%
-      html_element("img") %>%
-      html_attr("src") %>%
-      str_detect("calmE")) {
-        # fao_locust <- countrylist %>%
-        #   mutate(Country = Country, NH_locust_norm = 0, .keep = "none")
-        fao_locust <- data.frame(Country = "Date check", NH_locust_norm = 0)
-      } else stop("Locust threat is not calm. See http://www.fao.org/ag/locusts/en/info/info/index.html")
+  # if (
+    # read_html("https://www.fao.org/locust-watch/en") %>%
+    #   html_element(".RightPageColumn") %>%
+    #   html_element("div.graphics") %>%
+    #   html_element("img") %>%
+    #   html_attr("src") %>%
+    #   str_detect("calmE")) {
+    #     # fao_locust <- countrylist %>%
+    #     #   mutate(Country = Country, NH_locust_norm = 0, .keep = "none")
+    #     fao_locust <- data.frame(Country = "Date check", NH_locust_norm = 0)
+    #   } else stop("Locust threat is not calm. See http://www.fao.org/ag/locusts/en/info/info/index.html")
 
-  # locust_risk <- read_csv("hosted-data/fao-locust/fao-locust.csv", col_types = cols())
-  # locust_risk <- locust_risk %>%
-  #   dplyr::select(Country, NH_locust_norm)
-  # fao_locust <- locust_risk
+  most_recent <- read_most_recent("hosted-data/fao-locust", as_of = Sys.Date(), return_date = T)
+  fao_locust <- most_recent$data %>%
+    mutate(Country = name2iso(Country)) %>%
+    full_join(select(countrylist, Country), by = "Country") %>%
+    complete(fill = list(NH_locust_norm = 0, NH_locust_level = "Calm")) %>%
+    mutate(NH_locust_level = paste(NH_locust_level, "-", most_recent$date))
   
-  archiveInputs(fao_locust, group_by = c("Country"))
+  archiveInputs(fao_locust, group_by = c("Country"), today = most_recent$date)
 }
 
 locust_process <- function(as_of) {
