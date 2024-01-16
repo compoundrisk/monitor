@@ -2070,7 +2070,7 @@ locust_collect <- function() {
   fao_locust <- most_recent$data %>%
     mutate(Country = name2iso(Country)) %>%
     full_join(select(countrylist, Country), by = "Country") %>%
-    complete(fill = list(NH_locust_norm = 0, NH_locust_level = "Calm")) %>%
+    tidyr::replace_na(replace = list(NH_locust_norm = 0, NH_locust_level = "Calm")) %>%
     mutate(NH_locust_level = paste(NH_locust_level, "-", most_recent$date))
   
   archiveInputs(fao_locust, group_by = c("Country"), today = most_recent$date)
