@@ -559,3 +559,5 @@ yaml_as_df <- function(yaml, print = F) {
   if(print) print(as.data.frame(tib), right = F)
   return(tib)
 }
+
+tolatin <- function(x) stringi::stri_trans_general(x, id = "Latin-ASCII")

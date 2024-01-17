@@ -102,17 +102,17 @@ lap_print("Food sheet is aggregated and saved")
 lap_start()
 macro_sheet <- aggregate_dimension(
   "Macro Fiscal",
-  eiu_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
-  mfr_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
+  eiu_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
+  # mfr_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay))
 
-# Adjust overall because we're only using one indicator as the primary indicator for macro-fiscal;
-# a 7 on the MFR watchlist is a medium emerging and should also be a medium overall
-macro_sheet <- macro_sheet %>%
-  mutate(
-  `Overall_Macro Fiscal` = case_when(
-      M_MFR == 7 ~ 6.9,
-      T ~ `Overall_Macro Fiscal`),
-    `Overall_Macro Fiscal_Labels` = assign_ternary_labels(`Overall_Macro Fiscal`, high = 7, medium = 5, low = 0)  %>% as.factor())
+# # Adjust overall because we're only using one indicator as the primary indicator for macro-fiscal;
+# # a 7 on the MFR watchlist is a medium emerging and should also be a medium overall
+# macro_sheet <- macro_sheet %>%
+#   mutate(
+#     `Overall_Macro Fiscal` = case_when(
+#       M_MFR == 7 ~ 6.9,
+#       T ~ `Overall_Macro Fiscal`),
+#     `Overall_Macro Fiscal_Labels` = assign_ternary_labels(`Overall_Macro Fiscal`, high = 7, medium = 5, low = 0) %>% as.factor())
 multi_write.csv(macro_sheet, "macro-sheet.csv", c(dim_path, dim_archive_path))
 lap_print("Macro sheet is aggregated and saved")
 
@@ -210,11 +210,12 @@ dashboard_data <- subset(long, `Data Level` != "Reliability") %>%
   add_overall_indicators() # %>%
 #  mutate(Index = row_number()) # Don't include because indices should match between long and dashboard
 # write.csv(dashboard_data, paste0(output_directory, "/crm-dashboard-data.csv"))
-multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, archive_directory))
+# multi_write.csv(dashboard_data, "crm-dashboard-data.csv", c(output_directory, archive_directory))
 # write.csv(dashboard_data, paste0(output_directory, "/crm-runs/", Sys.Date(), "-crm-run.csv"))
 
-# Fix so that this uses dashboard_data instead of reading the CSV
 dashboard_crisis <- label_crises(dashboard_data)
+dashboard_crisis <- dashboard_crisis %>%
+  mutate(Countryname = tolatin(Countryname))
 multi_write.csv(dashboard_crisis, "crm-dashboard-data.csv", c(output_directory, archive_directory))
 # write.csv(dashboard_crisis, paste_path(mounted_path, "staging/crm-dashboard-stg.csv"), row.names = F)
 write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-prod.csv"), row.names = F)

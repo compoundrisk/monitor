@@ -159,14 +159,14 @@ aggregate_dimension <- function(dim, ..., prefix = "", overall_method = "geometr
     left_join(., raw_vars, by = "Country")
   # Calculate underlying dimension value by taking max value of primary underlying indicators
   sheet <- sheet %>% mutate(
-    underlying = rowMaxs(as.matrix(select(.,
-                                          any_of(underlying_indicators$indicator_slug[which(underlying_indicators$secondary == F)]))), na.rm = T) %>% {
-                                            case_when(
-                                              is.infinite(.) ~ NA_real_,
-                                              TRUE ~ .
-                                            )
-                                          },
-  ) %>%
+    underlying =
+      rowMaxs(
+        as.matrix(
+          select(
+            .,
+            any_of(underlying_indicators$indicator_slug[which(!underlying_indicators$secondary)]))),
+        na.rm = T) %>%
+      { case_when(is.infinite(.) ~ NA_real_, TRUE ~ .)}) %>%
     # In case all primary variables are NA, take max of secondary indicators (currently only used for emerging food)
     mutate(
       underlying = if(length(which(underlying_indicators$secondary == T)) > 0) {
