@@ -611,35 +611,29 @@ create_id <- function(data) {
   return(data)
 }
 
-append_if_exists <- function(data, path, col_types = NULL) {
-  if(file.exists(path)) {
-    already_exists <- T
-    # Maybe refactor to use bash head and tail and cat so that R doesn't need to read the full file.
-    # Or keep each run as separate files.
-    existing <- read_csv(path, col_types = col_types)
-    if (any(is.na(existing$Record_ID))) {
-      existing <- existing %>% mutate(Record_ID = as.numeric(paste0(Run_ID, leading_zeros(Index, 8))))
-    }
-    data <- mutate(data, Run_ID = max(existing$Run_ID, na.rm = T) + 1, .before = Index)
-    prior_run <- subset(existing, Run_ID == max(Run_ID)) %>% factorize_columns()
-    # TODO Check also if data is fresh. If all duplicates, don't append
-    # Write a function that can be used for archiveInputs, countFlagChanges, and here
-    # that more robustly checks difference; for now a sum comparison will do
-    # if(sum(select(data, Index, Value) == select(prior_run, Index, Value)) > 0) {
-
-    # }
+write_run <- function(data, runs_directory = file.path(output_directory, "runs")) {
+  if (!dir.exists(runs_directory)) {
+    dir.create(runs_directory)
+    run_id <- 1
+    message(sprintf("Path to runs folder (%s) did not exist but was created. Run_ID is set to 1.", path))
   } else {
-    already_exists <- F
-    message(paste0("No file yet exists at ", path))
-    data <- mutate(data, Run_ID = 1, .before = Index)
+    run_id <- read_most_recent(runs_directory, paste, as_of = as_of) %>%
+      str_extract("run_(\\d*)-", group = T) %>%
+      as.numeric() + 1
   }
-  data <- data %>%
-    mutate(
-      Record_ID = as.numeric(paste0(Run_ID, leading_zeros(Index, 8))),
-      .before = 1)
-  if(!already_exists) existing <- data[0,]
-  combined <- rbind(existing, data)
-  return(combined)
+  data <- mutate(data,
+            Record_ID = as.numeric(paste0(run_id, leading_zeros(Index, 8))),
+            Run_ID = run_id,
+            .before = Index)
+  stopifnot(
+    "Column count != 15" = ncol(data) == 15,
+    "Column classes different than expected (dddfffffcdccflD)" = get_col_types_short(data) == 'dddfffffcdccflD')
+  write_csv(data, file.path(runs_directory, paste0(as_of, "-", "run_", run_id, ".csv")))
+}
+
+read_all_runs <- function(runs_directory) {
+  all_runs <- bind_rows(lapply(list.files(), read_csv, col_types = 'dddfffffcdccflD'))
+  return(all_runs)
 }
 
 # Add last_changed to indicator_list.csv

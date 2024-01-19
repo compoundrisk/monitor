@@ -203,6 +203,8 @@ long <- pretty_col_names(all_dimensions) %>%
   # mutate(Index = row_number(), .before = 1) # Do I need this? Even if not useful for matching, it is useful for sorting
   create_id()
 
+write_run(data = long, runs_directory = file.path(output_directory, "runs"))
+
 # Make function: `write_dashboard_data(data)`? – or should it go after I've written the appended file,
 # and it takes a date argument? I think yes
 # dashboard_data <- subset(long, `Data Level` != "Reliability" & `Data Level` != "Raw Indicator Data") # %>%
@@ -229,8 +231,6 @@ write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-p
 # sense (can I envision an alternative cases?) but really there's no reason not 
 # to just use the combined output file, and  compare against the previous date 
 # (the way `countFlagChanges()` does? can I just abstract `flagChanges()`?)
-
-all_runs <- append_if_exists(long, paste_path(output_directory, "crm-all-runs.csv"), col_types = 'dddccccccdccccD')
 
 # all_runs <- subset(all_runs, !between(Date, as.Date("2022-11-15"), as.Date("2022-11-19")))
 # Task: what if I run the monitor multiple times in a day? 
