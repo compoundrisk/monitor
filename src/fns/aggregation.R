@@ -618,7 +618,7 @@ write_run <- function(data, runs_directory = file.path(output_directory, "runs")
     message(sprintf("Path to runs folder (%s) did not exist but was created. Run_ID is set to 1.", path))
   } else {
     run_id <- read_most_recent(runs_directory, paste, as_of = as_of) %>%
-      str_extract("run_(\\d*)-", group = T) %>%
+      str_extract("run_(\\d+)\\.csv", group = T) %>%
       as.numeric() + 1
   }
   data <- mutate(data,
@@ -631,8 +631,14 @@ write_run <- function(data, runs_directory = file.path(output_directory, "runs")
   write_csv(data, file.path(runs_directory, paste0(as_of, "-", "run_", run_id, ".csv")))
 }
 
-read_all_runs <- function(runs_directory) {
-  all_runs <- bind_rows(lapply(list.files(), read_csv, col_types = 'dddfffffcdccflD'))
+read_many_runs <- function(runs_directory = file.path(output_directory, "runs"), since = NULL, tail_n = NULL) {
+  files <- sort(list.files(runs_directory))
+  if (!is.null(since)) {
+    dates <- as.Date(str_extract(files, "\\d{4}-\\d{2}-\\d{2}"))
+    files <- files[which(dates >= as.Date(since))]
+  }
+  if (!is.null(tail_n)) files <- tail(files, n = tail_n)
+  all_runs <- bind_rows(lapply(file.path(runs_directory, files), read_csv, col_types = 'dddfffffcdccflD'))
   return(all_runs)
 }
 
