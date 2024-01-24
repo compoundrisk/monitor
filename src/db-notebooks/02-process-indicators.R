@@ -232,11 +232,6 @@ write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-p
 # to just use the combined output file, and  compare against the previous date 
 # (the way `countFlagChanges()` does? can I just abstract `flagChanges()`?)
 
-# all_runs <- subset(all_runs, !between(Date, as.Date("2022-11-15"), as.Date("2022-11-19")))
-# Task: what if I run the monitor multiple times in a day? 
-write_csv(all_runs, paste_path(output_directory, "crm-all-runs.csv"))
-# multi_write.csv(all_runs, "crm-all-runs.csv", c(output_directory, archive_directory))
-
 # test <- all_dimensions %>%
 #   pivot_longer(., cols = -contains("country") & -contains("_labels") & -contains("_raw"), names_to = "Name", values_to = "Value") %>%
 #   separate(Name, into = c("Outlook", "Key"), sep = "_", extra = "merge") #%>%
@@ -246,19 +241,23 @@ write_csv(all_runs, paste_path(output_directory, "crm-all-runs.csv"))
 
 # COMMAND ----------
 
-dimension_dates <- date_dimension_highs(all_runs)
+all_runs <- read_many_runs(
+              since = min(pull(read_csv(file.path(output_directory, "dimension-highs.csv"), col_select = dimension_date, col_types = "D")), na.rm = T),
+              before = as_of)
+dimension_highs <- date_dimension_highs(all_runs)
+write.csv(dimension_highs, file.path(output_directory, "dimension-highs.csv"), row.names = F)
 
 # COMMAND ----------
 
 # Edit to include reliability sheet output and to only take crm-wide.csv?
 write_excel_source_files(
   all_dimensions = all_dimensions,
-  health_sheet = join_dimension_dates(health_sheet, "Health"),
-  food_sheet = join_dimension_dates(food_sheet, "Food Security"),
-  macro_sheet = join_dimension_dates(macro_sheet, "Macro Fiscal"),
-  socio_sheet = join_dimension_dates(socio_sheet, "Socioeconomic Vulnerability"),
-  natural_hazards_sheet = join_dimension_dates(natural_hazards_sheet, "Natural Hazard"),
-  fragility_sheet = join_dimension_dates(fragility_sheet, "Conflict and Fragility"),
+  health_sheet = add_dimension_dates(health_sheet, "Health", dimension_highs),
+  food_sheet = add_dimension_dates(food_sheet, "Food Security", dimension_highs),
+  macro_sheet = add_dimension_dates(macro_sheet, "Macro Fiscal", dimension_highs),
+  socio_sheet = add_dimension_dates(socio_sheet, "Socioeconomic Vulnerability", dimension_highs),
+  natural_hazards_sheet = add_dimension_dates(natural_hazards_sheet, "Natural Hazard", dimension_highs),
+  fragility_sheet = add_dimension_dates(fragility_sheet, "Conflict and Fragility", dimension_highs),
   filepaths = F,
   archive = T,
   directory_path = paste_path(output_directory, "crm-excel/")) # Task: move this so it can use the `output_directory` variable at top of file

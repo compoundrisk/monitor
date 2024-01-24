@@ -350,7 +350,7 @@ read_most_recent <- compiler::cmpfun(function(directory_path, FUN = read.csv, ..
 
     data <- apply(selected_files, 1, function(r) {
       most_recent_file <- r["file_names"]# file_names[which(name_dates == date)]
-      data <- FUN(paste_path(directory_path, most_recent_file), ...)
+      data <- FUN(file.path(directory_path, most_recent_file), ...)
       # data <- FUN(paste_path(directory_path, most_recent_file), col_types = "dddddccD")
       return(data)
     })

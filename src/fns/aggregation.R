@@ -254,8 +254,6 @@ aggregate_dimension <- function(
   return(sheet)
 }
 
-
-
 count_flags <- function(df, outlook, high, medium) {
   select_columns <- select(df, contains(outlook) & -contains("reliability") & -contains("labels"))
   df <- mutate(df, flags = rowSums(select_columns >= high, na.rm = T) + 
@@ -279,27 +277,35 @@ df <- rename(
   return(df)
 }
 
-date_dimension_highs <- function(crm) {
-  high_ind_indices <- crm %>% subset(`Data Level` == "Indicator") %>%
-    group_by(Index) %>%
-    slice_max(Date) %>%
-    ungroup() %>%
-    group_by(Country, Dimension, Outlook) %>%
-    slice_max(Value) %>%
-    ungroup() %>%
-    .$Index
+date_dimension_highs <- function(value_dates) {
+  factor_orders <- factorize_columns(tibble(Outlook = character(), Dimension = character(), Country = character(), Countryname = character(), `Data Level` = character(), `Display Status` = character()))
+  value_dates <- bind_cols(all_runs, split_index(all_runs$Index))
+  high_indicators <- slice_max(
+    filter(value_dates, `Data Level` == 3),
+    order_by = Date, by = Index) %>%
+    slice_max(order_by = Value, by = c(Country, Dimension, Outlook)) %>%
+    distinct()
 
-flag_dates <- subset(crm, Index %in% (high_ind_indices + 100)) %>%
+  flag_dates <- 
+      # First select the raw indicator values for the high indicators
+      value_dates %>% 
+      filter(`Data Level` == 4) %>%
+      filter(paste(Country, Indicator) %in% paste(high_indicators$Country, high_indicators$Indicator)) %>%
     arrange(Index, Date) %>%
     subset(first_ordered_instance(Value_Char)) %>%
-    group_by(Country, Outlook, Dimension) %>%
-    slice_max(Date) %>%
-    select(Country, Outlook, Dimension, dimension_date = Date) %>%
-    distinct()
-  return(flag_dates)
+      slice_max(Date, by = c(Country, Outlook, Dimension), with_ties = F) %>%
+      select(Index, Raw_Value = Value, Raw_Value_Char = Value_Char, dimension_date = Date) %>%
+      distinct() %>%
+      expand_index() %>%
+      select(Index, Country, Outlook, Dimension, Raw_Value, Raw_Value_Char, dimension_date)
+  dimension_highs <- left_join(
+    flag_dates,
+    mutate(select(high_indicators, Index, Value), Index = Index + 100),
+    by = "Index")
+  return(dimension_highs)
 }
 
-join_dimension_dates <- function(sheet, dimension) {
+add_dimension_dates <- function(sheet, dimension, dimension_dates) {
   new_sheet <- dimension_dates %>%
     subset(Dimension == dimension, select = -Dimension) %>% 
     pivot_wider(names_from = "Outlook", values_from = "dimension_date") %>%
@@ -424,8 +430,6 @@ pretty_col_names <- function(data) {
     )
   return(pretty)
 }
-
-
 
 # # This was an attempt to rename columns without unnesting the multi-value cells;
 # # it worked until I needed to differentiate raw indicators with the same Indicator
@@ -611,6 +615,54 @@ create_id <- function(data) {
   return(data)
 }
 
+split_index <- function(v) {
+  df <- stats::setNames(
+    base::as.data.frame(
+      base::matrix(unlist(
+        stringr::str_sub_all(v,  start = c(-8, -5, -4, -3, -2), end = c(-6, -5, -4, -3, -1))),
+        ncol = 5, byrow = T)),
+    c("Country", "Outlook", "Dimension", "Data Level", "Indicator"))
+  return(df)
+}
+
+expand_index_closure <- function() {
+  country_numbers <- read.csv("src/country-numbers.csv")
+  country_vector <- country_numbers$country  
+  names(country_vector) <- country_numbers$number
+  all_indicators_list <- bind_rows(
+    as.data.frame(read.csv("src/indicators-list.csv")),
+    as.data.frame(read.csv("src/indicators-list-retired.csv")))
+
+  multi_raw_indicator_ids <- all_indicators_list$indicator_id[all_indicators_list$indicator_raw_slug %>% str_detect(",")]
+  indicators <- separate_rows(all_indicators_list, indicator_raw_slug, sep = ",") %>%
+    mutate(Indicator = case_when(
+      indicator_id %in% multi_raw_indicator_ids ~ paste0(Indicator, " (", trimws(indicator_raw_slug), ")"),
+      T ~ Indicator
+    ))
+  factor_orders <- factorize_columns(tibble(Outlook = character(), Dimension = character(), Country = character(), Countryname = character(), `Data Level` = character(), `Display Status` = character()))
+
+  expand_index <- function(v) {
+  if ("data.frame" %in% class(v)) {
+    df <- v
+    if (any(c("Country", "Outlook", "Dimension", "Data Level", "Indicator") %ni% names(df))) {
+      df <- select(df, -any_of(c("Country", "Outlook", "Dimension", "Data Level", "Indicator")))
+      df <- bind_cols(df, split_index(df$Index))
+    }
+  } else if (is.vector(v)) {
+    df <- bind_cols(Index = v, split_index(v))
+  }
+  df$Country <- country_numbers$country[match(as.numeric(df$Country), country_numbers$number)]
+  df$Outlook <- levels(factor_orders$Outlook)[as.numeric(df$Outlook)]
+  df$Dimension <- levels(factor_orders$Dimension)[as.numeric(df$Dimension)]
+  df$`Data Level` <- levels(factor_orders$`Data Level`)[as.numeric(df$`Data Level`)]
+  df$Indicator <- indicators$Indicator[match(as.numeric(df$Indicator), indicators$indicator_id)]
+  return(df)
+  }
+  return(expand_index)
+}
+
+expand_index <- expand_index_closure()
+
 write_run <- function(data, runs_directory = file.path(output_directory, "runs")) {
   if (!dir.exists(runs_directory)) {
     dir.create(runs_directory)
@@ -631,14 +683,19 @@ write_run <- function(data, runs_directory = file.path(output_directory, "runs")
   write_csv(data, file.path(runs_directory, paste0(as_of, "-", "run_", run_id, ".csv")))
 }
 
-read_many_runs <- function(runs_directory = file.path(output_directory, "runs"), since = NULL, tail_n = NULL) {
+read_many_runs <- function(runs_directory = file.path(output_directory, "runs"), since = NULL, before = NULL, tail_n = NULL, index_only = T) {
   files <- sort(list.files(runs_directory))
   if (!is.null(since)) {
     dates <- as.Date(str_extract(files, "\\d{4}-\\d{2}-\\d{2}"))
     files <- files[which(dates >= as.Date(since))]
   }
+  if (!is.null(before)) {
+    dates <- as.Date(str_extract(files, "\\d{4}-\\d{2}-\\d{2}"))
+    files <- files[which(dates <= as.Date(before))]
+  }
   if (!is.null(tail_n)) files <- tail(files, n = tail_n)
-  all_runs <- bind_rows(lapply(file.path(runs_directory, files), read_csv, col_types = 'dddfffffcdccflD'))
+  col_types <- if (index_only) '--d------dc---D' else 'dddfffffcdccflD'
+  all_runs <- bind_rows(lapply(file.path(runs_directory, files), read_csv, col_types = col_types))
   return(all_runs)
 }
 

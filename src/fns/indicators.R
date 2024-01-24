@@ -804,7 +804,7 @@ fews_collect_many <- function(as_of = Sys.Date()) {
 }
 
 fews_process <- function(as_of) {
-  fewswb <- read_most_recent(paste_path(inputs_archive_path, "fews"), 
+  fewswb <- read_most_recent(directory_path = file.path(inputs_archive_path, "fews"), 
     FUN = read_csv, col_types = cols(.default = "c"), as_of = as_of) %>%
     mutate(year_month = as.yearmon(year_month, "%Y_%m")) %>%
     subset(as.Date(year_month) > as_of - 2 * 365) %>% # Might be able to replace this with a shorter timespan
