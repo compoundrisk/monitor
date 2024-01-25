@@ -200,8 +200,7 @@ long <- pretty_col_names(all_dimensions) %>%
   round_value_col() %>%
   factorize_columns() %>%
   order_columns_and_raws() %>%
-  # mutate(Index = row_number(), .before = 1) # Do I need this? Even if not useful for matching, it is useful for sorting
-  create_id()
+  mutate(Index = create_index(rename(., Indicator = Key)), .before = 1)
 
 write_run(data = long, runs_directory = file.path(output_directory, "runs"))
 
@@ -242,7 +241,10 @@ write.csv(dashboard_crisis, paste_path(mounted_path, "production/crm-dashboard-p
 # COMMAND ----------
 
 all_runs <- read_many_runs(
-              since = min(pull(read_csv(file.path(output_directory, "dimension-highs.csv"), col_select = dimension_date, col_types = "D")), na.rm = T),
+              since = tryCatch(
+                  min(pull(read_csv(file.path(output_directory, "dimension-highs.csv"),
+                    col_select = dimension_date, col_types = "D")), na.rm = T),
+                  error = function(e) NULL),
               before = as_of)
 dimension_highs <- date_dimension_highs(all_runs)
 write.csv(dimension_highs, file.path(output_directory, "dimension-highs.csv"), row.names = F)

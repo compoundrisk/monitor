@@ -560,14 +560,52 @@ round_value_col <- function(data) {
   return(output)
 }
 
+factor_orders_make <- function() {
+  factor_orders_csv <- read_csv("src/factor-orders.csv", col_types = cols(.default = "c"))
+  country_numbers <- read_csv("src/country-numbers.csv", col_types = "ic")
+  if (0 != nrow(filter(country_numbers, number != row_number()))) {
+    stop(
+      paste("Country numbers don't match row numbers in country-numbers.csv for",
+      filter(country_numbers, number != row_number())$country))
+  }
+  all_indicators_list <- bind_rows(
+    as.data.frame(read.csv("src/indicators-list.csv")),
+    as.data.frame(read.csv("src/indicators-list-retired.csv"))) %>%
+    select(Indicator, indicator_id, indicator_raw_slug)
+  multi_raw_indicators <- all_indicators_list[all_indicators_list$indicator_raw_slug %>% str_detect(","),] %>%
+    separate_rows(indicator_raw_slug, sep = ",") %>% 
+    mutate(Indicator = paste0(Indicator, " (", trimws(indicator_raw_slug), ")"))
+  indicators <- bind_rows(all_indicators_list, multi_raw_indicators) %>%
+    { setNames(.$Indicator, .$indicator_id) }
+
+  factor_orders <- sapply(c("Outlook", "Dimension", "Data Level"), function(var) {
+      df <- select(factor_orders_csv, number, {{var}}) %>% remove_missing() %>% suppressWarnings()
+      v <- setNames(pull(df), df$number) 
+      return(v)
+    }, simplify = F)
+  
+  factor_orders$Country <- setNames(country_numbers$country, country_numbers$number)
+  factor_orders$Indicator <- indicators
+  return(factor_orders)
+}
+factor_orders <- factor_orders_make()
+
+match_factor_orders <- \(x, var, to_number = F) {
+  if (!to_number) {
+    factor_orders[[var]][match(x, names(factor_orders[[var]]))]
+  } else {
+    as.numeric(names(factor_orders[[var]][match(x, factor_orders[[var]])]))
+  }
+}
+
 factorize_columns <- function(data) {
   data <- data %>%
     mutate(
-        Outlook = ordered(Outlook, levels = c("Overall", "Underlying", "Emerging")),
-        Dimension = ordered(Dimension, c("Flag", "Food Security", "Conflict and Fragility", "Health", "Macro Fiscal",  "Natural Hazard", "Socioeconomic Vulnerability")),
-        Country = ordered(Country, levels = sort(unique(Country))),
+        Outlook = ordered(Outlook, levels = factor_orders$Outlook),
+        Dimension = ordered(Dimension, levels = factor_orders$Dimension),
+        Country = ordered(Country, levels = factor_orders$Country),
         Countryname = ordered(Countryname, levels = sort(unique(Countryname))),
-        `Data Level` = ordered(`Data Level`, c("Flag Count", "Dimension Value", "Indicator", "Raw Indicator Data", "Reliability")),  
+        `Data Level` = ordered(`Data Level`, factor_orders$`Data Level`),  
         `Display Status` = factor(`Display Status`))
   return(data)
 }
@@ -580,39 +618,23 @@ order_columns_and_raws <- function(data) {
   return(data)
 }
 
-create_id <- function(data) {
-  country_numbers <- read.csv("src/country-numbers.csv")
-  country_numbers_vector <- as.character(country_numbers$number)
-  names(country_numbers_vector) <- country_numbers$country
-  multi_raw_indicator_ids <- indicators_list$indicator_id[indicators_list$indicator_raw_slug %>% str_detect(",")]
-  separated_indicators <- separate_rows(indicators_list, indicator_raw_slug, sep = ",") %>%
-    mutate(Indicator = case_when(
-      indicator_id %in% multi_raw_indicator_ids ~ paste0(Indicator, " (", trimws(indicator_raw_slug), ")"),
-      T ~ Indicator
-    ))
-
-  data <- mutate(data,
-    Indicator_ID = case_when(
-        `Data Level` == "Indicator" ~ indicators_list$indicator_id[match(Key, indicators_list$Indicator)],
-        # TASK: / FIX: This results in multiple raw variables receiving the same 
-        `Data Level` == "Raw Indicator Data" ~
-          separated_indicators$indicator_id[match(sub("(.*) Raw", "\\1", Key), separated_indicators$Indicator)],
-          # [match(sub("(.*) Raw", "\\1", Key), separate_rows(indicators_list, indicator_raw_slug, sep = ",")[,"Indicator"]]),
-        TRUE ~ as.integer(0),
-      ),
+create_index <- function(df) {
+  cols <- c(Country = NA_character_, Dimension = NA_character_, Outlook = NA_character_, `Data Level` = NA_character_, Indicator = NA_character_)
+  df <- tibble::add_column(df, !!!cols[setdiff(names(cols), names(df))])
+  indices <- mutate(
+    df,
+    Country = match(Country, factor_orders$Country),
+    Dimension = match(Dimension, factor_orders$Dimension),
+    Outlook = match(Outlook, factor_orders$Outlook),
+    Indicator = match_factor_orders(str_replace(Indicator, " Raw$", ""), "Indicator", to_number = T),
+    `Data Level` = match(`Data Level`, factor_orders$`Data Level`),
       Index = as.numeric(paste0(
-        # leading_zeros(country_numbers$number[country_numbers$country == Country], 3),
-        leading_zeros(str_replace_all(Country, country_numbers_vector), 3),
-        # Does it make more sense to order by Data Level before Dimension, Outlook, and even Country?
-        leading_zeros(as.numeric(Outlook), 1),
-        leading_zeros(as.numeric(Dimension), 1),
-        leading_zeros(as.numeric(`Data Level`), 1),
-        leading_zeros(Indicator_ID, 2)#,
-        # ifelse(`Data Level` == "Raw Indicator Data", 1, 0)
-        )),
-      .before = 1) %>%
-      select(-Indicator_ID)
-  return(data)
+      leading_zeros(Country, 3),
+      leading_zeros(Outlook, 1),
+      leading_zeros(Dimension, 1),
+      leading_zeros(`Data Level`, 1),
+      leading_zeros(Indicator, 2))))$Index
+  return(indices)
 }
 
 split_index <- function(v) {
@@ -625,22 +647,6 @@ split_index <- function(v) {
   return(df)
 }
 
-expand_index_closure <- function() {
-  country_numbers <- read.csv("src/country-numbers.csv")
-  country_vector <- country_numbers$country  
-  names(country_vector) <- country_numbers$number
-  all_indicators_list <- bind_rows(
-    as.data.frame(read.csv("src/indicators-list.csv")),
-    as.data.frame(read.csv("src/indicators-list-retired.csv")))
-
-  multi_raw_indicator_ids <- all_indicators_list$indicator_id[all_indicators_list$indicator_raw_slug %>% str_detect(",")]
-  indicators <- separate_rows(all_indicators_list, indicator_raw_slug, sep = ",") %>%
-    mutate(Indicator = case_when(
-      indicator_id %in% multi_raw_indicator_ids ~ paste0(Indicator, " (", trimws(indicator_raw_slug), ")"),
-      T ~ Indicator
-    ))
-  factor_orders <- factorize_columns(tibble(Outlook = character(), Dimension = character(), Country = character(), Countryname = character(), `Data Level` = character(), `Display Status` = character()))
-
   expand_index <- function(v) {
   if ("data.frame" %in% class(v)) {
     df <- v
@@ -651,17 +657,20 @@ expand_index_closure <- function() {
   } else if (is.vector(v)) {
     df <- bind_cols(Index = v, split_index(v))
   }
-  df$Country <- country_numbers$country[match(as.numeric(df$Country), country_numbers$number)]
-  df$Outlook <- levels(factor_orders$Outlook)[as.numeric(df$Outlook)]
-  df$Dimension <- levels(factor_orders$Dimension)[as.numeric(df$Dimension)]
-  df$`Data Level` <- levels(factor_orders$`Data Level`)[as.numeric(df$`Data Level`)]
-  df$Indicator <- indicators$Indicator[match(as.numeric(df$Indicator), indicators$indicator_id)]
+  df <- mutate(df,
+    Country =  match_factor_orders(as.numeric(Country), "Country"),
+    Outlook = match_factor_orders(as.numeric(Outlook), "Outlook"),
+    Dimension = match_factor_orders(as.numeric(Dimension), "Dimension"),
+    `Data Level` = match_factor_orders(as.numeric(`Data Level`), "Data Level"),
+    Indicator = match_factor_orders(as.numeric(Indicator), "Indicator"),
+    Indicator = case_when(
+      `Data Level` == "Raw Indicator Data" ~ paste(Indicator, "Raw"),
+      `Data Level` == "Dimension Value" ~ Dimension,
+      `Data Level` == "Reliability" ~ "Reliability",
+      `Data Level` == "Flag Count" ~ "Number of Flags",
+      T ~ Indicator))
   return(df)
-  }
-  return(expand_index)
 }
-
-expand_index <- expand_index_closure()
 
 write_run <- function(data, runs_directory = file.path(output_directory, "runs")) {
   if (!dir.exists(runs_directory)) {
@@ -824,8 +833,8 @@ quick_scan <- function(
   countries,
   group_name = NULL,
   file_name,
-  outlooks = c("Overall", "Underlying", "Emerging"), pdf = F,
-  dimensions = c("Food Security", "Conflict and Fragility", "Health", "Macro Fiscal", "Natural Hazard", "Socioeconomic Vulnerability"),
+  outlooks = factor_orders$Outlook, pdf = F,
+  dimensions = factor_orders$Dimension[-1],
   source_file = 'production/crm-dashboard-prod.csv') {
 
     data <- read.csv(source_file) #%>%
