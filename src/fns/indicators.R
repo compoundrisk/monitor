@@ -777,20 +777,20 @@ fews_collect <- function(as_of = Sys.Date()) {
   }
 }
 
-# fews_collect <- function() {
-#   # Learn download URL from resource metadata
-#   url <- 'https://datacatalogapi.worldbank.org/ddhxext/ResourceView?resource_unique_id=DR0091743'
-#   queryString <- list('resource_unique_id' = "DR0091743")
-#   response <- VERB("GET", url, query = queryString)
-#   metadata <- fromJSON(content(response, "text"))
-#   version_date <- as.Date(str_extract(basename(metadata$distribution$url), "20\\d{2}-\\d{1,2}-\\d{1,2}"))
-#   local_most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = Sys.Date(), return_date = T, return_name = T)
+fews_collect_api <- function() {
+  # Learn download URL from resource metadata
+  url <- 'https://datacatalogapi.worldbank.org/ddhxext/ResourceView?resource_unique_id=DR0091743'
+  queryString <- list('resource_unique_id' = "DR0091743")
+  response <- VERB("GET", url, query = queryString)
+  metadata <- fromJSON(content(response, "text"))
+  version_date <- as.Date(str_extract(basename(metadata$distribution$url), "20\\d{2}-\\d{1,2}-\\d{1,2}"))
+  local_most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = Sys.Date(), return_date = T, return_name = T)
   
-#   if (version_date != local_most_recent$date) {
-#     filename <- file.path(inputs_archive_path, "fews", paste0("fews-", version_date, ".csv"))
-#     curl::curl_download(url = metadata$distribution$url, destfile = filename)
-#   }
-# }
+  if (version_date != local_most_recent$date) {
+    filename <- file.path(inputs_archive_path, "fews", paste0("fews-", version_date, ".csv"))
+    curl::curl_download(url = metadata$distribution$url, destfile = filename)
+  }
+}
 
 fews_collect_many <- function(as_of = Sys.Date()) {
   if (!dir.exists(paste_path(inputs_archive_path, "fews"))) {
@@ -918,7 +918,6 @@ fews_process <- function(as_of) {
 
 #------------------------—WBG FOOD PRICE MONITOR------------------------------------
 # Taken from https://microdatalib.worldbank.org/index.php/catalog/12421/
-# Behind intranet
 fpi_collect <- function(as_of = Sys.Date()) {
   most_recent <- read_most_recent("hosted-data/food-price-inflation", FUN = read_csv, col_types = "dddddccD", as_of = as_of, return_date = T)
   file_date <- most_recent[[2]]
@@ -938,25 +937,44 @@ fpi_collect_many <- function(as_of = Sys.Date()) {
   lapply(new_dates, fpi_collect) %>% invisible()
 }
 
-# dates <- list.files("hosted-data/food-price-inflation") %>%
-#   str_extract("2022.*[^.csv]") %>%
-#   as.Date()
+fpi_collect_api <- function(as_of = Sys.Date()) {
+  metadata_url <- "https://microdata.worldbank.org/index.php/api/tables/info/fcv/wld_2021_rtfp_v02_m"
+  metadata <- fromJSON(metadata_url)$result$metadata
+  metadata$date <- metadata$description %>%
+    str_extract("\\d{4}-\\d{2}-\\d{2}") %>%
+    as.Date()
+  local_most_recent_date <- read_csv(
+    file.path(inputs_archive_path, "wb_fpi.csv"),
+    col_select = access_date, col_types = "D")$access_date %>%
+    tail(n = 1)
+  if (metadata$date != local_most_recent_date) {
+    wb_fpi <- lapply((lubridate::year(Sys.Date()) -2):lubridate::year(Sys.Date()), function(year) {
+      first_call <- fromJSON(paste0("https://microdata.worldbank.org/index.php/api/tables/data/fcv/wld_2021_rtfp_v02_m?limit=1000&offset=0&year=", year, "&fields=o_food_price_index,h_food_price_index,l_food_price_index,c_food_price_index,inflation_food_price_index,ISO3,DATES"))
+      total_rows <- first_call$found
+      offsets <- seq_len(floor(total_rows)/1000)*1000 
+      fpi_1year <- offsets %>%
+        lapply(function(offset) {
+          url <- paste0("https://microdata.worldbank.org/index.php/api/tables/data/fcv/wld_2021_rtfp_v02_m?limit=1000&offset=", offset, "&year=", year, "&fields=o_food_price_index,h_food_price_index,l_food_price_index,c_food_price_index,inflation_food_price_index,ISO3,DATES")
+          df <- fromJSON(url)
+          return(df$data)
+        }) %>% bind_rows()
+      fpi_1year <- bind_rows(first_call$data, fpi_1year)
+      return(fpi_1year)
+    }) %>% bind_rows()
+    wb_fpi <- wb_fpi %>%
+      distinct() %>%
+      select(
+        Open = o_food_price_index,
+        High = h_food_price_index,
+        Low = l_food_price_index,
+        Close = c_food_price_index,
+        Inflation = inflation_food_price_index,
+        ISO3,
+        date = DATES)
+    archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = metadata$date)
+  }
+}
 
-# as_of <- dates[[3]]
-# path = "output/inputs-archive/wb_fpi.csv"
-# data = wb_fpi
-
-# dates[-c(1:3)]
-
-# lapply(dates[-c(1:2)], function (as_of) {
-#   most_recent <- read_most_recent("hosted-data/food-price-inflation", FUN = read.csv, as_of = as_of, return_date = T)
-#   file_date <- most_recent[[2]]
-
-#   wb_fpi <- most_recent[[1]] %>%
-#     mutate(date = as.Date(date)) %>%
-#     subset(date > Sys.Date() - 365)
-#   archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = file_date)
-# })
 
 fpi_process <- function (as_of) {
   fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), 
@@ -1173,7 +1191,7 @@ adjust_months <- function(in_file, out_file) {
 #   out_file = "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-2024-01-01.csv")
 
 eiu_collect <- function(as_of = Sys.Date(), print_date = F) {
-  most_recent <- read_most_recent("hosted-data/eiu", FUN = read_csv, col_types = "c",
+  most_recent <- read_most_recent("hosted-data/eiu", FUN = read_csv, col_types = cols(.default = "c"),
     as_of = as_of, return_date = T)
   
   eiu <- most_recent$data[-1,] %>%

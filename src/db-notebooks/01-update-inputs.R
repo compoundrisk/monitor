@@ -52,9 +52,9 @@ lap_print("Health dimension finished collecting")
 
 # FOOD
 lap_start()
-fpi_collect_many() %>% delay_error(return = NA, on = error_delay)
+fpi_collect_api() %>% delay_error(return = NA, on = error_delay)
 proteus_collect() %>% delay_error(return = NA, on = error_delay)
-fews_collect_many() %>% delay_error(return = NA, on = error_delay)
+fews_collect_api() %>% delay_error(return = NA, on = error_delay)
 # fao_wfp_web_collect() %>% delay_error(return = NA, on = error_delay)
 gfsi_collect() %>% delay_error(return = NA, on = error_delay)
 lap_print("Food dimension finished collecting")
