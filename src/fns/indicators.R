@@ -594,14 +594,17 @@ dons_collect <- function() {
     rename(who_country_alert = Code, country = Title)
 
   who_dons <- left_join(dons_news, country_ids, by = "regionscountries") %>%
+   # It would make sense to use `relationship = "many-to-one"` but `regionscountries`
+   # has multiple countries per id (e.g. Kosovo and Greenland)
     mutate(
       text = case_when(as.logical(UseOverrideTitle) ~ OverrideTitle, T ~ Title),
+      text_long = str_replace_all(Overview, "<.*?>", ""),
       date = dmy(FormattedDate),
       disease = trimws(sub("\\s[-——ｰ–].*", "", text)),
       country = country,
       who_country_alert = who_country_alert,
       url = file.path("https://www.who.int/emergencies/disease-outbreak-news/item", UrlName),
-      first_sentence = str_extract(str_replace_all(Overview, "<.*?>", ""), "(.*?\\.) [A-Z].*", group = T),
+      first_sentence = str_extract(text_long, "(.*?\\.) [A-Z].*", group = T),
       declared_over = str_detect(tolower(first_sentence), "declared the end of|declared over"),
       .keep = "none") %>%
       select(-first_sentence)
@@ -615,6 +618,10 @@ dons_process <- function(as_of) {
   # (more robust version would filter out outbreaks if they were later declared over)
   who_dons_current <- who_dons %>%
     subset(date >= as_of - 92 & date <= as_of) %>% # change back to 92
+    # Only select most recent observation per URL, per country
+    slice_max(by = c(who_country_alert, url, disease), order_by = access_date) %>%
+    # Remove observations where country name doesn't appear in story
+    filter(verify_country(text_long, who_country_alert, remove_negative_looks = T)) %>%
     mutate(who_dons_text = paste(date, "–", text)) %>%
     rename(Country = who_country_alert) %>%
     select(Country, date, disease, who_dons_text, declared_over, url, access_date)

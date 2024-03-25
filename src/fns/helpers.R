@@ -327,6 +327,27 @@ if (file.exists("src/region-names.csv")) {
 name2iso <- define_name2iso()
 rm(define_name2iso)
 
+# Function for checking whether a country's regex appears in a piece of text; vectorized
+# `remove_negative_looks` removes all negative lookaheads from regex.
+# E.g., for Guinea, "^(?!.*eq)(?!.*span)(?!.*bissau)(?!.*portu)(?!.*new).*guinea.*" becomes
+# "^.*guinea", which prevents any "eq" in a string of text from preventing the verification
+verify_country <- \(text, iso3, remove_negative_looks = F) {
+  if (any(str_detect(iso3, "[^A-Za-z]") & !is.na(iso3))) stop ("Non alpha character is in iso3")
+  iso3[is.na(iso3)] <- "000"
+  df <- bind_cols(text = text, iso3 = iso3)
+  codelist$iso3c[which(codelist$country.name.en == "Kosovo")] <- "XKX"
+  df <- left_join(
+    df,
+    select(codelist, iso3c, country.name.en.regex),
+    by = c("iso3" = "iso3c"),
+    relationship = "many-to-one")
+  if (remove_negative_looks) {
+    df$country.name.en.regex = str_replace_all(df$country.name.en.regex, "\\(\\?\\!.*?\\)", "")
+  }
+  valid <- str_detect(tolower(df$text), df$country.name.en.regex)
+  return(valid)
+}
+
 # FUNCTION TO READ MOST RECENT FILE IN A FOLDER
 # Requires re-structuring `Indicator_dataset/` in `compoundriskdata` repository
 # Also could mean saving all live-downloaded data somewhere
