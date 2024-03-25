@@ -142,7 +142,7 @@ natural_hazards_sheet <- aggregate_dimension(
   gdacs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   inform_nathaz_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   iri_process(drop_geometry = T, as_of = as_of) %>% delay_error(return = NA, on = error_delay), # Rename iri_forecast)
-  locust_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
+  fao_locust_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   inform_severity_process(as_of, dimension = "Natural Hazard", prefix = "NH_") %>% delay_error(return = NA, on = error_delay),
   # acaps_risk_list_process(as_of, dim = "Natural Hazard", prefix = "NH_") %>% delay_error(return = NA, on = error_delay))
   acaps_risk_list_reviewed_process(dim = "Natural Hazard", prefix = "NH_", as_of = as_of))

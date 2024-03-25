@@ -590,6 +590,10 @@ dons_collect <- function() {
     req_perform() %>%
     resp_body_json() %>%
     .[[2]] %>%
+    # Alternative to read many pages; should be unnecessary
+    # req_perform_iterative(next_req = iterate_with_offset("$skip", offset = 50), max_reqs = 7) %>%
+    #   resps_successes() %>% resps_data(\(resp) resp_body_json(resp)) %>%
+    #   keep_at("value") %>% .[[1]] %>%
     lapply(unlist) %>% bind_rows() %>%
     rename(who_country_alert = Code, country = Title)
 
@@ -2078,32 +2082,88 @@ iri_process_temp <- function() {
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
 # List of countries and risk factors associated with locusts (FAO), see: http://www.fao.org/ag/locusts/en/info/info/index.html
-locust_collect <- function() {
-  # if (
-    # read_html("https://www.fao.org/locust-watch/en") %>%
-    #   html_element(".RightPageColumn") %>%
-    #   html_element("div.graphics") %>%
-    #   html_element("img") %>%
-    #   html_attr("src") %>%
-    #   str_detect("calmE")) {
-    #     # fao_locust <- countrylist %>%
-    #     #   mutate(Country = Country, NH_locust_norm = 0, .keep = "none")
-    #     fao_locust <- data.frame(Country = "Date check", NH_locust_norm = 0)
-    #   } else stop("Locust threat is not calm. See http://www.fao.org/ag/locusts/en/info/info/index.html")
-
-  most_recent <- read_most_recent("hosted-data/fao-locust", as_of = Sys.Date(), return_date = T)
-  fao_locust <- most_recent$data %>%
-    mutate(Country = name2iso(Country)) %>%
+fao_locust_pdf_collect <- function(bulletin_url) {
+      locust_pdf <- pdf_text(bulletin_url)
+      
+      fao_locust <- locust_pdf %>%
+        subset(str_detect(., "Desert Locust Bulletin")) %>%
+        lapply(\(page) {
+          bulletin_date <- page[[1]] %>%
+            str_extract("No. \\d+\\s+ (\\d+ [A-Za-z]+ \\d{4})", group = T) %>%
+            dmy()
+          if (is.na(bulletin_date) || bulletin_date < as.Date("2018-01-01")) return(NULL) # Formatting changes before this date
+          locust_lines <- page[1] %>%
+            str_split_1("\\n") %>%
+            str_sub(1, 68) %>%
+            trimws()
+          locust_lines[locust_lines == ""] <- "&&&"
+          locust_vector <- locust_lines %>%
+            paste(collapse = " ") %>%
+            str_split_1("(&&&\\s)+") %>%    
+            subset(str_detect(., "^[A-Z]*\\sREGION:.*"))
+          concern_levels <- locust_vector %>%
+            str_extract("[A-Z]*(?=\\sSITUATION)")
+          NH_locust_norm <- case_when(
+            concern_levels == "CALM" ~ 0,
+            concern_levels == "CAUTION" ~ 3,
+            concern_levels == "THREAT" ~ 7,
+            concern_levels == "DANGER" ~ 10)
+          countries <- name2iso(locust_vector)
+          fao_locust <- tibble(
+              Country = countries,
+              NH_locust_norm = NH_locust_norm,
+              NH_locust_level = concern_levels,
+              bulletin_url = bulletin_url,
+              bulletin_date = bulletin_date) %>%
+            mutate(NH_locust_level = paste(NH_locust_level, "-", bulletin_date)) %>%
     full_join(select(countrylist, Country), by = "Country") %>%
-    tidyr::replace_na(replace = list(NH_locust_norm = 0, NH_locust_level = "Calm")) %>%
-    mutate(NH_locust_level = paste(NH_locust_level, "-", most_recent$date))
-  
-  archiveInputs(fao_locust, group_by = c("Country"), today = most_recent$date)
+            tidyr::replace_na(replace = list(
+              NH_locust_norm = 0,
+              NH_locust_level = "No reporting",
+              bulletin_url = bulletin_url,
+              bulletin_date = bulletin_date)) %>%
+            separate_longer_delim(Country, delim = ", ") %>%
+          arrange(Country)
+          archiveInputs(fao_locust, group_by = "Country", today = bulletin_date)
+          return(fao_locust)
+        }) %>% bind_rows()
+    return(fao_locust)
 }
 
-locust_process <- function(as_of) {
+fao_locust_multi_collect <- function() {
+  fao_locust_existing <- read_csv(file.path(inputs_archive_path, "fao_locust.csv"), col_types = "cdccDD")
+
+  site_body <- read_html("https://www.fao.org/locust-watch/information/bulletin/en") %>%
+    html_element("body")
+  bulletin_cards <- site_body %>%
+    html_elements(".card-body")
+  bulletin_urls <- bulletin_cards %>%
+    html_elements("a.title-link") %>%
+    html_attr("href")
+  archive_urls <- site_body %>%
+    html_elements(".accordion") %>%
+    html_elements(".accordion-body") %>%
+    lapply(\(year_archive) {
+      archive_url <- year_archive %>% html_elements("a") %>% html_attr("href")
+      return(archive_url)
+    }) %>%
+    unlist() %>%
+     # Remove archive urls with different document formats
+    subset(!str_detect(., "8668|8669|8670|8671|8672|8673|8674|8675|8836|8837|8838|8839|8840|8841|8842|8843|8844"))
+  bulletin_urls <- c(bulletin_urls, archive_urls) %>%
+    which_not(fao_locust_existing$bulletin_url) %>%
+    sort()
+  if (length(bulletin_urls) > 0) {
+  fao_locust <- bulletin_urls %>%
+    lapply(fao_locust_pdf_collect) %>%
+    bind_rows() %>%
+    arrange(bulletin_date, Country)
+  }
+}
+
+fao_locust_process <- function(as_of) {
   fao_locust <- loadInputs("fao_locust", group_by = c("Country"), 
-    as_of = as_of, format = "csv", col_types = "cdD")
+    as_of = as_of, format = "csv", col_types = "cdccDD")
   return(fao_locust)
 }
 
