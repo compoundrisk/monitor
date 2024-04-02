@@ -197,7 +197,8 @@ define_name2iso <- function() {
     "Micronesia" = "FSM",
     "Türkiye" = "TUR",
     "Turkiye" = "TUR",
-    "São Tomé and Príncipe" = "STP"
+    "São Tomé and Príncipe" = "STP",
+    "Somaliland" = "SOM" # SOM is iso3 for Somalia
     ))
   dictionary <- dictionary[unique(names(dictionary))]
   names(dictionary) <- tolower(names(dictionary))

@@ -1088,51 +1088,33 @@ fao_wfp_web_collect <- function() {
 fao_wfp_web_process <- function(as_of) {
   full_text <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"), FUN = read_file, as_of = as_of, return_date = T, return_name = T)
 
-  divs <- full_text %>% 
-      str_extract_all("<div style.*?NSTARRED....") %>%
+  divs <- full_text$data %>%
+    str_split("IDCOUNTRY") %>%
       unlist() %>%
-      str_replace_all("\\\\+t", "") %>%
-      str_replace_all("\\\\+r", "") %>%
-      str_replace_all("\\\\+n", "") %>%
-      str_replace_all("\\\\\\+", "")
+    str_replace_all("\\\\+[trn]", "") %>% str_replace_all("\\\\+", "") %>%
+    .[-1]
 
-  hotspots <- lapply(divs, function(d) {
-      country <- str_extract(d, 'fas fa-square\\\\*"></i>.*?<div') %>%
-          str_extract("(?<=</span>).*?(?=</div>)")
-      color <- str_match(d, " color: rgb.?\\(([0-9, ]+)\\)")[2]
-      red <- str_extract(color, "^[0-9]+") %>% as.numeric()
-      concern <- if (red == 11) "highest" else if (red == 16) "very high" else if (red == 0) "high" else warning("No class assigned to color")
-      # ipc <- str_extract_all(d, "IPC/CH.*?(?=<div style)") %>%
-      #     lapply(function(s) {
-      #         phase <- str_match(s, "IPC/CH PHASE (.)")[2]
-      #         numbers <- str_match(s, "number.*?(\\d+\\.\\d).*?<div>.*?([A-Za-z]+)")
-      #         pop <- paste(numbers[,2], numbers[,3])
-      #         return(c("IPC" = phase, "pop" = pop))
-      #     })
-      return(c('Country' = country, 'Color' = color, 'F_FAO_WFP_Concern' = concern))
-  }) %>% bind_rows() %>%
-  mutate(Countryname = Country, Country = name2iso(Countryname, region_names = T), .before = 1) %>%
-  mutate(F_FAO_WFP_Hunger_Hotspot = case_when(
+  hotspots <- divs %>%
+    str_match("cntName.{1,4}>.*?rgba?\\((\\d+, \\d+, \\d+).*?</span>(.*?)</div>") %>%
+    # as_tibble(÷ing = 1, cntName = 2) %>%
+    # filter(!is.na(string)) %>%
+    .[!is.na(.[,1]),] %>%
+    as_tibble() %>% 
+    rename(string = 1, color = 2, cntName = 3) %>%
+    select(-string) %>% 
+    mutate(
+      Country = name2iso(cntName),
+      Countryname = cntName,
+      red = str_extract(color, "^\\d+"),
+      F_FAO_WFP_Concern = case_when(
+        red == 11 ~ "highest", red == 16 ~ "very high", red == 0 ~ "high", T ~ NA),
+      F_FAO_WFP_Hunger_Hotspot = case_when(
     F_FAO_WFP_Concern == "highest" ~ 10,
     F_FAO_WFP_Concern == "very high" ~  7,
-    F_FAO_WFP_Concern == "high" ~  5
-  ))
+        F_FAO_WFP_Concern == "high" ~  5)) %>%
+    select(-color, -red)
 
   return(hotspots)
-  food <- full_join(fews, hotspots, by = "Country") %>%
-    select(Country, F_fews_crm_norm, F_FAO_WFP_Hunger_Hotspot, F_FAO_WFP_Concern) %>% 
-    mutate(F_FAO_WFP_Concern = factor(F_FAO_WFP_Concern, levels = c("high", "very high", "highest")))
-
-  ggplot(food) + ggrepel::geom_text_repel(aes(x = F_fews_crm_norm, y = F_FAO_WFP_Hunger_Hotspot, label = iso2name(Country))) +
-    labs(x = "FEWS, normalised", y = "Hunger Hotspots, normalised", title = "Lowest Hunger Hotspot class corresponds with upper FEWS classes") +
-    theme_bw() +
-    scale_y_continuous(breaks = c("high" = 8, "very high" = 9, "highest" = 10)) +
-   ggh4x::force_panelsizes(rows = unit(6, "in"), cols = unit(6, "in"))
-  # ggplot(food) + geom_text(aes(x = jitter(F_fews_crm_norm), y = F_FAO_WFP_Concern, label = iso2name(Country))) +
-  #   labs(x = "FEWS, normalised", y = "Hunger Hotspots, normalised", title = "Lowest Hunger Hotspot class corresponds with upper FEWS classes") +
-  #   theme_bw() +
-  #  ggh4x::force_panelsizes(rows = unit(6, "in"), cols = unit(6, "in"))
-
 }
 
 #### MACRO
