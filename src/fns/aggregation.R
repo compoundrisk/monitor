@@ -308,7 +308,7 @@ date_dimension_highs <- function(value_dates) {
 add_dimension_dates <- function(sheet, dimension, dimension_dates) {
   new_sheet <- dimension_dates %>%
     subset(Dimension == dimension, select = -Dimension) %>% 
-    pivot_wider(names_from = "Outlook", values_from = "dimension_date") %>%
+    pivot_wider(names_from = "Outlook", values_from = "dimension_date", id_cols = "Country") %>%
     select(
       underlying_dimension_date = Underlying,
       emerging_dimension_date = Emerging,
