@@ -960,12 +960,12 @@ fpi_collect_api <- function(as_of = Sys.Date()) {
     tail(n = 1)
   if (metadata$date != local_most_recent_date) {
     wb_fpi <- lapply((lubridate::year(Sys.Date()) -2):lubridate::year(Sys.Date()), function(year) {
-      first_call <- fromJSON(paste0("https://microdata.worldbank.org/index.php/api/tables/data/fcv/wld_2021_rtfp_v02_m?limit=1000&offset=0&year=", year, "&fields=o_food_price_index,h_food_price_index,l_food_price_index,c_food_price_index,inflation_food_price_index,ISO3,DATES"))
+      first_call <- fromJSON(paste0("https://microdata.worldbank.org/index.php/api/tables/data/fcv/wld_2021_rtfp_v02_m?limit=1000&offset=0&year=", year, "&adm1_name=Market%20Average&fields=ISO3,adm1_name,DATES,o_food_price_index,h_food_price_index,l_food_price_index,c_food_price_index,inflation_food_price_index"))
       total_rows <- first_call$found
       offsets <- seq_len(floor(total_rows)/1000)*1000 
       fpi_1year <- offsets %>%
         lapply(function(offset) {
-          url <- paste0("https://microdata.worldbank.org/index.php/api/tables/data/fcv/wld_2021_rtfp_v02_m?limit=1000&offset=", offset, "&year=", year, "&fields=o_food_price_index,h_food_price_index,l_food_price_index,c_food_price_index,inflation_food_price_index,ISO3,DATES")
+          url <- paste0("https://microdata.worldbank.org/index.php/api/tables/data/fcv/wld_2021_rtfp_v02_m?limit=1000&offset=", offset, "&year=", year, "&adm1_name=Market%20Average&fields=ISO3,adm1_name,DATES,o_food_price_index,h_food_price_index,l_food_price_index,c_food_price_index,inflation_food_price_index")
           df <- fromJSON(url)
           return(df$data)
         }) %>% bind_rows()
@@ -985,7 +985,6 @@ fpi_collect_api <- function(as_of = Sys.Date()) {
     archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = metadata$date)
   }
 }
-
 
 fpi_process <- function (as_of) {
   fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), 
@@ -1112,8 +1111,12 @@ fao_wfp_web_process <- function(as_of) {
     F_FAO_WFP_Concern == "highest" ~ 10,
     F_FAO_WFP_Concern == "very high" ~  7,
         F_FAO_WFP_Concern == "high" ~  5)) %>%
-    select(-color, -red)
-
+    select(-color, -red) %>%
+    filter(!is.na(Country)) %>%
+    # This is necessary because of some duplicates, like Sudan and Sudan (the)
+    slice_max(by = Country, F_FAO_WFP_Hunger_Hotspot) %>%
+    select(-Countryname) %>%
+    right_join(countrylist, by = "Country")
   return(hotspots)
 }
 
