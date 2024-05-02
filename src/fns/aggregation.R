@@ -627,6 +627,7 @@ create_index <- function(df) {
     Dimension = match(Dimension, factor_orders$Dimension),
     Outlook = match(Outlook, factor_orders$Outlook),
     Indicator = match_factor_orders(str_replace(Indicator, " Raw$", ""), "Indicator", to_number = T),
+    Indicator = tidyr::replace_na(Indicator, 0),
     `Data Level` = match(`Data Level`, factor_orders$`Data Level`),
       Index = as.numeric(paste0(
       leading_zeros(Country, 3),
@@ -704,7 +705,7 @@ read_many_runs <- function(runs_directory = file.path(output_directory, "runs"),
   }
   if (!is.null(tail_n)) files <- tail(files, n = tail_n)
   col_types <- if (index_only) '--d------dc---D' else 'dddfffffcdccflD'
-  all_runs <- bind_rows(lapply(file.path(runs_directory, files), read_csv, col_types = col_types))
+  all_runs <- read_csv(file.path(runs_directory, files), col_types = col_types, lazy = lazy)
   return(all_runs)
 }
 
