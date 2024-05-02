@@ -667,7 +667,7 @@ ifrc_collect <- function() {
   queryString <- list(
     limit = "1000",
     ordering = "-disaster_start_date",
-    disaster_start_date__gte = "2022-09-27T00:00:00.000Z",
+    disaster_start_date__gte = "2000-09-27T00:00:00.000Z",
     dtype = "1",
     offset = "0")
   payload <- ""
@@ -681,7 +681,7 @@ ifrc_collect <- function() {
   json <- content(response, "text", encoding = "UTF-8")
   df <- jsonlite::fromJSON(json)$results 
   df$dtype <- df$dtype$name
-  df$countries <- lapply(df$countries, function(i) {return(i$iso3)}) %>% unlist()
+  df$countries <- lapply(df$countries, \(i) if (is.null(i$iso3)) NA else i$iso3) %>% unlist()
   ifrc_epidemics <- df %>% mutate(
     disaster_start_date = as.Date(disaster_start_date),
     created_at = as.Date(created_at),
@@ -709,13 +709,19 @@ ifrc_collect <- function() {
 
 ifrc_process <- function(as_of) {
   df <- loadInputs("ifrc_epidemics", group_by = "id", as_of = as_of, col_types = cols(.default = "c")) %>% 
+    filter(if_any(c(disaster_start_date, created_at, updated_at), ~ as.Date(.x) > as_of - 90)) %>%
+    # filter(ifrc_severity_level > 0) %>%
     select(Country = countries,
       severity_level = ifrc_severity_level, severity_level_color = ifrc_severity_level_display,
       disaster_start_date, updated_at, created_at, id, summary, name) %>%
       mutate(ifrc_epidemics = 10, ifrc_epidemics_text = name) %>%
       add_dimension_prefix("H_")
+    # slice_max(by = Country, H_severity_level) %>%
 
-  epidemics <- left_join(countrylist, df, by = "Country") %>% as_tibble() %>% arrange(H_ifrc_epidemics)
+  epidemics <- left_join(countrylist, df, by = "Country") %>% as_tibble() %>% arrange(H_ifrc_epidemics) %>%
+    summarize(.by = c(Countryname, Country),
+      H_ifrc_epidemics = max(H_ifrc_epidemics),
+      H_ifrc_epidemics_text = paste(H_ifrc_epidemics_text, collapse = "; "))
   return(epidemics)
 }
 
@@ -1037,6 +1043,8 @@ fpi_process <- function (as_of) {
 
 fao_wfp_web_collect <- function() {
 
+fao_wfp_web_collect <- function() {
+  # This doesn't work because the cookies need to change. See if httr2:read_html_live() would work
   prev <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"), FUN = read_file, as_of = Sys.Date(), return_date = T, return_name = T)
   prev_text <- prev$data
   prev_outlook <- prev$name %>% str_match("hunger-hotspots-(\\d\\d)") %>% .[[2]] %>% as.numeric
@@ -1085,7 +1093,8 @@ fao_wfp_web_collect <- function() {
 }
 
 fao_wfp_web_process <- function(as_of) {
-  full_text <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"), FUN = read_file, as_of = as_of, return_date = T, return_name = T)
+  full_text <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"),
+    FUN = read_file, as_of = as_of, return_date = T, return_name = T)
 
   divs <- full_text$data %>%
     str_split("IDCOUNTRY") %>%
@@ -1095,8 +1104,6 @@ fao_wfp_web_process <- function(as_of) {
 
   hotspots <- divs %>%
     str_match("cntName.{1,4}>.*?rgba?\\((\\d+, \\d+, \\d+).*?</span>(.*?)</div>") %>%
-    # as_tibble(÷ing = 1, cntName = 2) %>%
-    # filter(!is.na(string)) %>%
     .[!is.na(.[,1]),] %>%
     as_tibble() %>% 
     rename(string = 1, color = 2, cntName = 3) %>%
@@ -1593,6 +1600,7 @@ eiu_security_process <- function(as_of) {
 #### NATURAL HAZARDS
 
 #------------------------------—GDACS-----------------------------------------
+# Switch to API, format https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?fromDate=2019-03-01&toDate=2024-04-05&alertlevel=orange;red&eventlist=EQ;FL&country=
 gdacs_collect <- function() {
   gdacs_url <- "https://www.gdacs.org/"
   gdacs_web <- read_html(gdacs_url) %>%
@@ -1845,6 +1853,76 @@ inform_risk_collect <- function() {
     mutate(across(-c(Country, `RISK CLASS`, `Countries in HVC`), ~ as.numeric(.x)))
 
   archiveInputs(inform_risk, today = file_date, group_by = c("Country"))
+}
+
+inform_risk_historical_collect <- function() {
+  existing_archive <- read_csv(file.path(inputs_archive_path, "inform_risk.csv"))
+  # For finding the appropriate indicators ids ... incomplete, doesn't seem worth doing
+  # structure <- openxlsx2::wb_to_df("/Users/bennotkin/Documents/world-bank/crm/crm-db/hosted-data/inform-risk/INFORM_Risk_2024_v067.xlsx",
+  #                                  sheet = 2, rows = 2:4, show_formula = T)
+  # ind_reference <- 
+  #   tibble(name = names(structure), formula = unlist(structure[2,])) %>%
+  #     separate_wider_delim(formula, delim = "!", names = c("sheet", "range"),
+  #       too_few = "align_end", cols_remove = F) %>%
+  #     mutate(column = str_extract(range, "^[A-Z]{1,2}(?=\\d)"))
+
+  # id_sheet <- openxlsx2::wb_to_df("/Users/bennotkin/Documents/world-bank/crm/crm-db/hosted-data/inform-risk/INFORM_Risk_2024_v067.xlsx",
+  #                                  sheet = 2, rows = 2:4, show_formula = T)
+  # structure[2,] %>% setNames(names(structure))
+  historical_inform_long <- read_xlsx("hosted-data/inform-risk/INFORM2024_TREND_2014_2023_v67_ALL.xlsx") %>%
+    distinct()
+  # indicator_names <- distinct(historical_inform_long, IndicatorId, IndicatorName) %>%
+  #   { setNames(.$IndicatorId, .$IndicatorName) }
+  # indicator_df <- distinct(historical_inform_long, IndicatorId, IndicatorName)
+  # indicator_df %>% filter(str_detect(IndicatorName, "Natural"))
+  historical_inform <- historical_inform_long %>%
+    # # For now, only keeping the indicators used by CRM
+    # filter(IndicatorId %in% c("HA.NAT", "VU.SEV")) %>%
+    mutate(
+      IndicatorName = factor(IndicatorName),
+      IndicatorName = forcats::fct_recode(IndicatorName,
+      "Earthquake" = "Physical exposure to earthquakes",
+      # "Flood" = "??",
+      "Tsunami" = "Physical exposure to tsunamis",
+      "Tropical Cyclone" = "Physical exposure to tropical cyclones",
+      "Drought" = "Droughts probability and historical impact",
+      "Epidemic" = "Hazard & Exposure Index - Epidemic",
+      "Natural" = "Natural Hazard",
+      "Projected Conflict Risk" = "Violent Conflict probability Score",
+      "Current Highly Violent Conflict Intensity" = "Current conflicts",
+      "Human" = "Human Hazard",
+      "HAZARD & EXPOSURE" = "Hazard & Exposure Index",
+      "Development & Deprivation" = "Poverty & Development",
+      "Children U5" = "Health of children under-five",
+      "Recent Shocks" = "Recent shocks",
+      "Other Vulnerable Groups" = "Others Vulnerable Groups",
+      "VULNERABILITY" = "Vulnerability Index",
+      "DRR" = "Disaster Risk Reduction",
+      "Physical infrastructure" = "Physical Infrastructure",
+      "Access to health care" = "Access to Health Care",
+      "LACK OF COPING CAPACITY" = "Lack of Coping Capacity Index",
+      "INFORM RISK" = "INFORM Risk Index",
+      # "RISK CLASS" = ,
+      # "Rank" = ,
+      # "Lack of Reliability (*)" = ,
+      # "Number of Missing Indicators" = ,
+      # "% of Missing Indicators" = ,
+      # "Countries in HVC" = ,
+      # "Recentness data (average years)" = ,
+      "River Flood" = "Physical exposure to river floods",
+      "Coastal flood" = "Physical exposure to coastal flood")) %>%
+    filter(IndicatorName %in% names(exsting_archive)) %>%
+    select(Country = Iso3, IndicatorName, IndicatorScore, INFORM_Year = INFORMYear) %>%
+    pivot_wider(names_from = IndicatorName, values_from = IndicatorScore) %>%
+    # 
+    mutate(access_date = as.Date(yearmon(INFORM_Year)), archival = T) %>%
+    filter(access_date < "2021-08-20")
+
+  which_not(names(historical_inform), names(existing_archive), both = T)
+  combined <- bind_rows(existing_archive, historical_inform) %>% 
+    arrange(access_date) %>%
+    select(-access_date, access_date)
+  write_csv(combined, file.path(inputs_archive_path, "inform_risk.csv"))
 }
 
 inform_nathaz_process <- function(as_of) {
@@ -2216,6 +2294,22 @@ fcs_collect <- function() {
   
   # fcs <- fcv
   archiveInputs(fcs, group_by = c("Country"), col_types = "cccc", today = file_date)
+}
+
+fcs_historical_collect <- function() {
+  fcs_historical <- read_xlsx("hosted-data/FCS List 2003-2022 (Jul 2021).xlsx", skip = 1) %>%
+    pivot_longer(cols = -Country, names_to = "year", values_to = "FCV_status", names_transform = as.numeric, values_transform = factor) %>%
+    mutate(
+      Countryname = factor(Country),
+      Country = forcats::fct_relabel(Countryname, \(x) name2iso(x)),
+      FCV_status = forcats::fct_relabel(FCV_status, \(x) ifelse(x == "FCS", "FCS", NA)),
+      FCS_normalised = ifelse(FCV_status == "FCS", 10, 0),
+      access_date = as.Date(as.yearmon(paste("Aug", year)) - 1)) %>%
+    select(Countryname, Country, FCV_status, FCS_normalised, access_date) %>%
+    filter(access_date < "2021-01-01")
+  existing <- read_csv(file.path(inputs_archive_path, "fcs.csv"), col_types = "cccdD")
+  combined <- bind_rows(fcs_historical, existing) %>% arrange(Country)
+  write_csv(combined, file.path(inputs_archive_path, "fcs.csv"))
 }
 
 fcs_process <- function(as_of) {
