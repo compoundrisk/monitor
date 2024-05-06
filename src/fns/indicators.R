@@ -612,7 +612,7 @@ dons_collect <- function() {
       declared_over = str_detect(tolower(first_sentence), "declared the end of|declared over"),
       .keep = "none") %>%
       select(-first_sentence)
-  
+
   archiveInputs(who_dons, group_by = NULL)
 }
 
@@ -681,12 +681,13 @@ ifrc_collect <- function() {
   json <- content(response, "text", encoding = "UTF-8")
   df <- jsonlite::fromJSON(json)$results 
   df$dtype <- df$dtype$name
-  df$countries <- lapply(df$countries, \(i) if (is.null(i$iso3)) NA else i$iso3) %>% unlist()
-  ifrc_epidemics <- df %>% mutate(
-    disaster_start_date = as.Date(disaster_start_date),
-    created_at = as.Date(created_at),
-    updated_at = as.Date(updated_at),
-    num_affected = as.numeric(num_affected)) %>%
+  df$countries <- lapply(df$countries, \(i) if (is.null(i$iso3)) NA else paste(i$iso3, collapse = ";")) %>% unlist()
+  ifrc_epidemics <- df %>%
+    mutate(
+      disaster_start_date = as.Date(disaster_start_date),
+      created_at = as.Date(created_at),
+      updated_at = as.Date(updated_at),
+      num_affected = as.numeric(num_affected)) %>%
     select(-field_reports, -appeals)
 
   # Delete this after one run on Databricks
@@ -709,14 +710,16 @@ ifrc_collect <- function() {
 
 ifrc_process <- function(as_of) {
   df <- loadInputs("ifrc_epidemics", group_by = "id", as_of = as_of, col_types = cols(.default = "c")) %>% 
-    filter(if_any(c(disaster_start_date, created_at, updated_at), ~ as.Date(.x) > as_of - 90)) %>%
+    # filter(if_any(c(disaster_start_date, created_at, updated_at), ~ as.Date(.x) > as_of - 90)) %>%
+    filter(if_any(c(disaster_start_date, created_at), ~ as.Date(.x) > as_of - 90)) %>%
     # filter(ifrc_severity_level > 0) %>%
     select(Country = countries,
       severity_level = ifrc_severity_level, severity_level_color = ifrc_severity_level_display,
       disaster_start_date, updated_at, created_at, id, summary, name) %>%
-      mutate(ifrc_epidemics = 10, ifrc_epidemics_text = name) %>%
-      add_dimension_prefix("H_")
+    mutate(ifrc_epidemics = 10, ifrc_epidemics_text = name) %>%
+    add_dimension_prefix("H_") %>%
     # slice_max(by = Country, H_severity_level) %>%
+    separate_longer_delim(Country, delim = ";")
 
   epidemics <- left_join(countrylist, df, by = "Country") %>% as_tibble() %>% arrange(H_ifrc_epidemics) %>%
     summarize(.by = c(Countryname, Country),
@@ -1041,7 +1044,10 @@ fpi_process <- function (as_of) {
 #   return(fao_wfp)
 # }
 
-fao_wfp_web_collect <- function() {
+# site <- read_html_live("https://www.hungerhotspots.org")
+# site %>%
+#   html_element("#map") %>%
+# read_html("https://www.hungerhotspots.org")
 
 fao_wfp_web_collect <- function() {
   # This doesn't work because the cookies need to change. See if httr2:read_html_live() would work
@@ -1092,13 +1098,35 @@ fao_wfp_web_collect <- function() {
   }
 }
 
+# sess <- session("https://www.hungerhotspots.org//Components/ajaxengine.cfc")
+# sess$response$request$options$useragent
+# user_a <- user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 12_0_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36")
+# sess <- session("https://www.hungerhotspots.org/", user_a)
+# sess$response
+# sess %>% session_jump_to("https://www.hungerhotspots.org//Components/ajaxengine.cfc")
+
+# cookies_path <- 
+
+# req <- request("https://www.hungerhotspots.org//Components/ajaxengine.cfc") %>%
+#   req_headers(
+#     method = "controllerNEW",
+#     nIdOutlook = outlook,
+#     nConcern = "0",
+#     init = "1",
+#     object = "comMap",
+#     action = "getData",
+#     timeout = "600",
+#     cClientSession = "A3A4324C-2664-4A36-86493C1EB906C7F7",
+#     `_` = "1712006034411")
+# resp <- req_perform(req)
+
 fao_wfp_web_process <- function(as_of) {
   full_text <- read_most_recent(paste_path(inputs_archive_path, "fao-wfp-web/"),
     FUN = read_file, as_of = as_of, return_date = T, return_name = T)
 
   divs <- full_text$data %>%
     str_split("IDCOUNTRY") %>%
-      unlist() %>%
+    unlist() %>%
     str_replace_all("\\\\+[trn]", "") %>% str_replace_all("\\\\+", "") %>%
     .[-1]
 
@@ -1115,8 +1143,8 @@ fao_wfp_web_process <- function(as_of) {
       F_FAO_WFP_Concern = case_when(
         red == 11 ~ "highest", red == 16 ~ "very high", red == 0 ~ "high", T ~ NA),
       F_FAO_WFP_Hunger_Hotspot = case_when(
-    F_FAO_WFP_Concern == "highest" ~ 10,
-    F_FAO_WFP_Concern == "very high" ~  7,
+        F_FAO_WFP_Concern == "highest" ~ 10,
+        F_FAO_WFP_Concern == "very high" ~  7,
         F_FAO_WFP_Concern == "high" ~  5)) %>%
     select(-color, -red) %>%
     filter(!is.na(Country)) %>%
@@ -2179,7 +2207,7 @@ fao_locust_pdf_collect <- function(bulletin_url) {
               bulletin_url = bulletin_url,
               bulletin_date = bulletin_date) %>%
             mutate(NH_locust_level = paste(NH_locust_level, "-", bulletin_date)) %>%
-    full_join(select(countrylist, Country), by = "Country") %>%
+            full_join(select(countrylist, Country), by = "Country") %>%
             tidyr::replace_na(replace = list(
               NH_locust_norm = 0,
               NH_locust_level = "No reporting",
@@ -2785,7 +2813,7 @@ ifes <- bind_rows(ifes_upcoming, ifes_past) %>%
   #   # Using the API
   #   # I've abandoned this for now because it doesn't appear there is any useful additional data from the API
   # # 2022-08-10 Learned that while the url is elections_demo it is in fact the current data
-  # ifes_data <- system(paste0("curl -X GET https://electionguide.org/api/v1/elections_demo/ -H 'Authorization: Token ", readLines(".access/ifes-authorization.txt", warn = F),"'"),
+  # ifes_data <- system(paste0("curl -X GET https://electionguide.org/api/v2/elections_demo/ -H 'Authorization: Token ", readLines(".access/ifes-authorization.txt", warn = F),"'"),
   #  intern = T) %>%
   #  fromJSON()
 

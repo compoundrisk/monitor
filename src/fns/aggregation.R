@@ -693,7 +693,7 @@ write_run <- function(data, runs_directory = file.path(output_directory, "runs")
   write_csv(data, file.path(runs_directory, paste0(as_of, "-", "run_", run_id, ".csv")))
 }
 
-read_many_runs <- function(runs_directory = file.path(output_directory, "runs"), since = NULL, before = NULL, tail_n = NULL, index_only = T) {
+read_many_runs <- function(runs_directory = file.path(output_directory, "runs"), since = NULL, before = NULL, tail_n = NULL, index_only = T, lazy = F) {
   files <- sort(list.files(runs_directory))
   if (!is.null(since)) {
     dates <- as.Date(str_extract(files, "\\d{4}-\\d{2}-\\d{2}"))
