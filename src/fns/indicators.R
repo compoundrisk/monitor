@@ -271,9 +271,9 @@ inform_severity_process <- function(as_of, dimension, prefix) {
 #--------------------—ACAPS Risk List -----------------------------
 
 acaps_risk_list_collect <- function() {
-    ## Post credentials to get an authentication token
-    credentials <- read.csv(paste_path(mounted_path, ".access/acaps-credentials.csv"))
-    credentials <- list(username=credentials$username, password=credentials$password)
+  ## Post credentials to get an authentication token
+  credentials <- read.csv(paste_path(mounted_path, ".access/acaps-credentials.csv"))
+  credentials <- list(username=credentials$username, password=credentials$password)
   token <- request("https://api.acaps.org/api/v1/token-auth/") %>%
     req_body_json(credentials) %>%
     req_perform() %>%
@@ -2701,7 +2701,10 @@ gic_process <- function(as_of) {
   
   # Manually add in coups before they are added to dataset
   if (max(coups_raw$access_date) < as.Date("2023-9-05")) {
-    coups_raw <- coups_raw %>% bind_rows(data.frame(country = "Gabon", year = 2023, month = 8, day = 30, coup = 2, version = "manual", access_date = as.Date("2023-09-05"), date = "2023-08-30"))
+    coups_raw <- coups_raw %>%
+      bind_rows(data.frame(
+        country = "Gabon", year = 2023, month = 8, day = 30, coup = 2,
+        version = "manual", access_date = as.Date("2023-09-05"), date = "2023-08-30"))
   }
 
   coups <- coups_raw %>%
@@ -2769,13 +2772,13 @@ ifes_collect <- function() {
   #       election_type = 'c',
   #       country_id = 'd'))
   
-  ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
-    html_nodes("table") %>%
-    html_table() %>% .[[1]]
+ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
+  html_nodes("table") %>%
+  html_table() %>% .[[1]]
 
-  ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
-    html_nodes("table") %>%
-    html_table() %>% .[[1]]
+ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
+  html_nodes("table") %>%
+  html_table() %>% .[[1]]
 
 ifes <- bind_rows(ifes_upcoming, ifes_past) %>% 
     mutate(Countryname = Country,
@@ -2883,13 +2886,15 @@ pseudo_reign_process <- function(as_of) {
       Fr_coup_election_count = rowSums(select(. , delayed, irregular, election_6m, coup)),
       Fr_pseudo_reign_norm = ifelse(Fr_coup_election_count > 0, 10, 0)) %>%
     as_tibble() %>%
-    mutate(Fr_coup_election_text = case_when(
+    mutate(
+      Fr_coup_election_text = case_when(
       Fr_coup_election_count > 0 ~ paste0(
         ifelse(!is.na(coup_text), paste0("coup: ", coup_text, "; "), ""),
         ifelse(Fr_coup_election_count - coup > 0,
                paste("election: ",
                      ifelse(!is.na(election_6m_text), election_6m_text, ""),
                      ifelse(!is.na(delayed_text), delayed_text, ""),
-                     ifelse(!is.na(irregular_text), irregular_text, "")), ""))))
+                     ifelse(!is.na(irregular_text), irregular_text, "")), ""))),
+      Fr_coup_underlying = case_when(coup == 2 ~ 7, coup == 1 ~ 5, coup == 0 ~ 0))
   return(pseudo_reign)
 }
