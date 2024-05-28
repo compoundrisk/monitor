@@ -199,7 +199,8 @@ define_name2iso <- function() {
     "Turkiye" = "TUR",
     "São Tomé and Príncipe" = "STP",
     "Somaliland" = "SOM", # SOM is iso3 for Somalia,
-    "Northern Ireland" = "GBR"
+    "Northern Ireland" = "GBR",
+    "Czechoslovakia" = "CZE, SVK"
     ))
   dictionary <- dictionary[unique(names(dictionary))]
   names(dictionary) <- tolower(names(dictionary))
@@ -324,7 +325,6 @@ if (file.exists("src/region-names.csv")) {
       return(output)
   }
 }
-
 
 name2iso <- define_name2iso()
 rm(define_name2iso)
@@ -584,3 +584,15 @@ yaml_as_df <- function(yaml, print = F) {
 }
 
 tolatin <- function(x) stringi::stri_trans_general(x, id = "Latin-ASCII")
+
+lag_multi <- function(x, ns, default = NA, matrix = T, FUN = NULL) {
+  mat <- matrix(unlist(map(ns, \(n) lag(x, n, default = default))), ncol = length(ns), nrow = length(x))
+  if (matrix) return(mat)
+  apply(mat, 1, c, simplify = F)
+}
+
+lead_multi <- function(x, ns, default = NA, matrix = T, FUN = NULL) {
+  mat <- matrix(unlist(map(ns, \(n) lead(x, n, default = default))), ncol = length(ns), nrow = length(x))
+  if (matrix) return(mat)
+  apply(mat, 1, c, simplify = F)
+}
