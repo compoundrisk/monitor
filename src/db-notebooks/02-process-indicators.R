@@ -155,8 +155,8 @@ lap_print("Natural hazards sheet is aggregated and saved")
 lap_start()
 fragility_sheet <- aggregate_dimension(
   "Conflict and Fragility",
-  # Unlike other dimensions. conflict uses arithmetic mean outlook to calculate overall
-  overall_method = "geometric", 
+  # Unlike other dimensions, conflict previously used arithmetic mean outlook to calculate overall
+  # overall_method = "arithmetic", 
   fsi_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   fcs_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
   acled_process(as_of = as_of) %>% delay_error(return = NA, on = error_delay),
@@ -252,6 +252,7 @@ write.csv(dimension_highs, file.path(output_directory, "dimension-highs.csv"), r
 # COMMAND ----------
 
 # Edit to include reliability sheet output and to only take crm-wide.csv?
+# If the Excel file fails to push to Github: git config --global http.postBuffer 157286400
 write_excel_source_files(
   all_dimensions = all_dimensions,
   health_sheet = add_dimension_dates(health_sheet, "Health", dimension_highs),
