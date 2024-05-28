@@ -274,43 +274,22 @@ acaps_risk_list_collect <- function() {
     ## Post credentials to get an authentication token
     credentials <- read.csv(paste_path(mounted_path, ".access/acaps-credentials.csv"))
     credentials <- list(username=credentials$username, password=credentials$password)
-    auth_token_response <- httr::POST("https://api.acaps.org/api/v1/token-auth/", body=credentials)
-    auth_token <- httr::content(auth_token_response)$token
-
-    ## Pull data from ACAPS API and loop through the pages
-    df <- data.frame()
-    request_url <- "https://api.acaps.org/api/v1/risk-list/" # Replace with the URL of the dataset you want to access
-    last_request_time <- Sys.time()
-    while (TRUE) {
-
-        ## Wait to avoid throttling
-        while (as.numeric(Sys.time()-last_request_time) < 1) {
-            Sys.sleep(0.1)
-        }
-
-        ## Make the request
-        response <- httr::GET(request_url, httr::add_headers(Authorization=paste("Token", auth_token, sep=" ")))
-        last_request_time <- Sys.time()
-
-        ## Extract the data and convert any list-type columns to strings
-        json <- httr::content(response, "text", encoding = "UTF-8")
-        df_results <- jsonlite::fromJSON(json)$results
-        # df_results <- df_results %>%
-        #   mutate(country = sapply(country, toString)) %>%
-        #   mutate(iso3 = sapply(iso3, toString)) %>%
-        #   mutate(regions = sapply(regions, toString))
-
-        ## Append to the main dataframe
-        df <- rbind(df, df_results)
-
-        ## Loop to the next page; if we are on the last page, break the loop
-        if (("next" %in% names(httr::content(response))) && (typeof(httr::content(response)[["next"]]) != "NULL")) {
-            request_url <- httr::content(response)[["next"]]
-        }
-        else {
-            break
-        }
-    }
+  token <- request("https://api.acaps.org/api/v1/token-auth/") %>%
+    req_body_json(credentials) %>%
+    req_perform() %>%
+    resp_body_json()
+  response <- request("https://api.acaps.org/api/v1/risk-list/") %>%
+    req_headers(Authorization = paste("Token", token)) %>%
+    req_perform_iterative(
+      next_req = \(resp, req) {
+        cursor <- resp_body_json(resp)[["next"]]
+        if (is.null(cursor)) return(NULL)
+        req %>% req_url(cursor)
+      })
+  df <- response %>%
+    resps_data(\(resp) fromJSON(resp_body_string(resp))$results) %>%
+    bind_rows() %>%
+    as_tibble()
 
   # df[1:5,c(3,5)] %>% mutate(crisis_id2 = case_when(
   #   lengths(iso3) > lengths(crisis_id) ~ 
