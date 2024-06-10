@@ -541,6 +541,8 @@ ghsi_process <- function(as_of) {
 #----------------------------------—WHO DONS--------------------------------------------------------------
 dons_collect <- function() {
   url <- "https://www.who.int/api/emergencies/"
+  
+  # Get news items
   params <- list(
     "sf_provider" = "dynamicProvider372",
     "sf_culture" = "en",
@@ -556,10 +558,10 @@ dons_collect <- function() {
   dons_news <- response[[2]] %>%
     lapply(unlist) %>% bind_rows()
 
-  # Get country names and codes from regionscountries field
+  # Get country names and codes from regionscountries field, to join w/ news items
   country_filter <- paste0(
     "regionscountries/any(a:a eq ",
-    paste(unique(dons_news$regionscountries), collapse = " or a eq "),
+    paste(na.omit(unique(dons_news$regionscountries)), collapse = " or a eq "),
     ")")
   country_ids <- request(url) %>%
     req_url_path_append("countries") %>%
@@ -1607,242 +1609,90 @@ eiu_security_process <- function(as_of) {
 #### NATURAL HAZARDS
 
 #------------------------------—GDACS-----------------------------------------
-# Switch to API, format https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?fromDate=2019-03-01&toDate=2024-04-05&alertlevel=orange;red&eventlist=EQ;FL&country=
-gdacs_collect <- function() {
-  gdacs_url <- "https://www.gdacs.org/"
-  gdacs_web <- read_html(gdacs_url) %>%
-    html_node("#containerAlertList")
-
-  event_types <- c(
-    "#gdacs_eventtype_EQ",
-    "#gdacs_eventtype_TC",
-    "#gdacs_eventtype_FL",
-    "#gdacs_eventtype_VO",
-    "#gdacs_eventtype_DR"
-    # "#gdacs_eventtype_WF",
-  )
-
-  # Function to create database with hazard specific information
-  gdacs <- lapply(event_types, function(type) {
-    event_html <- gdacs_web %>%
-        html_nodes(type)
-    
-    names <- event_html %>%
-        html_nodes(".alert_item_name, .alert_item_name_past") %>%
-        html_text()
-
-    urls <- event_html %>%
-      html_nodes(".alert_item") %>%
-      html_nodes("a") %>%
-      html_attr("href")
-
-    mag <- event_html %>%
-      html_nodes(".magnitude, .magnitude_past") %>%
-      html_text() %>%
-      str_trim()
-    
-    date <- event_html %>%
-      html_nodes(".alert_date, .alert_date_past") %>%
-      html_text() %>%
-      str_trim()
-    date <- gsub(c("-  "), "", date)
-    date <- gsub(c("\r\n       "), "", date)
-
-    hazard <- str_extract(type, "EQ|TC|FL|VO|DR") %>%
-        str_replace_all(c(
-          "EQ" = "earthquake",
-          "TC" = "cyclone",
-          "FL" = "flood",
-          "VO" = "volcano",
-          "DR" = "drought"))
-
-    alert_class <- event_html %>%
-      html_nodes("a > div:first-child") %>%
-      html_attr("class")
-
-    color <- str_extract(tolower(alert_class), "red|orange|green")
-
-    status <- case_when(
-      hazard != "drought" & str_detect(tolower(alert_class), "past") ~ "past", T ~ "active")
-
-    events <- data.frame(names, mag, date, status, haz = color, hazard =rep(hazard, length(names)), urls)
-
-    return(events)
-  }) %>% 
-    bind_rows() %>% #separate_rows(names, sep = "-|, ") %>% 
-    mutate(names = trimws(names)) %>%
-    filter(names != "Off shore")
-
-  gdacs_no_cyclones <- filter(gdacs, hazard != "cyclone") %>%
-    mutate(
-      country = name2iso(names, multiple_matches = T)) %>%
-      separate_rows(country, sep = ", ")
-
-  # Add countries for cyclones and other countryless events
-  gdacs_no_countries <- bind_rows(
-    filter(gdacs, hazard == "cyclone"),
-    filter(gdacs_no_cyclones, is.na(country))
-  )
-
-  gdacs_no_countries$country <- gdacs_no_countries$urls %>% lapply(function(url) {
-    table <- read_html(url) %>%
-      html_node(".summary") %>%
-      html_table()
-    info <- table$X2 %>% setNames(table$X1)
-    names(info) <- str_replace_all(names(info), c("Countries:" = "Exposed countries", "Name:" = "Name"))
-    # name <- info["Name"]
-    countries <- info["Exposed countries"]
-  return(countries)
-  })
-  gdacs_found_countries <- gdacs_no_countries %>% filter(country != "Off-shore") %>%
-    mutate(country = name2iso(country)) %>%
-    separate_rows(country, sep = ", ")
-
-  gdacs <- bind_rows(
-    gdacs_no_cyclones %>% filter(!is.na(country)),
-    gdacs_found_countries
-  )
-
-  # Clean up irregular characters
-  gdacs <- mutate(gdacs,
-                  access_date = Sys.Date(),
-                  # mag = na_if(mag, "") %>% str_replace_all("//s", " "),
-                  mag = na_if(mag, "") %>% {gsub(c("\r\n\\s*"), "", .)},
-                  mag = mag %>% str_replace_all("\\s", " "),
-                  # names = trimws(names) %>% str_replace_all("//s", " "),
-                  names = trimws(names) %>% {gsub(c("\r\n\\s*"), "", .)} %>% str_replace_all("//s", " "),
-                  date = date %>% str_replace_all("\\s", " ")
-                  # , current = TRUE
-  )
-  
-  # Add all currently online events to gdacs file unless most recent access_date and
-  # current data are fully identical
-  gdacs_prev <- read_csv(paste_path(inputs_archive_path, "gdacs.csv"), col_types = "c") %>%
-    mutate(access_date = as.Date(access_date))
-  gdacs_prev_recent <- filter(gdacs_prev, access_date == max(access_date)) %>% distinct()
-  if(!identical(select(gdacs_prev_recent, -access_date), select(gdacs, -access_date))) {
-    gdacs <- bind_rows(gdacs_prev, gdacs) %>% distinct() %>%
-      select(-access_date, access_date)
-    write.csv(gdacs, paste_path(inputs_archive_path, "gdacs.csv"), row.names = F)
+gdacs_collect_api <- function(as_of = Sys.Date(), eventtype = "EQ;TS,TC,FL,VO,DR,WF") {
+  as_of <- as.Date(as_of)
+  url <- "https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH"
+  response <- request(url) %>%
+    req_url_query(
+      fromDate = as_of - 180,
+      toDate = as_of,
+      eventlist = eventtype,
+      alertlevel = "orange;red") %>%
+    req_perform()
+  if (response$status_code == 204) {
+    message(paste("No content for as_of =", as_of, "and eventtype =", eventtype))
+    return(NULL)
   }
-  # # There may be a more efficient approach that gives all currently online events a TRUE `current` variable, and
-  # # when an event is no longer current, it receives a FALSE for its next entry.
-  # gdacs_prev <- read.csv("inputs-archive/gdacs.csv")
-  # # Select only the most recent entries for each event, which were current at least until "today"
-  # gdacs_prev_current <- filter(gdacs_prev, current == TRUE) %>%
-  #   group_by(names, mag, date, status, haz, hazard) %>%
-  #   slice_max(order_by = access_date)
-  # # I need to select the rows that appear in gdacs_prev_current but not gdacs
-  # bound <- rbind(gdacs, gdacs_prev_current)
-  # gdacs_changed <- distinct(bound, across(-c(access_date)), .keep_all = T) %>%
-  #   filter(access_date != today)
-  # gdacs_changed <- gdacs_changed %>% mutate(current = FALSE, access_date = Sys.Date())
-  # gdacs <- rbind(gdacs, gdacs_changed, gdacs_prev) %>% distinct()
+  resp <- resp_body_json(response)
+  gdacs <- resp$features %>%
+    map(\(f) {
+      properties <- f$properties
+      properties <- c(properties, unlist(properties$severitydata))
+      properties <- c(properties, unlist(properties$url))
+      properties$affected_iso3 <- unlist(map(properties$affectedcountries, ~ .x$iso3))
+      properties <- discard_at(properties, c("affectedcountries", "severitydata", "url")) %>%
+        map_if(.p = ~ length(.x) > 1, .f = ~ paste(.x, collapse = ";"))
+      tibble::as_tibble_row(unlist(properties))
+    }) %>% bind_rows()
+  stopifnot(anyDuplicated(gdacs$eventid) == 0)
+  if (nrow(gdacs) >= 100) warning("100 events: maxxed out API call")
+  message(paste(eventtype, as_of, "-", nrow(gdacs), "events"))
+  return(gdacs)
+}
+
+gdacs_collect <- function(as_of, newFile = F) {
+  gdacs <- c("EQ", "TS", "TC", "FL", "VO", "DR", "WF") %>%
+    map(\(eventtype) gdacs_collect_api(as_of, eventtype = eventtype)) %>%
+    bind_rows()
+  archiveInputs(gdacs, group_by = c("eventid", "eventtype", "episodeid"), newFile = newFile)
+}
+
+gdacs_collect_many <- function() {
+  if (!file.exists(file.path(inputs_archive_path, "gdacs.csv"))) {
+    gdacs_collect(as_of = "2004-06-01", newFile = T)
+  }
+  gdacs_archive <- read_csv(file.path(inputs_archive_path, "gdacs.csv"),
+    col_types = "cddccccccccdcdllcTTTcclccdcccccclD")
+  latest_entry <- as.Date(max(gdacs_archive$todate))
+  dates <- c(seq.Date(latest_entry + 180, max(Sys.Date(), latest_entry + 180), by = "180 days"), Sys.Date()) %>%
+    .[. <= Sys.Date()]
+  dates %>%
+    map(\(as_of) gdacs_collect(as_of = as_of, newFile = F))
+  # Rewrite without duplicates
+  gdacs_archive_new <- read_csv(file.path(inputs_archive_path, "gdacs.csv"),
+    col_types = "cddccccccccdcdllcTTTcclccdcccccclD") %>%
+    distinct()
+  write_csv(gdacs_archive_new, file.path(inputs_archive_path, "gdacs.csv")) 
 }
 
 gdacs_process <- function(as_of) {
-  # if (format == "csv") {
-    # Read in CSV
-    gdacs <- read_csv(paste_path(inputs_archive_path, "gdacs.csv"), col_types = "c") %>%
-      mutate(access_date = as.Date(access_date)) %>%
-      filter(access_date <= as_of) %>%
-      filter(access_date == max(access_date))
-  # }
-  # if (format == "spark") {
-  #   # Read from Spark DataFrame
-  # }
-  
-  # gdaclist <- gdacs %>% 
-  #   mutate(
-  #     parsed_date = case_when(
-  #       str_detect(date, "\\d{4}-\\d{2}-\\d{2}") ~ date,
-  #       str_detect(date, "\\d{2} [a-zA-Z]{3} \\d{2}") ~ paste(parse_date_time(date, orders = c("dm Y"))),
-  #       T ~ paste(parse_date_time(date, orders = c("dm H:M"))))) %>%
-
-  # This whole mess is because GDACS doesn't always include a year in the date
-  # So in January events from December are given the current year instead of last year's year
-  gdaclist <- gdacs %>% mutate(
-    date_original = date,
-    date = case_when(
-      str_detect(date, "\\d{2} [:alpha:]{3} \\d{4}") ~ 
-        paste(parse_date_time(paste(date), orders = "d b Y")),
-      str_detect(date, "\\d{4}-\\d{2}-\\d{2}") ~ 
-        paste(parse_date_time(paste(date), orders = "Y m d")),
-      str_detect(date, "\\d{2} [:alpha:]{3}\\s*\\d{2}:\\d{2}") ~
-        paste(parse_date_time(paste(date), orders = "d b HM")),
-      str_detect(date, "Week") ~
-        paste(as_of - 7*as.numeric(str_extract(date, '(\\d+) Week', group = T))),
-      T ~ NA_character_),
-    date = case_when(
-      year(date) != 0 ~ date,
-      year(date) == 0 & month(date) <= month(access_date) ~ 
-        paste(year(access_date), month(date), day(date)),
-      year(date) == 0 & month(date) > month(access_date) ~ 
-        paste(year(access_date) - 1, month(date), day(date),
-      T ~ NA_character_)),
-    date = parse_date_time(date, orders = "Y m d") %>% as.Date()) %>%
-    # Suppress warnings because the above is *guaranteed* to give warnings because
-    # case_when does not prevent functions from running on full vectors, and so 
-    # multipe date formats are being given to each parse_date_time call
-    # Instead, create own warning
-    suppressWarnings()
-    if (any(is.na(gdaclist$date))) {
-      failed_dates <- filter(gdaclist, is.na(date))
-      warning(paste0("Date(s) failed to parse in GDAC:\n", paste0(capture.output(failed_dates), collapse = "\n")))
-    }
-
-  # Removed because I now handle event names with multiple country names with names2iso()
-  # # Remove duplicate countries for drought
-  # # Once I started processing country names in gdacs_collect() I also separated droughts in gdacs_collect()
-  # # I don't need to do this if country values are not NA. Some country values may still be NA if they don't match a country
-  # if (!any(!is.na(gdaclist$country))) {
-  #   # Select drought events with a dash in the name
-  #   add <- gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]
-  #   gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names <- sub("-.*", "", gdaclist[which(gdaclist$hazard == "drought" & grepl("-", gdaclist$names)), ]$names)
-  #   add$names <- sub(".*-", "", add$names)
-  #   gdaclist <- rbind(gdaclist, add)
-  # }
-  
-  # Drought orange
-  # UPDATE? Does this need to now be 2021?
-  # All droughts on GDAC are current ... 
-  # Can I just set all droughts to active? 
-  # gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2020", "active", gdaclist$status)
-  # gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2021", "active", gdaclist$status)
-  # gdaclist$status <- ifelse(gdaclist$hazard == "drought" & gdaclist$date == "2022", "active", gdaclist$status)
-  
-  # # Country names
-  # if (!any(!is.na(gdaclist$country))) {
-  #   gdaclist$country <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c"))
-  #   gdaclist$namesfull <- suppressWarnings(countrycode(gdaclist$names, origin = "country.name", destination = "iso3c", nomatch = NULL))
-  # }
-
-  # Create subset
-  gdacs <- gdaclist %>%
-    dplyr::select(Country = country,
-                  NH_GDAC_Date = date, 
-                  NH_GDAC_Hazard_Status = status, 
-                  NH_GDAC_Hazard_Magnitude = mag, 
-                  NH_GDAC_Hazard_Severity = haz,
-                  NH_GDAC_Hazard_Type = hazard) %>%
-    separate_rows(Country, sep = ", ")
-    
-  gdacs <- gdacs %>%
-    mutate(NH_GDAC_Hazard_Score_Norm = case_when(
-      NH_GDAC_Hazard_Status == "active" & NH_GDAC_Hazard_Severity == "red" ~ 10,
-      NH_GDAC_Hazard_Status == "active" & NH_GDAC_Hazard_Severity == "orange" ~ 10,
-      TRUE ~ 0
-    ),
-    NH_GDAC_Hazard_Score = paste(NH_GDAC_Date, NH_GDAC_Hazard_Type, NH_GDAC_Hazard_Severity, NH_GDAC_Hazard_Magnitude, sep = " - ")
+  gdacs <- loadInputs("gdacs", group_by = c("eventid", "eventtype", "episodeid"), col_types = "cddccccccccdcdllcTTTcclccdcccccclD") %>% 
+    select(eventtype, name , alertscore, contains("severity"), affected_iso3, original_iso3 = iso3, country, fromdate, todate) %>%
+    mutate(
+      fromdate = as.Date(fromdate),
+      todate = as.Date(todate)) %>%
+    filter(
+      # This between arg only looks for "active" events, imitating the HTML scraping version from before
+      between(rep(as_of, nrow(.)), fromdate, todate) |
+      # This also includes anything which started in the last 30 days
+      fromdate >= as_of - 30) %>% 
+    mutate(.keep = "unused",
+      iso3 = case_when(is.na(affected_iso3) ~ original_iso3, T ~ affected_iso3)
     ) %>%
-    drop_na(Country)
-  # Limit one entry per country
-  gdacs_summary <- gdacs %>% group_by(Country) %>%
-    arrange(desc(NH_GDAC_Hazard_Score_Norm)) %>%
-    summarize(
-      NH_GDAC_Hazard_Score_Norm = max(NH_GDAC_Hazard_Score_Norm, na.rm = T), 
-      NH_GDAC_Hazard_Score = paste(NH_GDAC_Hazard_Score, collapse = "; "))
-
+    separate_longer_delim(iso3, ";") %>%
+    mutate(
+      eventtype = str_replace_all(eventtype, c(
+        "EQ" = "earthquake",
+        "TC" = "cyclone",
+        "FL" = "flood",
+        "VO" = "volcano",
+        "DR" = "drought",
+        "WF" = "wildfire"))) %>%
+    mutate(text = paste(name, severitytext, sep = ": "))
+    
+    gdacs_summary <- gdacs %>%
+    # All orange and red events are counted as 10, and we are only collecting such
+      summarize(.by = iso3, NH_GDAC_Hazard_Score_Norm = 10, NH_GDAC_Hazard_Score = paste(text, collapse = "; "))
   return(gdacs_summary)
 }
 

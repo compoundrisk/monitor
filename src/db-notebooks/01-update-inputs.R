@@ -80,7 +80,7 @@ lap_print("Socio-economic dimension finished collecting")
 
 # NATURAL HAZARDS
 lap_start()
-gdacs_collect() %>% delay_error(return = NA, on = error_delay)
+gdacs_collect_many() %>% delay_error(return = NA, on = error_delay)
 inform_risk_collect()  %>% delay_error(return = NA, on = error_delay)
 iri_collect() %>% delay_error(return = NA, on = error_delay)
 fao_locust_multi_collect() %>% delay_error(return = NA, on = error_delay)
