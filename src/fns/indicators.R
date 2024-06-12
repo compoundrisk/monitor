@@ -1677,9 +1677,9 @@ gdacs_process <- function(as_of) {
       # This also includes anything which started in the last 30 days
       fromdate >= as_of - 30) %>% 
     mutate(.keep = "unused",
-      iso3 = case_when(is.na(affected_iso3) ~ original_iso3, T ~ affected_iso3)
+      Country = case_when(is.na(affected_iso3) ~ original_iso3, T ~ affected_iso3)
     ) %>%
-    separate_longer_delim(iso3, ";") %>%
+    separate_longer_delim(Country, ";") %>%
     mutate(
       eventtype = str_replace_all(eventtype, c(
         "EQ" = "earthquake",
@@ -1692,7 +1692,7 @@ gdacs_process <- function(as_of) {
     
     gdacs_summary <- gdacs %>%
     # All orange and red events are counted as 10, and we are only collecting such
-      summarize(.by = iso3, NH_GDAC_Hazard_Score_Norm = 10, NH_GDAC_Hazard_Score = paste(text, collapse = "; "))
+      summarize(.by = Country, NH_GDAC_Hazard_Score_Norm = 10, NH_GDAC_Hazard_Score = paste(text, collapse = "; "))
   return(gdacs_summary)
 }
 
