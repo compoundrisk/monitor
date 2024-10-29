@@ -10,7 +10,7 @@ lib
 production
 production-backup
 staging
-init-script
+# init-script
 .vscode
 horizon-scan
 monitor-xlsx
