@@ -2605,22 +2605,23 @@ ifes_collect <- function() {
   #       country_id = 'd'))
   
 ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
-  html_nodes("table") %>%
-  html_table() %>% .[[1]]
+  html_element("#electionsTable") %>%
+  html_table()
 
 ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
-  html_nodes("table") %>%
-  html_table() %>% .[[1]]
+  html_element("#electionsTable") %>%
+  html_table()
 
 ifes <- bind_rows(ifes_upcoming, ifes_past) %>% 
-    mutate(Countryname = Country,
-            office = `Election for`,
-            date = str_extract(`Date`, ".*\\d\\d\\d\\d"),
-            date = as.Date(date, format = "%b %d, %Y"),
-            status = Status,
-            election_type = NULL,
-            # Last_Held = as.Date(`Last Held*`, format = "%b %d, %Y"),
-            .keep = "none")
+  mutate(.keep = "none",
+    Countryname = Country,
+    office = `Election for`,
+    date = str_extract(`Date`, ".*\\d\\d\\d\\d"),
+    date = as.Date(date, format = "%b %d, %Y"),
+    status = Status,
+    election_type = NULL,
+    # Last_Held = as.Date(`Last Held*`, format = "%b %d, %Y"),
+    )
 
   archiveInputs(ifes, group_by = NULL)
 
@@ -2653,8 +2654,8 @@ ifes_process <- function(as_of) {
     mutate(
       election_type = case_when(
         # election_type == "null" & grepl("president", tolower(text)) ~ "Head of Government (coded as null)",
-        election_type == "null" & str_detect(text, " pre|^pre|Pre") ~ "Head of Government (coded as null)",
-        election_type == "null" & str_detect(office, " pre|^pre|Pre") ~ "Head of Government (coded as null)",
+        is.na(election_type) & str_detect(text, " pre|^pre|Pre") ~ "Head of Government (coded as null)",
+        is.na(election_type) & str_detect(office, " pre|^pre|Pre") ~ "Head of Government (coded as null)",
         TRUE ~ election_type)) %>%
     subset(
       str_detect(election_type, "Head of")) %>%
