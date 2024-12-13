@@ -1051,17 +1051,17 @@ fao_wfp_web_collect <- function() {
       object = "comMap",
       action = "getData",
       timeout = "600",
-      cClientSession = "6216C788-462B-4F1B-88F33A01C97F15DC",
-      `_` = "1699039352859")
+      cClientSession = "E3290AE1-BCF7-48F9-AD5D25B93FB6FD61",
+      `_` = "1732317136993")
 
     response <- VERB("GET", url, body = payload, query = queryString,
         content_type("application/octet-stream"),
         set_cookies(
           `cfid` = "91e70de2-19a1-4f7e-91a9-84a2d857a2f7",
           `cftoken` = "0",
-          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_LV` = "1699039845381",
-          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_TC` = "1699039845381",
-          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_HC` = "2"),
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_LV` = "1732317138276",
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_TC` = "1732316227418",
+          `CF_CLIENT_AC3F2F44A9F80153B3F52E57CCD20EEB_HC` = "19"),
         encode = encode)
 
     full_text <- content(response, "text")
