@@ -1343,6 +1343,8 @@ mpo_collect <- function() {
   
   colnames(pop) <- c("Country", "Population")
   
+  this_year <- year(most_recent$date)
+  pick_year_column <- \(x) pull(pick(all_of(paste0('y', x))))
   mpo_data <- mpo %>%
     rename(Country = Code) %>%
     left_join(., pop, by= "Country")  %>%
@@ -1351,12 +1353,8 @@ mpo_collect <- function() {
       ~ as.numeric(as.character(.))
     ) %>%
     mutate(
-      pov_prop_23_22 = y2023 - y2022,
-      pov_prop_22_21 = y2022 - y2021,
-      # pov_prop_21_20 = y2021 - y2020,
-      # pov_prop_20_19 = y2020 - y2019,
-    ) %>%
-    # filter(Label == "International poverty rate ($1.9 in 2011 PPP)") %>%
+      pov_prop_change_this_year = pick_year_column(this_year) - pick_year_column(this_year - 1),
+      pov_prop_change_last_year = pick_year_column(this_year - 1) - pick_year_column(this_year - 2)) %>%
     filter(substr(Indicator, 4, 10) == "POV1") %>%
     rename_with(
       .fn = ~ paste0("S_", .),
@@ -1364,36 +1362,21 @@ mpo_collect <- function() {
     )
   
   # Normalise based on percentiles
-  mpo_data <- normfuncpos(mpo_data, .5, 0,
-                          # quantile(mpo_data$S_pov_prop_23_22, 0.98,  na.rm = T),
-                          # quantile(mpo_data$S_pov_prop_23_22, 0.05,  na.rm = T),
-                          "S_pov_prop_23_22")
-  mpo_data <- normfuncpos(mpo_data, .5, 0,
-                          # quantile(mpo_data$S_pov_prop_22_21, 0.98,  na.rm = T),
-                          # quantile(mpo_data$S_pov_prop_22_21, 0.05,  na.rm = T),
-                          "S_pov_prop_22_21")
-  # mpo_data <- normfuncpos(mpo_data,
-  #                         quantile(mpo_data$S_pov_prop_21_20, 0.95,  na.rm = T),
-  #                         quantile(mpo_data$S_pov_prop_21_20, 0.05,  na.rm = T),
-  #                         "S_pov_prop_21_20")
+  mpo_data <- normfuncpos(mpo_data, .5, 0, "S_pov_prop_change_this_year")
+  mpo_data <- normfuncpos(mpo_data, .5, 0, "S_pov_prop_change_last_year")
   
   mpo_data <- mpo_data %>%
     mutate(
       S_pov_comb_norm = rowMaxs(as.matrix(dplyr::select(.,
-                                                        S_pov_prop_23_22_norm,
-                                                        S_pov_prop_22_21_norm
-                                                        # S_pov_prop_21_20_norm
-      )),
+        S_pov_prop_change_this_year_norm,
+        S_pov_prop_change_last_year_norm)),
       na.rm = T)) %>%
     dplyr::select(Country,
-                  S_pov_comb_norm, 
-                  S_pov_prop_23_22_norm,
-                  S_pov_prop_22_21_norm,
-                  # S_pov_prop_21_20_norm, 
-                  S_pov_prop_23_22,
-                  S_pov_prop_22_21
-                  # S_pov_prop_21_20
-    )
+      S_pov_comb_norm, 
+      S_pov_prop_change_this_year_norm,
+      S_pov_prop_change_last_year_norm,
+      S_pov_prop_change_this_year,
+      S_pov_prop_change_last_year)
   
   # write_csv(mpo_data, "Indicator_dataset/mpo.csv")
   mpo <- mpo_data
@@ -1462,11 +1445,11 @@ macrofin_process <- function(as_of) {
 imf_collect <- function() {
   most_recent <- read_most_recent("hosted-data/imf-unemployment", FUN = read_csv,
     as_of = Sys.Date(),
-    col_types = "cccclcccccccccd",
+    # col_types = "cccclcccccccccd",
     na = c("NA", "n/a", ""), 
     return_date = T)
 
-  imf_unemployment <- most_recent$data
+  imf_unemployment <- most_recent$data %>% rename(ISO3 = ISO)
   file_date <- most_recent$date
   
   # imf_archive <- read_csv("output/inputs-archive/imf_unemployment.csv") %>%
@@ -1480,17 +1463,17 @@ imf_process <- function(as_of) {
   imf_unemployment  <- loadInputs("imf_unemployment", group_by = c("Country"), as_of = as_of, format = "csv")# , col_types = "ccccclccccccccccccdD") #Databricks has different columns
   # FIX
   
+  this_year <- year(as_of)
   imf_un <- imf_unemployment %>%
-    select(c(Country, ISO3, "2020", "2021", "2022", `Subject Descriptor`)) %>%
+    select(c(Country, ISO3, this_year = all_of(as.character(this_year)), last_year = all_of(as.character(this_year - 1)), prior_year = all_of(as.character(this_year - 2)), `Subject Descriptor`)) %>%
     mutate_at(
-      vars(starts_with("20")),
+      vars(ends_with("year")),
       ~ as.numeric(as.character(.))
     ) %>%
     # Warnings. Introduces NAs … because there are NAs.
     mutate(
-      change_unemp_22 = `2022` - `2021`,
-      change_unemp_21 = `2021` - `2020`,
-      #  change_unemp_20 = `2020` - `2019`
+      change_unemp_this_year = this_year - last_year,
+      change_unemp_last_year = last_year - prior_year,
     ) %>%
     rename(
       Countryname = Country,
@@ -1505,16 +1488,15 @@ imf_process <- function(as_of) {
     filter(S_Subject.Descriptor == "Unemployment rate")
   
   # Normalise values
-  imf_un <- normfuncpos(imf_un, 1, 0, "S_change_unemp_22")
-  imf_un <- normfuncpos(imf_un, 1, 0, "S_change_unemp_21")
-  # imf_un <- normfuncpos(imf_un, 3, 0, "S_change_unemp_20")
+  imf_un <- normfuncpos(imf_un, 1, 0, "S_change_unemp_this_year")
+  imf_un <- normfuncpos(imf_un, 1, 0, "S_change_unemp_last_year")
   
   # Max values for index
   imf_un <- imf_un %>%
     mutate(
       S_change_unemp_norm = rowMaxs(as.matrix(dplyr::select(.,
-                                                            S_change_unemp_22_norm,
-                                                            S_change_unemp_21_norm)),
+                                                            S_change_unemp_this_year,
+                                                            S_change_unemp_last_year)),
                                     na.rm = T),
       S_change_unemp_norm = case_when(is.infinite(S_change_unemp_norm) ~ NA_real_,
                                       TRUE ~ S_change_unemp_norm)
