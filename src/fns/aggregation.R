@@ -288,11 +288,11 @@ date_dimension_highs <- function(value_dates) {
 
   flag_dates <- 
       # First select the raw indicator values for the high indicators
-      value_dates %>% 
+    value_dates %>% 
       filter(`Data Level` == 4) %>%
       filter(paste(Country, Indicator) %in% paste(high_indicators$Country, high_indicators$Indicator)) %>%
-    arrange(Index, Date) %>%
-    subset(first_ordered_instance(Value_Char)) %>%
+      arrange(Index, Date) %>%
+      subset(first_ordered_instance(Value_Char)) %>%
       slice_max(Date, by = c(Country, Outlook, Dimension), with_ties = F) %>%
       select(Index, Raw_Value = Value, Raw_Value_Char = Value_Char, dimension_date = Date) %>%
       distinct() %>%
@@ -629,7 +629,7 @@ create_index <- function(df) {
     Indicator = match_factor_orders(str_replace(Indicator, " Raw$", ""), "Indicator", to_number = T),
     Indicator = tidyr::replace_na(Indicator, 0),
     `Data Level` = match(`Data Level`, factor_orders$`Data Level`),
-      Index = as.numeric(paste0(
+    Index = as.numeric(paste0(
       leading_zeros(Country, 3),
       leading_zeros(Outlook, 1),
       leading_zeros(Dimension, 1),
@@ -648,7 +648,7 @@ split_index <- function(v) {
   return(df)
 }
 
-  expand_index <- function(v) {
+expand_index <- function(v) {
   if ("data.frame" %in% class(v)) {
     df <- v
     if (any(c("Country", "Outlook", "Dimension", "Data Level", "Indicator") %ni% names(df))) {

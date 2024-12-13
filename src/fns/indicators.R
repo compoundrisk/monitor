@@ -1192,15 +1192,25 @@ mfr_process <- function(as_of = as_of) {
 # # EIU's review months are currently incorrect: the listed months are one month too early
 # # While they fix, I need to replace each month with month+1: e.g. May 2023 -> June 2023
 adjust_months <- function(in_file, out_file) {
-  downloaded <- read.csv(in_file, colClasses = "character", header = F)
-  names(downloaded) <- downloaded[1,]
-  downloaded <- downloaded[-1,]
+  if (extension(in_file) == ".csv") {
+    downloaded <- read.csv(in_file, colClasses = "character", header = F)
+    names(downloaded) <- downloaded[1,] # I believe I do this to read the colum names in more accurately
+    downloaded <- downloaded[-1,]
+  }
+  if (extension(in_file) == ".xlsx") {
+    downloaded <- read_xlsx(in_file, skip = 5, col_types = "text")
+    downloaded <- data.frame(downloaded)
+  }
   downloaded[2,-c(1,2)] <- paste(as.yearmon(unlist(downloaded[2,-c(1,2)])) + 1/12)
   write.csv(downloaded, out_file, row.names = F)
 }
 # adjust_months(
 #   in_file = "/Users/bennotkin/Downloads/EIU_OR_RiskTracker_ByGeography-9.csv",
 #   out_file = "hosted-data/eiu/EIU_OR_RiskTracker_ByGeography-2024-01-01.csv")
+
+# list.files("~/Downloads", full.names = T) %>% str_subset("/EIU_OR.*2024.*.xlsx") %>%
+# # list.files("~/Downloads", full.names = T) %>% str_subset("EIU_OR_RiskTracker_ByGeography-9.csv") %>%
+#   lapply(\(x) adjust_months(x, out_file = str_replace(x, ".xlsx", ".csv")))
 
 eiu_collect <- function(as_of = Sys.Date(), print_date = F) {
   most_recent <- read_most_recent("hosted-data/eiu", FUN = read_csv, col_types = cols(.default = "c"),
