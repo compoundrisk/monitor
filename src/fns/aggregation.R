@@ -709,6 +709,61 @@ read_many_runs <- function(runs_directory = file.path(output_directory, "runs"),
   return(all_runs)
 }
 
+#Uh oh I already made this; which is better? This is the newer one
+read_many_runs2 <- function(archive_path = NULL, file_paths = NULL, period = "day") {
+  # Set archive_path to read all run files or provide file_paths to only selectively
+  # read files. `period` sets the interval of runs to read; if set to month, it reads
+  # the last run per month; if week, it reads the last run per week. Takes "day", "week", "month"
+
+  if (!is.null(archive_path)) {
+    folders <- list.files(archive_path)
+    dashboard_data_exists <- setNames(
+      file.exists(file.path(archive_path, folders, "/crm-dashboard-data.csv")),
+      folders)
+  folders_select <- folders %>%
+    .[dashboard_data_exists] %>%
+    tibble(name = .) %>%
+    # Take last run of each day, on presumption previous runs had bugs needing fixes
+    mutate(
+      date = as.Date(str_extract(name, "\\d{4}-\\d{2}-\\d{2}")),
+      run = str_extract(name, "run_(\\d+)$", group = T) %>% as.numeric(),
+      run = replace_na(run, 1)) %>%
+    slice_max(by = date, run) %>%
+    mutate(period = do.call(what = `::`, args = list("lubridate", period))(date)) %>%
+    slice_max(by = period, date) %>% # Takes the last run from each month; should it be the first?
+    .$name
+  file_paths <- file.path(archive_path, folders_select, "crm-dashboard-data.csv")
+  }
+  all <- read_csv(file_paths, col_types = "dccccccdccclD", lazy = T) # Lazy cuts time from 710 ms to 190 ms
+}
+
+# read_many_runs_wide <- function(archive_path = NULL, file_paths = NULL, period = "day") {
+#   # Set archive_path to read all run files or provide file_paths to only selectively
+#   # read files. `period` sets the interval of runs to read; if set to month, it reads
+#   # the last run per month; if week, it reads the last run per week. Takes "day", "week", "month"
+
+#   if (!is.null(archive_path)) {
+#     folders <- list.files(archive_path)
+#     dashboard_data_exists <- setNames(
+#       file.exists(file.path(archive_path, folders, "/crm-dashboard-data.csv")),
+#       folders)
+#   folders_select <- folders %>%
+#     .[dashboard_data_exists] %>%
+#     tibble(name = .) %>%
+#     # Take last run of each day, on presumption previous runs had bugs needing fixes
+#     mutate(
+#       date = as.Date(str_extract(name, "\\d{4}-\\d{2}-\\d{2}")),
+#       run = str_extract(name, "run_(\\d+)$", group = T) %>% as.numeric(),
+#       run = replace_na(run, 1)) %>%
+#     slice_max(by = date, run) %>%
+#     mutate(period = do.call(what = `::`, args = list("lubridate", period))(date)) %>%
+#     slice_max(by = period, date) %>% # Takes the last run from each month; should it be the first?
+#     .$name
+#   file_paths <- file.path(archive_path, folders_select, "crm-dashboard-data.csv")
+#   }
+#   all <- read_csv(file_paths, col_types = "dccccccdccclD", lazy = T) # Lazy cuts time from 710 ms to 190 ms
+# }
+
 # Add last_changed to indicator_list.csv
 date_indicators <- function() {
 # See commit 1a225e7 for previous version that looks at changed indicator values
