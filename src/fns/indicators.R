@@ -789,7 +789,7 @@ fews_collect_api <- function() {
   
   if (version_date != local_most_recent$date) {
     filename <- file.path(inputs_archive_path, "fews", paste0("fews-", version_date, ".csv"))
-    curl::curl_download(url = metadata$distribution$url, destfile = filename)
+    curl::curl_download(url = str_extract(metadata$distribution$url, ".*(?=\\?)"), destfile = filename)
   }
 }
 
@@ -1633,7 +1633,7 @@ gdacs_collect_api <- function(as_of = Sys.Date(), eventtype = "EQ;TS,TC,FL,VO,DR
 }
 
 gdacs_collect <- function(as_of, newFile = F) {
-  gdacs <- c("EQ", "TS", "TC", "FL", "VO", "DR", "WF") %>%
+  gdacs <- c("EQ", "TC", "FL", "VO", "DR", "WF") %>%
     map(\(eventtype) gdacs_collect_api(as_of, eventtype = eventtype)) %>%
     bind_rows()
   archiveInputs(gdacs, group_by = c("eventid", "eventtype", "episodeid"), newFile = newFile)
@@ -1808,7 +1808,7 @@ iri_collect <- function(as_of = Sys.Date()) {
   #   as.numeric(format(as_of, "%d")) >= 15
   
   # if (expect_new) {
-    
+  
   iri_urls <- list(c('forecast', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.FD/.NMME_Seasonal_Forecast/.Precipitation_ELR/Y/-85/85/RANGE/X/-180/180/RANGEEDGES/a:/.dominant/:a:/.target_date/:a/X/Y/fig-/colors/plotlabel/black/thin/coasts_gaz/thin/countries_gaz/-fig/(L)cvn/1.0/plotvalue/(F)cvn/last/plotvalue/(antialias)cvn/true/psdef/(framelabel)cvn/(%=[target_date]%20IRI%20Seasonal%20Precipitation%20Forecast%20issued%20%=[F])psdef/(dominant)cvn/-100.0/100.0/plotrange/(plotaxislength)cvn/590/psdef/(plotborderbottom)cvn/40/psdef/(plotbordertop)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'),
                     c('continuity', 'https://iridl.ldeo.columbia.edu/SOURCES/.IRI/.MD/.IFRC/.IRI/.Seasonal_Forecast/a:/.pic3mo_same/:a:/.forecasttime/L/first/VALUE/:a:/.observationtime/:a/X/Y/fig-/colors/plotlabel/plotlabel/black/thin/countries_gaz/-fig/F/last/plotvalue/X/-180/180/plotrange/Y/-66.25/76.25/plotrange/(antialias)cvn/true/psdef/(plotaxislength)cvn/550/psdef/(XOVY)cvn/null/psdef/(framelabel)cvn/(%=[forecasttime]%20Forecast%20Precipitation%20Tendency%20same%20as%20Observed%20%=[observationtime],%20issued%20%=[F])psdef/(plotbordertop)cvn/60/psdef/(plotborderbottom)cvn/40/psdef/selecteddata/band3spatialgrids/data.tiff'))
   
@@ -2052,19 +2052,23 @@ fao_locust_multi_collect <- function() {
   bulletin_urls <- bulletin_cards %>%
     html_elements("a.title-link") %>%
     html_attr("href")
-  archive_urls <- site_body %>%
-    html_elements(".accordion") %>%
-    html_elements(".accordion-body") %>%
-    lapply(\(year_archive) {
-      archive_url <- year_archive %>% html_elements("a") %>% html_attr("href")
-      return(archive_url)
-    }) %>%
-    unlist() %>%
-     # Remove archive urls with different document formats
-    subset(!str_detect(., "8668|8669|8670|8671|8672|8673|8674|8675|8836|8837|8838|8839|8840|8841|8842|8843|8844"))
-  bulletin_urls <- c(bulletin_urls, archive_urls) %>%
+  # It appears more archives were added and that they are causing problems;
+  # I am no longer scanning archives
+  # archive_urls <- site_body %>%
+  #   html_elements(".accordion") %>%
+  #   html_elements(".accordion-body") %>%
+  #   lapply(\(year_archive) {
+  #     archive_url <- year_archive %>% html_elements("a") %>% html_attr("href")
+  #     return(archive_url)
+  #   }) %>%
+  #   unlist() %>%
+  #    # Remove archive urls with different document formats
+  #   subset(!str_detect(., "8668|8669|8670|8671|8672|8673|8674|8675|8836|8837|8838|8839|8840|8841|8842|8843|8844"))
+  # bulletin_urls <- c(bulletin_urls, archive_urls) %>%
+  bulletin_urls <- bulletin_urls %>%
     which_not(fao_locust_existing$bulletin_url) %>%
     sort()
+
   if (length(bulletin_urls) > 0) {
   fao_locust <- bulletin_urls %>%
     lapply(fao_locust_pdf_collect) %>%
@@ -2114,9 +2118,9 @@ fcs_create_file <- function(list, date) {
 
 # fcs_create_file(
 #   list = list(
-#     "conflict" = c("Afghanistan", "Burkina Faso", "Cameroon", "Central African Republic", "Congo, Democratic Republic of", "Ethiopia", "Iraq", "Mali", "Mozambique", "Myanmar", "Niger", "Nigeria", "Somalia", "South Sudan", "Sudan", "Syrian Arab Republic", "Ukraine", "West Bank and Gaza (territory)", "Yemen, Republic of"),
-#     "institutional and social fragility" = c("Burundi", "Chad", "Comoros", "Congo, Republic of", "Eritrea", "Guinea-Bissau", "Haiti", "Kiribati", "Kosovo", "Lebanon", "Libya", "Marshall Islands", "Micronesia, Federated States of", "Papua New Guinea", "São Tomé and Príncipe", "Solomon Islands", "Timor-Leste", "Tuvalu", "Venezuela, RB", "Zimbabwe")),
-#   date = "2023-07-10")
+#     "conflict" = c("Afghanistan", "Burkina Faso", "Cameroon", "Central African Republic", "Congo, Democratic Republic of", "Ethiopia", "Haiti", "Iraq", "Lebanon", "Mali", "Mozambique", "Myanmar", "Niger", "Nigeria", "Somalia", "South Sudan", "Sudan", "Syrian Arab Republic", "Ukraine", "West Bank and Gaza", "Yemen, Republic of"),
+#     "institutional and social fragility" = c("Burundi", "Chad", "Comoros", "Congo, Republic of", "Eritrea", "Guinea-Bissau", "Kiribati", "Kosovo", "Libya", "Marshall Islands", "Micronesia, Federated States of", "Papua New Guinea", "Sao Tomé and Principe", "Solomon islands", "Timor-Leste", "Tuvalu", "Venezuela, RB", "Zimbabwe")),
+#   date = "2024-06-24")
 
 fcs_collect <- function() {
   most_recent <- read_most_recent("hosted-data/fcs", FUN = read_csv, 
