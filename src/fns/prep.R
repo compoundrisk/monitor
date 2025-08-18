@@ -27,43 +27,54 @@ source("src/fns/helpers.R")
 
 #---------------------------------
 
+# Commenting this out below because the file is no longer available at http://databank.worldbank.org/data/download/site-content/CLASS.xls 
+# country_groups <- tryCatch(
+#   {
+#     wb_countries_collect <- function() {
+#       # Source file has changed; saving in case it reverts soon
+#       # codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xls",
+#       #   FUN = read_xls, sheet = 1, range = "C5:I224")[-1,]
+#       codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
+#         FUN = read_xlsx, sheet = 1, range = "A1:F219")
+#       group_codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
+#         FUN = read_xlsx, sheet = "Groups")
+#       region_codes <- group_codes %>%
+#         select(region_code_all = GroupCode, GroupName) %>%
+#         distinct() %>%
+#         subset(GroupName %in% codes$Region)
+#       no_high_income <- group_codes %>%
+#         subset(str_detect(GroupName, "excluding high income")) %>%
+#         select(region_code_no_high = GroupCode, Code = CountryCode)
+#       country_groups <- left_join(codes, region_codes, by = c("Region" = "GroupName")) %>%
+#         left_join(no_high_income, by = "Code") %>%
+#         mutate(region_code = str_replace_all(region_code_all, c(
+#           "LCN" = "LAC",
+#           "SAS" = "SAR",
+#           "SSF" = "SSA",
+#           "MEA" = "MNA",
+#           "EAS" = "EAP",
+#           "NAC" = "NAR",
+#           "ECS" = "ECA")))
+#       write.csv(country_groups, "src/country-groups.csv", row.names = F)
+#       return(country_groups)
+#     }
+#     wb_countries_collect()
+#   },
+#   error = function(e) {
+#     print("Unable to download country groups file from databank.worldbank.org")
+#     df <- read_csv("src/country-groups.csv", col_types = "cccc")
+#     return(df)
+#   })
+
+# I'm having it read the local copy instead
 country_groups <- tryCatch(
   {
-    wb_countries_collect <- function() {
-      # Source file has changed; saving in case it reverts soon
-      # codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xls",
-      #   FUN = read_xls, sheet = 1, range = "C5:I224")[-1,]
-      codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
-        FUN = read_xlsx, sheet = 1, range = "A1:F219")
-      group_codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
-        FUN = read_xlsx, sheet = "Groups")
-      region_codes <- group_codes %>%
-        select(region_code_all = GroupCode, GroupName) %>%
-        distinct() %>%
-        subset(GroupName %in% codes$Region)
-      no_high_income <- group_codes %>%
-        subset(str_detect(GroupName, "excluding high income")) %>%
-        select(region_code_no_high = GroupCode, Code = CountryCode)
-      country_groups <- left_join(codes, region_codes, by = c("Region" = "GroupName")) %>%
-        left_join(no_high_income, by = "Code") %>%
-        mutate(region_code = str_replace_all(region_code_all, c(
-          "LCN" = "LAC",
-          "SAS" = "SAR",
-          "SSF" = "SSA",
-          "MEA" = "MNA",
-          "EAS" = "EAP",
-          "NAC" = "NAR",
-          "ECS" = "ECA")))
-      write.csv(country_groups, "src/country-groups.csv", row.names = F)
-      return(country_groups)
-    }
-    wb_countries_collect()
+    read_csv("src/country-groups.csv", col_types = "cccc")
   },
   error = function(e) {
-    print("Unable to download country groups file from databank.worldbank.org")
-    df <- read_csv("src/country-groups.csv", col_types = "cccc")
-    return(df)
-  })
+    stop("Local country-groups.csv not found. Please make sure it exists in src/")
+  }
+)
 
 countrylist <- country_groups %>% 
   select(Countryname = Economy, Country = Code) %>%
