@@ -2122,6 +2122,56 @@ fcs_create_file <- function(list, date) {
 #     "institutional and social fragility" = c("Burundi", "Chad", "Comoros", "Congo, Republic of", "Eritrea", "Guinea-Bissau", "Kiribati", "Kosovo", "Libya", "Marshall Islands", "Micronesia, Federated States of", "Papua New Guinea", "Sao Tomé and Principe", "Solomon islands", "Timor-Leste", "Tuvalu", "Venezuela, RB", "Zimbabwe")),
 #   date = "2024-06-24")
 
+
+  # Generating new FCS list for FY26...
+  fcs_create_file(
+  list = list(
+    "conflict" = c(
+      "Afghanistan",
+      "Burkina Faso",
+      "Cameroon",
+      "Central African Republic",
+      "Congo, Democratic Republic of",
+      "Ethiopia",
+      "Haiti",
+      "Iraq",
+      "Lebanon",
+      "Mali",
+      "Mozambique",
+      "Myanmar",
+      "Niger",
+      "Nigeria",
+      "Somalia",
+      "South Sudan",
+      "Sudan",
+      "Syrian Arab Republic",
+      "Ukraine",
+      "West Bank and Gaza",
+      "Yemen, Republic of"
+    ),
+    "institutional and social fragility" = c(
+      "Burundi",
+      "Chad",
+      "Comoros",
+      "Congo, Republic of",
+      "Eritrea",
+      "Guinea-Bissau",
+      "Kiribati",
+      "Libya",
+      "Marshall Islands",
+      "Micronesia, Federated States of",
+      "Papua New Guinea",
+      "Sao Tomé and Principe",
+      "Solomon Islands",
+      "Timor-Leste",
+      "Tuvalu",
+      "Venezuela, RB",
+      "Zimbabwe"
+    )
+  ),
+  date = "2025-07-01"
+)
+
 fcs_collect <- function() {
   most_recent <- read_most_recent("hosted-data/fcs", FUN = read_csv, 
     as_of = Sys.Date(), return_date = T, col_types = "c")
