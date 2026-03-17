@@ -2275,45 +2275,70 @@ un_idp_process <- function(as_of) {
   return(idp)
 }
 
-#-------------------------—ACLED data---------------------------------------------
+#-------------------------—ACLED data (UPDATED)---------------------------------------------
 acled_collect <- function() {
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.Date(as.yearmon(Sys.Date() - 45) - 3.2)
   
-  # Get ACLED API URL
+  # Get ACLED API credentials
   credentials <- read_csv(paste_path(mounted_path, ".access/acled.csv"), col_types = "c")
-  acled_url <- paste0("https://api.acleddata.com/acled/read/?key=", credentials$key, "&email=", credentials$username, "&event_date=",
-                      three_year,
-                      "&event_date_where=>&fields=event_id_cnty|iso|fatalities|event_type|event_date&limit=0")
   
-  # Retrieve information
-  acled_data <- fromJSON(acled_url)
+  base_url <- "https://acleddata.com/api/acled/read?_format=json"
+  token_url <- "https://acleddata.com/oauth/token"
   
-  acled <- acled_data$data %>%
-    mutate(iso = as.numeric(iso),
-        iso3 = countrycode(iso, origin = "iso3n", destination = "iso3c"),
-        iso3b = substr(event_id_cnty, 1, 3),
-        iso3 = case_when(is.na(iso3) ~ iso3b, T ~ iso3),
-        fatalities = as.numeric(fatalities),
-        event_date = as.Date(event_date)) %>%
-    select(-iso3b) %>%
-    subset(fatalities > 0)
+  # Set up OAuth client
+  client <- oauth_client("acled", token_url)
   
-  # # DELETE for first time only
-  # Actually no:
-  # ACLED includes historical data, it takes forever to archive, and I don't
-  # understand why the dataset differs each day, so for now I'm just writing 
-  # it fresh each time (like OWID COVID)
-  acled <- mutate(acled, access_date = Sys.Date())
-  write.csv(acled, paste_path(inputs_archive_path, "acled.csv"), row.names = F)
+  # Select relevant fields from ACLED database
+  fields <- "event_id_cnty|iso|event_date|event_type|fatalities"
   
-  # # If I want to reduce file size, zipping takes ~10 seconds (unzipping: <1s)
-  # # and reduces size from 40 MB to 4 MB
-  # unzip("output/inputs-archive/acled.zip", exdir = "output/inputs-archive", junkpaths = T)
-  # archiveInputs(acled, group_by = "event_id_cnty", col_types = "cddDcD")
-  # zip("output/inputs-archive/acled.zip", "output/inputs-archive/acled.R") 
-  # file.remove("output/inputs-archive/acled.R")
+  # Retrieve information with error handling
+  tryCatch({
+    # Build request with OAuth authentication
+    req <- request(base_url)
+    
+    # Use password from credentials (could be in 'password' or 'key' column)
+    password_value <- if ("password" %in% names(credentials)) credentials$password else credentials$key
+    
+    req <- req_oauth_password(req, client = client, 
+                              username = credentials$username, 
+                              password = password_value)
+    
+    # Add parameters and execute
+    response <- req %>%
+      req_url_query(
+        event_date = as.character(three_year),
+        event_date_where = ">",
+        fields = fields,
+        limit = 0
+      ) %>%
+      req_perform()
+    
+    # Parse response
+    acled_data <- resp_body_json(response, simplifyVector = TRUE)
+    
+    acled <- acled_data$data %>%
+      as_tibble() %>%
+      mutate(iso = as.numeric(iso),
+          iso3 = countrycode(iso, origin = "iso3n", destination = "iso3c"),
+          iso3b = substr(event_id_cnty, 1, 3),
+          iso3 = case_when(is.na(iso3) ~ iso3b, T ~ iso3),
+          fatalities = as.numeric(fatalities),
+          event_date = as.Date(event_date)) %>%
+      select(-iso3b) %>%
+      subset(fatalities > 0)
+    
+    # ACLED includes historical data, it takes forever to archive, and I don't
+    # understand why the dataset differs each day, so for now I'm just writing 
+    # it fresh each time (like OWID COVID)
+    acled <- mutate(acled, access_date = Sys.Date())
+    write.csv(acled, paste_path(inputs_archive_path, "acled.csv"), row.names = F)
+  }, error = function(e) {
+    warning("Could not retrieve ACLED data: ", e$message)
+    return(invisible())
+  })
 }
+
 
 acled_process <- function(as_of) {
   # Because we have no ACLED data from the past few months, and because ACLED data is also historic,
