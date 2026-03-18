@@ -1326,73 +1326,203 @@ inform_socio_process <- function(as_of) {
   return(inform_data)
 }
 
-#--------------------------—MPO: Poverty projections----------------------------------------------------
-# Uses World Bank API, but it doesn't include projections
-# yr <- year(Sys.Date())
-# request_url <- paste0("http://api.worldbank.org/v2/country/all/indicator/SI.POV.DDAY?format=json&date=", yr-1, ":", yr)
-# response <- httr::GET(request_url)
-# df <- httr::content(response, "text", encoding = "UTF-8") %>% jsonlite::fromJSON()
-
+#--------------------------—MPO: Poverty projections (UPDATED USING API)----------------------------------------------------
 mpo_collect <- function() {
-  most_recent <- read_most_recent("hosted-data/mpo", FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
-  file_date <- most_recent[[2]]
-  # mpo <- suppressMessages(read_csv(paste0(github, "Indicator_dataset/mpo.csv")))
-  # archiveInputs(mpo, group_by = c("Country"))
+  # --- Configuration ---
+  mounted_path <- ifelse(exists("mounted_path"), mounted_path, getwd())
+  inputs_archive_path <- ifelse(exists("inputs_archive_path"), 
+                                inputs_archive_path, 
+                                file.path(mounted_path, "inputs_archive"))
   
+  # Create directories if they do not exist
+  dir.create(inputs_archive_path, recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(mounted_path, "mpo"), recursive = TRUE, showWarnings = FALSE)
   
-  # FIX: Ideally most of this would be in the mpo_process() function, rather than the collect
-  # function, but doing so would conflict with the current mpo archive structure
-  mpo <- most_recent[[1]]
+  # --- 1. Download data from the API ---
+  message("📥 Downloading data from the PIP API...")
   
-  # Add population
-  pop <- wpp.by.year(wpp.indicator("tpop"), 2020)
+  base_url <- "https://api.worldbank.org/pip/v1/pip"
+  povline <- c(3.0, 4.20, 8.30)
+  all_data <- NULL
   
-  pop$charcode <- suppressWarnings(countrycode(pop$charcode,
-                                               origin = "iso2c",
-                                               destination = "iso3c"))
+  for (pov in povline) {
+    url <- paste0(
+      base_url,
+      "?country=all",
+      "&year=all",
+      "&povline=", pov,
+      "&fill_gaps=true",
+      "&welfare_type=all",
+      "&reporting_level=national",
+      "&additional_ind=false",
+      "&ppp_version=2021",
+      "&identity=PROD",
+      "&format=csv"
+    )
+    
+    response <- GET(url, timeout(120))
+    
+    if (status_code(response) != 200) {
+      warning("API error for poverty line ", pov, ": ", status_code(response))
+      next
+    }
+    
+    data <- read_csv(content(response, "text", encoding = "UTF-8"), 
+                     show_col_types = FALSE)
+    all_data <- bind_rows(all_data, data)
+  }
   
-  colnames(pop) <- c("Country", "Population")
+  if (is.null(all_data)) {
+    stop("❌ Failed to download any data from the API")
+  }
   
-  this_year <- year(most_recent$date)
-  pick_year_column <- \(x) pull(pick(all_of(paste0('y', x))))
-  mpo_data <- mpo %>%
-    rename(Country = Code) %>%
-    left_join(., pop, by= "Country")  %>%
-    mutate_at(
-      vars(contains("y20")),
-      ~ as.numeric(as.character(.))
-    ) %>%
+  # Save raw data
+  file_date <- Sys.Date()
+  output_path <- file.path(mounted_path, "mpo", paste0("mpo_", file_date, ".csv"))
+  write_csv(all_data, output_path)
+  message("✓ Data saved to: ", output_path)
+  
+  # --- 2. Process into "classic" format ---
+  message("🔄 Processing data...")
+  
+  mpo_raw <- all_data %>% 
+    filter(reporting_level == "national")
+  
+  # Map poverty lines to indicators
+  indicator_map <- c('3' = 'POV1', '4.2' = 'POV2', '8.3' = 'POV3')
+  label_map <- c('POV1' = 'International poverty rate ($3.00 in 2021 PPP)',
+                 'POV2' = 'Lower middle-income poverty rate ($4.20 in 2021 PPP)',
+                 'POV3' = 'Upper middle-income poverty rate ($8.30 in 2021 PPP)')
+  
+  # Classic version (wide by year)
+  mpo_classic <- mpo_raw %>%
+    filter(reporting_year >= 2015) %>%
     mutate(
-      pov_prop_change_this_year = pick_year_column(this_year) - pick_year_column(this_year - 1),
-      pov_prop_change_last_year = pick_year_column(this_year - 1) - pick_year_column(this_year - 2)) %>%
-    filter(substr(Indicator, 4, 10) == "POV1") %>%
-    rename_with(
-      .fn = ~ paste0("S_", .),
-      .cols = colnames(.)[!colnames(.) %in% c("Country")]
+      Indicator = paste0(country_code, indicator_map[as.character(poverty_line)]),
+      Label = label_map[indicator_map[as.character(poverty_line)]]
+    ) %>%
+    dplyr::select(Code = country_code, Indicator, Label, 
+           Year = reporting_year, headcount, region = region_code) %>%
+    pivot_wider(
+      names_from = Year,
+      values_from = headcount,
+      names_prefix = 'y'
     )
   
-  # Normalise based on percentiles
-  mpo_data <- normfuncpos(mpo_data, .5, 0, "S_pov_prop_change_this_year")
-  mpo_data <- normfuncpos(mpo_data, .5, 0, "S_pov_prop_change_last_year")
+  # Add population (if functions exist)
+  if (requireNamespace("countrycode", quietly = TRUE) && 
+      exists("wpp.by.year") && exists("wpp.indicator")) {
+    
+    pop <- wpp.by.year(wpp.indicator("tpop"), 2020)
+    pop$charcode <- countrycode::countrycode(pop$charcode,
+                                             origin = "iso2c",
+                                             destination = "iso3c")
+    colnames(pop) <- c("Country", "Population")
+    mpo_classic <- mpo_classic %>%
+      left_join(pop, by = c("Code" = "Country"))
+  } else {
+    mpo_classic$Population <- NA
+    message("ℹ️ Population not added - WPP functions are not available")
+  }
   
-  mpo_data <- mpo_data %>%
+  mpo_classic <- mpo_classic %>%
+    mutate(runtime = format(file_date, '%H:%M:%S %d %b %Y'))
+  
+  # --- 3. Process changes (POV1 only) ---
+  message("📊 Calculating changes...")
+  
+  # Filter POV1 only and cast year columns to numeric
+  mpo_pov1 <- mpo_classic %>%
+    filter(grepl("POV1$", Indicator)) %>%
+    mutate(across(starts_with("y20"), as.numeric))
+  
+  # Determine available years
+  year_cols <- grep("^y20", colnames(mpo_pov1), value = TRUE)
+  available_years <- as.numeric(gsub("y", "", year_cols))
+  this_year <- max(available_years, na.rm = TRUE)
+  prev_year <- this_year - 1
+  prev_prev_year <- this_year - 2
+  
+  # Check that required years are available
+  if (!paste0("y", prev_prev_year) %in% year_cols) {
+        warning("Not enough years available to calculate changes. ",
+          "Available years: ", paste(available_years, collapse = ", "))
+  }
+  
+  # Calculate changes — multiply by 100 to convert to a 0-100 scale
+  # (the API returns headcount as a 0-1 proportion; the pipeline expects percentage points)
+  mpo_alt <- mpo_pov1 %>%
     mutate(
-      S_pov_comb_norm = rowMaxs(as.matrix(dplyr::select(.,
-        S_pov_prop_change_this_year_norm,
-        S_pov_prop_change_last_year_norm)),
-      na.rm = T)) %>%
-    dplyr::select(Country,
-      S_pov_comb_norm, 
-      S_pov_prop_change_this_year_norm,
-      S_pov_prop_change_last_year_norm,
-      S_pov_prop_change_this_year,
-      S_pov_prop_change_last_year)
+      pov_prop_change_this_year = (.data[[paste0("y", this_year)]] - 
+                                    .data[[paste0("y", prev_year)]]) * 100,
+      pov_prop_change_last_year = (.data[[paste0("y", prev_year)]] - 
+                                    .data[[paste0("y", prev_prev_year)]]) * 100
+    ) %>%
+    dplyr::select(Code, starts_with("pov_prop_change"))
   
-  # write_csv(mpo_data, "Indicator_dataset/mpo.csv")
-  mpo <- mpo_data
-  archiveInputs(mpo, group_by = c("Country"), today = file_date)
-  write.csv(mpo_data, paste_path(inputs_archive_path, "mpo-alt.csv"), row.names = F)
+  # Rename with S_ prefix
+  colnames(mpo_alt)[-1] <- paste0("S_", colnames(mpo_alt)[-1])
+  
+  # Normalize — replicate normfuncpos(df, upperrisk=0.5, lowerrisk=0, col)
+  normfuncpos_simple <- compiler::cmpfun(function(df, upperrisk, lowerrisk, col1) {
+    df[[paste0(col1, "_norm")]] <- ifelse(df[[col1]] >= upperrisk, 10,
+                                          ifelse(df[[col1]] <= lowerrisk, 0,
+                                                 ifelse(df[[col1]] < upperrisk & df[[col1]] > lowerrisk,
+                                                        10 - (upperrisk - df[[col1]]) / 
+                                                          (upperrisk - lowerrisk) * 10,
+                                                        NA)))
+    return(df)
+  })
+  
+  if (exists("normfuncpos")) {
+    mpo_alt <- normfuncpos(mpo_alt, 0.5, 0, "S_pov_prop_change_this_year")
+    mpo_alt <- normfuncpos(mpo_alt, 0.5, 0, "S_pov_prop_change_last_year")
+  } else {
+    mpo_alt <- normfuncpos_simple(mpo_alt, 0.5, 0, "S_pov_prop_change_this_year")
+    mpo_alt <- normfuncpos_simple(mpo_alt, 0.5, 0, "S_pov_prop_change_last_year")
+  }
+  
+  # Combine normalized scores
+  mpo_alt <- mpo_alt %>%
+    rowwise() %>%
+    mutate(
+      S_pov_comb_norm = max(c_across(ends_with("_norm")), na.rm = TRUE)
+    ) %>%
+    ungroup() %>%
+    mutate(S_pov_comb_norm = ifelse(is.infinite(S_pov_comb_norm), NA, S_pov_comb_norm))
+  
+  # Select final columns
+  mpo_alt <- mpo_alt %>%
+    dplyr::select(Country = Code,
+           S_pov_comb_norm,
+           S_pov_prop_change_this_year_norm,
+           S_pov_prop_change_last_year_norm,
+           S_pov_prop_change_this_year,
+           S_pov_prop_change_last_year)
+  
+  # Save mpo_alt
+  write.csv(mpo_alt, 
+            file.path(inputs_archive_path, "mpo-alt.csv"), 
+            row.names = FALSE)
+  message("✓ Alternate file saved: ", file.path(inputs_archive_path, 'mpo-alt.csv'))
+  
+  # Archive final dataset
+  if (exists("archiveInputs")) {
+    archiveInputs(
+      mpo_alt,
+      path = file.path(inputs_archive_path, "mpo.csv"),
+      group_by = c("Country"),
+      today = file_date
+    )
+  }
+  
+  message("✅ Process completed successfully")
+  
+  return(mpo_alt)
 }
+
+# Run function
+#resultado <- mpo_collect()
 
 mpo_process <- function(as_of) {
   # Specify the expected types for each column; I should do this everywhere.
