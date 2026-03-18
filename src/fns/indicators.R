@@ -398,7 +398,7 @@ df <- df %>% separate_rows(iso3, sep = ", ")
 
 acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01-01")) {
 
-    df <- loadInputs("acaps_risklist", group_by = "risk_id", as_of = as_of, col_types = "cccccccDTDccccdcdcccD")
+    df <- loadInputs("acaps_risklist", group_by = "risk_id", as_of = as_of, col_types = "cccccccDcDccccdcdcccD")
 
     natural_words <- paste(c(
         "flood", "drought", "natural", " rain", "monsoon", "dry", "(?<!cease)fire(?!d |wood)",
@@ -422,12 +422,12 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
     crisis_words <- keywords[dim]
 
     crisis_events <- as_tibble(df) %>% 
-      mutate(last_risk_update = as.Date(last_risk_update)) %>%
+      mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%Y")) %>%
         subset(
             (str_detect(tolower(risk_title), crisis_words) |
             str_detect(tolower(rationale), crisis_words) |
             str_detect(tolower(vulnerability), crisis_words)) & 
-            status != "Not materialised" & last_risk_update >= as_of - 60) %>%
+            status != "Not materialised") %>%
         select(iso3, all_countries = country, risk_level, risk_title, rationale, vulnerability, date_entered, last_risk_update, status) %>%
         filter(last_risk_update >= as.Date(after)) %>%
         group_by(risk_title, iso3) %>%
@@ -467,7 +467,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
         # add_dimension_prefix(prefix)
   if (as_of >= as.Date("2023-04-19")) {
     # Compare to the most recent reviewed ACAPS Risk List file
-    path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
+    path <- paste_path(mounted_path, "acaps-risk-list-reviewed", dim)
     most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
     previous_review <- most_recent$data
     # Separate today's crisis_events file into events that were updated before the last manual review and after the last manual review
@@ -492,7 +492,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
 }
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
-  path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
+  path <- paste_path(mounted_path, "acaps-risk-list-reviewed", dim)
   output <- read_most_recent(path, as_of = Sys.Date(), n = "all") %>%
     bind_rows() %>%
     mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%y")) %>%
