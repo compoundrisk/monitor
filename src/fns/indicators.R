@@ -944,14 +944,30 @@ fpi_collect_api <- function(as_of = Sys.Date()) {
   metadata$date <- metadata$description %>%
     str_extract("\\d{4}-\\d{2}-\\d{2}") %>%
     as.Date()
-  local_most_recent_date <- read_csv(
-    file.path(inputs_archive_path, "wb_fpi.csv"),
-    col_select = access_date, col_types = "D")$access_date %>%
-    tail(n = 1)
+  
+  print(metadata$date)
+  
+  # Check if file exists; if not, use old date to force download
+  if (file.exists(file.path(inputs_archive_path, "wb_fpi.csv"))) {
+    local_most_recent_date <- read_csv(
+      file.path(inputs_archive_path, "wb_fpi.csv"),
+      col_select = access_date, col_types = "D")$access_date %>%
+      tail(n = 1)
+  } else {
+    local_most_recent_date <- as.Date("2000-01-01")
+  }
+
+  print(paste("fpi_collect_api | metadata_date:", metadata$date,
+              "| local_most_recent_date:", local_most_recent_date))
+  
   if (metadata$date != local_most_recent_date) {
+    print("fpi_collect_api | source: API refresh")
     wb_fpi <- lapply((lubridate::year(Sys.Date()) -2):lubridate::year(Sys.Date()), function(year) {
       first_call <- fromJSON(paste0("https://microdata.worldbank.org/index.php/api/tables/data/fcv/wld_2021_rtfp_v02_m?limit=1000&offset=0&year=", year, "&adm1_name=Market%20Average&fields=ISO3,adm1_name,DATES,o_food_price_index,h_food_price_index,l_food_price_index,c_food_price_index,inflation_food_price_index"))
       total_rows <- first_call$found
+      print(paste("fpi_collect_api | year:", year,
+                  "| found:", total_rows,
+                  "| first_page_rows:", length(first_call$data)))
       offsets <- seq_len(floor(total_rows)/1000)*1000 
       fpi_1year <- offsets %>%
         lapply(function(offset) {
@@ -973,8 +989,11 @@ fpi_collect_api <- function(as_of = Sys.Date()) {
         ISO3,
         date = DATES)
     archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = metadata$date)
+  } else {
+    print("fpi_collect_api | source: local archive (API refresh skipped)")
   }
 }
+
 
 fpi_process <- function (as_of) {
   fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), 
