@@ -993,7 +993,7 @@ fpi_collect_api <- function(as_of = Sys.Date()) {
     print("fpi_collect_api | source: local archive (API refresh skipped)")
   }
 }
-
+ 
 
 fpi_process <- function (as_of) {
   fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), 
