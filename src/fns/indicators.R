@@ -2326,9 +2326,48 @@ fcs_process <- function(as_of) {
 #-------------------------—FSI---------------------------------------------
 
 fsi_collect <- function() {
-    most_recent <- read_most_recent(paste_path(mounted_path, 'fsi'), FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
-    fsi <- most_recent$data
-    file_date <- most_recent$date
+    candidate_dirs <- c(
+      paste_path(mounted_path, "fsi"),
+      paste_path(mounted_path, "hosted-data", "fsi")
+    )
+    candidate_dirs <- candidate_dirs[dir.exists(candidate_dirs)]
+
+    if (length(candidate_dirs) == 0) {
+      stop("FSI directory not found. Tried: paste_path(mounted_path, 'fsi') and paste_path(mounted_path, 'hosted-data', 'fsi').")
+    }
+
+    fsi_dir <- candidate_dirs[[1]]
+    most_recent <- tryCatch(
+      read_most_recent(fsi_dir, FUN = read_xlsx, as_of = Sys.Date(), return_date = T),
+      error = function(e) NULL
+    )
+
+    if (is.null(most_recent) || is.null(most_recent$data) || is.null(most_recent$date) || length(most_recent$date) == 0 || all(is.na(most_recent$date))) {
+      fsi_files <- list.files(fsi_dir, pattern = "\\.xlsx$", full.names = TRUE, ignore.case = TRUE)
+      if (length(fsi_files) == 0) {
+        stop(paste0("No FSI .xlsx files found in ", fsi_dir))
+      }
+
+      file_tbl <- data.frame(path = fsi_files, file_name = basename(fsi_files), stringsAsFactors = FALSE) %>%
+        mutate(
+          name_date_text = str_extract(file_name, "20\\d{2}[-._]?\\d{1,2}[-._]?\\d{1,2}"),
+          name_date = str_replace_all(name_date_text, "[^0-9]", "") %>% as.Date(format = "%Y%m%d"),
+          file_mtime = as.Date(file.info(path)$mtime)
+        )
+
+      if (any(!is.na(file_tbl$name_date))) {
+        selected <- file_tbl %>% filter(!is.na(name_date)) %>% arrange(name_date) %>% tail(1)
+        file_date <- selected$name_date[[1]]
+      } else {
+        selected <- file_tbl %>% arrange(file_mtime) %>% tail(1)
+        file_date <- selected$file_mtime[[1]]
+      }
+
+      fsi <- read_xlsx(selected$path[[1]])
+    } else {
+      fsi <- most_recent$data
+      file_date <- most_recent$date[[length(most_recent$date)]]
+    }
     
     archiveInputs(fsi, group_by = "Country", col_types = "cccddddddddddddd", today = file_date)
 }
@@ -2339,6 +2378,7 @@ fsi_process <- function(as_of) {
         normfuncpos(quantile(.$FSI, .98), quantile(.$FSI, .4), "FSI")
   return(fsi)
 }
+
 
 #-----------------------------—IDPs--------------------------------------------------------
 idp_collect <- function() {
