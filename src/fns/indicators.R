@@ -2326,15 +2326,15 @@ fcs_process <- function(as_of) {
 #-------------------------—FSI---------------------------------------------
 
 fsi_collect <- function() {
-    most_recent <- read_most_recent('hosted-data/fsi', FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
+    most_recent <- read_most_recent(paste_path(mounted_path, 'fsi'), FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
     fsi <- most_recent$data
     file_date <- most_recent$date
     
-    archiveInputs(fsi, group_by = "Country", col_types = "cdcddddddddddddd", today = file_date)
+    archiveInputs(fsi, group_by = "Country", col_types = "cccddddddddddddd", today = file_date)
 }
 
 fsi_process <- function(as_of) {
-  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = "cdcddddddddddddd") %>%
+  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = "cccddddddddddddd") %>%
         mutate(Country = name2iso(Country), FSI = Total, .keep = "none") %>%
         normfuncpos(quantile(.$FSI, .98), quantile(.$FSI, .4), "FSI")
   return(fsi)
