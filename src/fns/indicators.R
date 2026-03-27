@@ -467,7 +467,18 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
         # add_dimension_prefix(prefix)
   if (as_of >= as.Date("2023-04-19")) {
     # Compare to the most recent reviewed ACAPS Risk List file
-    path <- paste_path(mounted_path, "acaps-risk-list-reviewed", dim)
+    candidate_paths <- c(
+      paste_path(mounted_path, "acaps-risk-list-reviewed", dim),
+      if (exists("working_path", inherits = T)) paste_path(get("working_path", inherits = T), "hosted-data", "acaps-risk-list-reviewed", dim) else NA_character_,
+      paste_path(getwd(), "hosted-data", "acaps-risk-list-reviewed", dim),
+      paste_path("hosted-data", "acaps-risk-list-reviewed", dim)
+    )
+    candidate_paths <- unique(candidate_paths[!is.na(candidate_paths)])
+    existing_paths <- candidate_paths[dir.exists(candidate_paths)]
+    if (length(existing_paths) == 0) {
+      stop(paste0("ACAPS reviewed directory not found for dimension ", dim, ". Tried: ", paste(candidate_paths, collapse = ", ")))
+    }
+    path <- existing_paths[[1]]
     most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
     previous_review <- most_recent$data
     # Separate today's crisis_events file into events that were updated before the last manual review and after the last manual review
@@ -492,7 +503,18 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
 }
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
-  path <- paste_path(mounted_path, "acaps-risk-list-reviewed", dim)
+  candidate_paths <- c(
+    paste_path(mounted_path, "acaps-risk-list-reviewed", dim),
+    if (exists("working_path", inherits = T)) paste_path(get("working_path", inherits = T), "hosted-data", "acaps-risk-list-reviewed", dim) else NA_character_,
+    paste_path(getwd(), "hosted-data", "acaps-risk-list-reviewed", dim),
+    paste_path("hosted-data", "acaps-risk-list-reviewed", dim)
+  )
+  candidate_paths <- unique(candidate_paths[!is.na(candidate_paths)])
+  existing_paths <- candidate_paths[dir.exists(candidate_paths)]
+  if (length(existing_paths) == 0) {
+    stop(paste0("ACAPS reviewed directory not found for dimension ", dim, ". Tried: ", paste(candidate_paths, collapse = ", ")))
+  }
+  path <- existing_paths[[1]]
   output <- read_most_recent(path, as_of = Sys.Date(), n = "all") %>%
     bind_rows() %>%
     mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%y")) %>%
