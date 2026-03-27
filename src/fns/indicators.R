@@ -2374,16 +2374,15 @@ fsi_collect <- function() {
       file_date <- most_recent$date[[length(most_recent$date)]]
     }
     
-    archiveInputs(fsi, group_by = "Country", col_types = "cccddddddddddddd", today = file_date)
+    archiveInputs(fsi, group_by = "Country", today = file_date)
 }
 
 fsi_process <- function(as_of) {
-  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = "cccddddddddddddd") %>%
-        mutate(Country = name2iso(Country), FSI = Total, .keep = "none") %>%
+  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = cols(.default = col_character())) %>%
+        mutate(Country = name2iso(Country), FSI = readr::parse_number(Total), .keep = "none") %>%
         normfuncpos(quantile(.$FSI, .98), quantile(.$FSI, .4), "FSI")
   return(fsi)
 }
-
 
 #-----------------------------—IDPs--------------------------------------------------------
 idp_collect <- function() {
