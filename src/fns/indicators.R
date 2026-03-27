@@ -398,7 +398,7 @@ df <- df %>% separate_rows(iso3, sep = ", ")
 
 acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01-01")) {
 
-    df <- loadInputs("acaps_risklist", group_by = "risk_id", as_of = as_of, col_types = "cccccccDTDccccdcdcccD")
+    df <- loadInputs("acaps_risklist", group_by = "risk_id", as_of = as_of, col_types = "cccccccDcDccccdcdcccD")
 
     natural_words <- paste(c(
         "flood", "drought", "natural", " rain", "monsoon", "dry", "(?<!cease)fire(?!d |wood)",
@@ -422,12 +422,12 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
     crisis_words <- keywords[dim]
 
     crisis_events <- as_tibble(df) %>% 
-      mutate(last_risk_update = as.Date(last_risk_update)) %>%
+      mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%Y")) %>%
         subset(
             (str_detect(tolower(risk_title), crisis_words) |
             str_detect(tolower(rationale), crisis_words) |
             str_detect(tolower(vulnerability), crisis_words)) & 
-            status != "Not materialised" & last_risk_update >= as_of - 60) %>%
+            status != "Not materialised") %>%
         select(iso3, all_countries = country, risk_level, risk_title, rationale, vulnerability, date_entered, last_risk_update, status) %>%
         filter(last_risk_update >= as.Date(after)) %>%
         group_by(risk_title, iso3) %>%
@@ -467,7 +467,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
         # add_dimension_prefix(prefix)
   if (as_of >= as.Date("2023-04-19")) {
     # Compare to the most recent reviewed ACAPS Risk List file
-    path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
+    path <- paste_path(mounted_path, "acaps-risk-list-reviewed", dim)
     most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
     previous_review <- most_recent$data
     # Separate today's crisis_events file into events that were updated before the last manual review and after the last manual review
@@ -492,7 +492,7 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
 }
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
-  path <- paste_path("hosted-data/acaps-risk-list-reviewed", dim)
+  path <- paste_path(mounted_path, "acaps-risk-list-reviewed", dim)
   output <- read_most_recent(path, as_of = Sys.Date(), n = "all") %>%
     bind_rows() %>%
     mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%y")) %>%
@@ -944,14 +944,30 @@ fpi_collect_api <- function(as_of = Sys.Date()) {
   metadata$date <- metadata$description %>%
     str_extract("\\d{4}-\\d{2}-\\d{2}") %>%
     as.Date()
-  local_most_recent_date <- read_csv(
-    file.path(inputs_archive_path, "wb_fpi.csv"),
-    col_select = access_date, col_types = "D")$access_date %>%
-    tail(n = 1)
+  
+  print(metadata$date)
+  
+  # Check if file exists; if not, use old date to force download
+  if (file.exists(file.path(inputs_archive_path, "wb_fpi.csv"))) {
+    local_most_recent_date <- read_csv(
+      file.path(inputs_archive_path, "wb_fpi.csv"),
+      col_select = access_date, col_types = "D")$access_date %>%
+      tail(n = 1)
+  } else {
+    local_most_recent_date <- as.Date("2000-01-01")
+  }
+
+  print(paste("fpi_collect_api | metadata_date:", metadata$date,
+              "| local_most_recent_date:", local_most_recent_date))
+  
   if (metadata$date != local_most_recent_date) {
+    print("fpi_collect_api | source: API refresh")
     wb_fpi <- lapply((lubridate::year(Sys.Date()) -2):lubridate::year(Sys.Date()), function(year) {
       first_call <- fromJSON(paste0("https://microdata.worldbank.org/index.php/api/tables/data/fcv/wld_2021_rtfp_v02_m?limit=1000&offset=0&year=", year, "&adm1_name=Market%20Average&fields=ISO3,adm1_name,DATES,o_food_price_index,h_food_price_index,l_food_price_index,c_food_price_index,inflation_food_price_index"))
       total_rows <- first_call$found
+      print(paste("fpi_collect_api | year:", year,
+                  "| found:", total_rows,
+                  "| first_page_rows:", length(first_call$data)))
       offsets <- seq_len(floor(total_rows)/1000)*1000 
       fpi_1year <- offsets %>%
         lapply(function(offset) {
@@ -973,8 +989,11 @@ fpi_collect_api <- function(as_of = Sys.Date()) {
         ISO3,
         date = DATES)
     archiveInputs(wb_fpi, group_by = c("ISO3", "date"), today = metadata$date)
+  } else {
+    print("fpi_collect_api | source: local archive (API refresh skipped)")
   }
 }
+
 
 fpi_process <- function (as_of) {
   fpi <- loadInputs("wb_fpi", group_by = c("ISO3", "date"), 
