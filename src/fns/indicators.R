@@ -2328,12 +2328,17 @@ fcs_process <- function(as_of) {
 fsi_collect <- function() {
     candidate_dirs <- c(
       paste_path(mounted_path, "fsi"),
-      paste_path(mounted_path, "hosted-data", "fsi")
+      paste_path(mounted_path, "hosted-data", "fsi"),
+      if (exists("working_path", inherits = T)) paste_path(get("working_path", inherits = T), "hosted-data", "fsi") else NA_character_,
+      paste_path(getwd(), "hosted-data", "fsi"),
+      "hosted-data/fsi"
     )
+    candidate_dirs <- unique(candidate_dirs[!is.na(candidate_dirs)])
+    tried_dirs <- candidate_dirs
     candidate_dirs <- candidate_dirs[dir.exists(candidate_dirs)]
 
     if (length(candidate_dirs) == 0) {
-      stop("FSI directory not found. Tried: paste_path(mounted_path, 'fsi') and paste_path(mounted_path, 'hosted-data', 'fsi').")
+      stop(paste0("FSI directory not found. Tried: ", paste(tried_dirs, collapse = ", ")))
     }
 
     fsi_dir <- candidate_dirs[[1]]
