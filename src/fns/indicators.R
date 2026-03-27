@@ -2374,7 +2374,7 @@ fsi_collect <- function() {
       file_date <- most_recent$date[[length(most_recent$date)]]
     }
     
-    archiveInputs(fsi, group_by = "Country", col_types = "cccddddddddddddd", today = file_date)
+    archiveInputs(fsi, group_by = "Country", today = file_date)
 }
 
 fsi_process <- function(as_of) {
