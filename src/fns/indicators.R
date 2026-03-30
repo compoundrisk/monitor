@@ -2615,7 +2615,10 @@ acled_process <- function(as_of) {
   # acled <- loadInputs("acled", group_by = "event_id_cnty", as_of = effective_access_date, col_types = "cddDc") #158274
   # file.remove("output/inputs-archive/acled.R")
 
-  acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cddcDcD")
+  acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cDcddcD")
+  if (inherits(acled$fatalities, "Date")) {
+    acled$fatalities <- as.numeric(acled$fatalities)
+  }
 
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.yearmon(as_of - 45) - 3.2
@@ -2684,7 +2687,11 @@ acled_events_process <- function(as_of) {
         as_of - wday(as_of) - 8
     }
 
-    acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cddcDcD") %>%
+    acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cDcddcD")
+    if (inherits(acled$fatalities, "Date")) {
+      acled$fatalities <- as.numeric(acled$fatalities)
+    }
+    acled <- acled %>%
         subset(event_date > (friday - 360) & event_date <= friday)
 
     acled_year <- acled %>%
