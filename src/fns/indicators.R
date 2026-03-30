@@ -1307,7 +1307,32 @@ eiu_collect_many <- function(as_of = Sys.Date()) {
 eiu_process <- function(as_of) {
   eiu_data <- loadInputs("eiu", group_by = c("Month", "Country"), 
     as_of = as_of, col_types = "ffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>%
-    mutate(Month = as.yearmon(Month)) %>%
+    filter(!is.na(Month)) %>%
+    mutate(Month_raw = as.character(Month),
+           # Trim whitespace
+           Month_raw = trimws(Month_raw),
+           # Convert "Apr-25" format to "Apr 2025" for consistency
+           Month_raw = gsub("^([A-Za-z]+)-([0-9]{2})$", "\\1 20\\2", Month_raw),
+           # Parse mixed month formats from historical EIU files
+           Month_parsed = suppressWarnings(lubridate::parse_date_time(
+             Month_raw,
+             orders = c("b Y", "B Y", "Y-m", "Y/m", "m/Y", "Y b", "Y B")
+           ))) %>%
+    {
+      failed <- . %>%
+        filter(is.na(Month_parsed)) %>%
+        count(Month_raw, sort = TRUE)
+      if (nrow(failed) > 0) {
+        warning(paste0(
+          "eiu_process(): ", sum(failed$n), " rows could not parse Month. Top raw values: ",
+          paste(head(failed$Month_raw, 10), collapse = ", ")
+        ))
+      }
+      .
+    } %>%
+    mutate(Month = as.yearmon(Month_parsed)) %>%
+    filter(!is.na(Month)) %>%
+    select(-Month_raw, -Month_parsed) %>%
     filter(Month > as.yearmon(as_of) - 1.5)
   eiu_data <- eiu_data %>% select(Country, Month, Financial = FR00, Trade_and_Payments = PR00, Macroeconomic = MR00) %>%
     mutate(EIU_Score = (Financial + Trade_and_Payments + Macroeconomic)/3)
@@ -1691,7 +1716,32 @@ imf_process <- function(as_of) {
 eiu_security_process <- function(as_of) {
   eiu_data <- loadInputs("eiu", group_by = c("Month", "Country"), 
     as_of = as_of, col_types = "ffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>%
-    mutate(Month = as.yearmon(Month)) %>%
+    filter(!is.na(Month)) %>%
+    mutate(Month_raw = as.character(Month),
+           # Trim whitespace
+           Month_raw = trimws(Month_raw),
+           # Convert "Apr-25" format to "Apr 2025" for consistency
+           Month_raw = gsub("^([A-Za-z]+)-([0-9]{2})$", "\\1 20\\2", Month_raw),
+           # Parse mixed month formats from historical EIU files
+           Month_parsed = suppressWarnings(lubridate::parse_date_time(
+             Month_raw,
+             orders = c("b Y", "B Y", "Y-m", "Y/m", "m/Y", "Y b", "Y B")
+           ))) %>%
+    {
+      failed <- . %>%
+        filter(is.na(Month_parsed)) %>%
+        count(Month_raw, sort = TRUE)
+      if (nrow(failed) > 0) {
+        warning(paste0(
+          "eiu_security_process(): ", sum(failed$n), " rows could not parse Month. Top raw values: ",
+          paste(head(failed$Month_raw, 10), collapse = ", ")
+        ))
+      }
+      .
+    } %>%
+    mutate(Month = as.yearmon(Month_parsed)) %>%
+    filter(!is.na(Month)) %>%
+    select(-Month_raw, -Month_parsed) %>%
     filter(Month > as.yearmon(as_of) - 1.5)
 
     series_names <- c(
@@ -1768,6 +1818,7 @@ eiu_security_process <- function(as_of) {
 
     return(eiu_security_risk)
 }
+
 
 #### NATURAL HAZARDS
 
