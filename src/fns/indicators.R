@@ -2616,9 +2616,6 @@ acled_process <- function(as_of) {
   # file.remove("output/inputs-archive/acled.R")
 
   acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cDcddcD")
-  if (inherits(acled$fatalities, "Date")) {
-    acled$fatalities <- as.numeric(acled$fatalities)
-  }
 
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.yearmon(as_of - 45) - 3.2
@@ -2687,11 +2684,7 @@ acled_events_process <- function(as_of) {
         as_of - wday(as_of) - 8
     }
 
-    acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cDcddcD")
-    if (inherits(acled$fatalities, "Date")) {
-      acled$fatalities <- as.numeric(acled$fatalities)
-    }
-    acled <- acled %>%
+    acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cDcddcD") %>%
         subset(event_date > (friday - 360) & event_date <= friday)
 
     acled_year <- acled %>%
@@ -2718,6 +2711,7 @@ acled_events_process <- function(as_of) {
 
     return(acled_conflict_change)
 }
+
 
 #--------------------------—REIGN--------------------------------------------
 reign_collect <- function() {
