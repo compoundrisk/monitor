@@ -194,24 +194,41 @@ inform_severity_collect <- function() {
     filter(!is.na(url))
     
   if (nrow(urls) > 0) {
-    urls %>% apply(1, function(url) {
-      destfile <- file.path(inform_directory, url["file_name"])
-      curl_download_retry(
-        url = unname(url["url"]),
-        destfile = destfile,
-        retries = 4,
-        wait_seconds = 2,
-        backoff = 1.5
-      )
-      if (!str_detect(url["file_name"], "^20\\d{6}")) {
-        # Rename file with YYYYMMDD prefix if it doesn't alreay have one
-        # Using "--" to signal the prefix is not a part of the original file name
-        write_date <- format(as.Date(pull(read_xlsx(destfile, range = "A3", col_names = "date")), format = "%d/%m/%Y"), "%Y%m%d--")
-        file.rename(destfile, file.path(inform_directory, paste0(write_date, url["file_name"])))
-      }
+    # Wrap in tryCatch so one bad file doesn't kill the entire collection
+    tryCatch({
+      urls %>% apply(1, function(url) {
+        destfile <- file.path(inform_directory, url["file_name"])
+        
+        # Wrap each file download in tryCatch to continue on error
+        tryCatch({
+          curl_download_retry(
+            url = unname(url["url"]),
+            destfile = destfile,
+            retries = 4,
+            wait_seconds = 2,
+            backoff = 1.5
+          )
+          if (!str_detect(url["file_name"], "^20\\d{6}")) {
+            # Rename file with YYYYMMDD prefix if it doesn't alreay have one
+            # Using "--" to signal the prefix is not a part of the original file name
+            write_date <- format(as.Date(pull(read_xlsx(destfile, range = "A3", col_names = "date")), format = "%d/%m/%Y"), "%Y%m%d--")
+            file.rename(destfile, file.path(inform_directory, paste0(write_date, url["file_name"])))
+          }
+        }, error = function(e) {
+          warning(sprintf("Failed to process %s: %s", url["file_name"], conditionMessage(e)))
+          # Ensure partial files are deleted
+          if (file.exists(destfile)) {
+            tryCatch(file.remove(destfile), error = function(e_rm) {})
+          }
+          invisible(NULL)
+        })
+      })
+    }, error = function(e) {
+      warning(sprintf("inform_severity_collect encountered an error: %s", conditionMessage(e)))
     })
   }
 }
+
 
 ## Add in *_collect() function for ACAPS
 inform_severity_process <- function(as_of, dimension, prefix) {

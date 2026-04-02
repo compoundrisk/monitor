@@ -120,25 +120,43 @@ curl_and_delete <- compiler::cmpfun(function(url, FUN, ...) {
 })
 
 # Retry wrapper for transient network failures during file downloads.
+# Detects rate-limit (429/503) errors and applies more aggressive backoff.
 curl_download_retry <- compiler::cmpfun(function(url, destfile, retries = 3, wait_seconds = 2, backoff = 1.5, ...) {
   last_error <- NULL
+  is_rate_limit <- FALSE
 
   for (attempt in seq_len(retries)) {
+    is_rate_limit <- FALSE
     ok <- tryCatch({
       curl::curl_download(url = url, destfile = destfile, ...)
       TRUE
     }, error = function(e) {
       last_error <<- e
+      # Detect rate-limit or server errors (429 Too Many Requests, 503 Service Unavailable)
+      err_msg <- tolower(conditionMessage(e))
+      is_rate_limit <<- grepl("429|503|too many|service unavailable", err_msg)
       FALSE
     })
 
     if (ok) {
-      return(invisible(destfile))
+      if (file.exists(destfile)) {
+        return(invisible(destfile))
+      } else {
+        stop(sprintf("Download succeeded but file not found: %s", destfile))
+      }
+    }
+
+    # Delete partial file on error to prevent corruption
+    if (file.exists(destfile)) {
+      tryCatch(file.remove(destfile), error = function(e) {})
     }
 
     if (attempt < retries) {
-      sleep_for <- wait_seconds * (backoff^(attempt - 1))
-      message(sprintf("Download attempt %s/%s failed. Retrying in %.1f seconds: %s", attempt, retries, sleep_for, conditionMessage(last_error)))
+      # Apply more aggressive backoff (3x multiplier) for rate-limit errors
+      multiplier <- if (is_rate_limit) 3.0 else 1.0
+      sleep_for <- wait_seconds * (backoff^(attempt - 1)) * multiplier
+      error_type <- if (is_rate_limit) "rate-limit" else "transient"
+      message(sprintf("Download attempt %s/%s failed (%s). Retrying in %.1f seconds: %s", attempt, retries, error_type, sleep_for, conditionMessage(last_error)))
       Sys.sleep(sleep_for)
     }
   }
