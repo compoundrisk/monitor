@@ -196,7 +196,13 @@ inform_severity_collect <- function() {
   if (nrow(urls) > 0) {
     urls %>% apply(1, function(url) {
       destfile <- file.path(inform_directory, url["file_name"])
-      curl_download(url["url"], destfile = destfile)
+      curl_download_retry(
+        url = unname(url["url"]),
+        destfile = destfile,
+        retries = 4,
+        wait_seconds = 2,
+        backoff = 1.5
+      )
       if (!str_detect(url["file_name"], "^20\\d{6}")) {
         # Rename file with YYYYMMDD prefix if it doesn't alreay have one
         # Using "--" to signal the prefix is not a part of the original file name

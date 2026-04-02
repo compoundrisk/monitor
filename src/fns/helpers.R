@@ -119,6 +119,34 @@ curl_and_delete <- compiler::cmpfun(function(url, FUN, ...) {
   return(data)
 })
 
+# Retry wrapper for transient network failures during file downloads.
+curl_download_retry <- compiler::cmpfun(function(url, destfile, retries = 3, wait_seconds = 2, backoff = 1.5, ...) {
+  last_error <- NULL
+
+  for (attempt in seq_len(retries)) {
+    ok <- tryCatch({
+      curl::curl_download(url = url, destfile = destfile, ...)
+      TRUE
+    }, error = function(e) {
+      last_error <<- e
+      FALSE
+    })
+
+    if (ok) {
+      return(invisible(destfile))
+    }
+
+    if (attempt < retries) {
+      sleep_for <- wait_seconds * (backoff^(attempt - 1))
+      message(sprintf("Download attempt %s/%s failed. Retrying in %.1f seconds: %s", attempt, retries, sleep_for, conditionMessage(last_error)))
+      Sys.sleep(sleep_for)
+    }
+  }
+
+  stop(sprintf("Download failed after %s attempts (%s): %s", retries, url, conditionMessage(last_error)))
+})
+
+
 # See IFES and DONS paste summarizes for what this is trying to generalize
 # summarize_many_columns <- function(df, group_by, new_col, old_cols, sep) {
 #   df <- group_by(df, group_by)
