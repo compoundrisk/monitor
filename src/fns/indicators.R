@@ -858,17 +858,73 @@ fews_collect <- function(as_of = Sys.Date()) {
 }
 
 fews_collect_api <- function() {
-  # Scrape the latest CSV download link from the World Bank Data Catalog page
-  catalog_url  <- "https://datacatalog.worldbank.org/int/search/dataset/0064614/harmonized-sub-national-food-security-data"
-  download_url <- read_html(catalog_url) %>%
-    html_element(xpath = '//*[@id="tab1"]/div/div[1]/div/div/h5/div/div/a[2]') %>%
-    html_attr("href")
+  download_url <- NA_character_
 
-  if (is.na(download_url) || is.null(download_url)) {
-    stop("fews_collect_api: could not find download URL on data catalog page: ", catalog_url)
+  # --- Approach 1: World Bank Data Catalog JSON API ---
+  # Uses the machine-readable metadata endpoint; does not depend on page rendering.
+  tryCatch({
+    api_url <- "https://datacatalogapi.worldbank.org/ddhxext/DatasetView?uuid=0064614"
+    meta    <- jsonlite::fromJSON(api_url, simplifyVector = FALSE)
+    dist    <- meta[["distribution"]]
+    if (is.list(dist)) {
+      for (item in dist) {
+        for (field in c("accessURL", "url", "downloadURL", "mediaURL")) {
+          u <- item[[field]]
+          if (!is.null(u) && length(u) == 1 && is.character(u) &&
+              grepl("datacatalogfiles", u, fixed = TRUE) &&
+              grepl("\\.csv$", u, ignore.case = TRUE)) {
+            download_url <- u
+            break
+          }
+        }
+        if (!is.na(download_url)) break
+      }
+    }
+    if (!is.na(download_url))
+      message("fews_collect_api | URL found via JSON API: ", download_url)
+  }, error = function(e) {
+    message("fews_collect_api | JSON API attempt failed: ", conditionMessage(e))
+  })
+
+  # --- Approach 2: Scrape catalog page with browser UA (Angular SSR) ---
+  if (is.na(download_url)) {
+    catalog_url <- "https://datacatalog.worldbank.org/int/search/dataset/0064614/harmonized-sub-national-food-security-data"
+    h <- curl::new_handle(
+      useragent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      followlocation = TRUE
+    )
+    raw_page <- curl::curl_fetch_memory(catalog_url, handle = h)
+    raw_html <- rawToChar(raw_page$content)
+
+    # CSS selector (.icon-download-blue anchor)
+    download_url <- tryCatch({
+      xml2::read_html(raw_html) %>%
+        html_element("a.icon-download-blue") %>%
+        html_attr("href")
+    }, error = function(e) NA_character_)
+
+    # Regex over raw HTML
+    if (is.na(download_url)) {
+      download_url <- str_extract(
+        raw_html,
+        "https://datacatalogfiles\\.worldbank\\.org/ddh-published/\\d+/DR\\d+/[^\"']+\\.csv")
+    }
+
+    if (!is.na(download_url)) {
+      message("fews_collect_api | URL found via page scrape: ", download_url)
+    } else {
+      # Diagnostic output to understand what the server returned
+      message("fews_collect_api | scrape failed | HTTP status: ", raw_page$status_code)
+      message("fews_collect_api | page snippet (first 800 chars):\n",
+              substr(raw_html, 1, 800))
+    }
   }
 
-  # Extract version date from filename (ISO: 2026-03-15 or short US: 03-15-26)
+  if (is.na(download_url)) {
+    stop("fews_collect_api: could not find download URL on data catalog page")
+  }
+
+  # Extract version date (ISO: 2026-03-15 or short US: 03-15-26)
   fname        <- basename(download_url)
   version_date <- suppressWarnings(as.Date(str_extract(fname, "20\\d{2}-\\d{1,2}-\\d{1,2}")))
   if (is.na(version_date)) {
@@ -877,7 +933,7 @@ fews_collect_api <- function() {
   }
   if (is.na(version_date)) stop(sprintf("fews_collect_api: no date found in filename: %s", fname))
 
-  # Skip download if already up to date
+  # Skip if already up to date
   local_date <- tryCatch(
     read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste,
                      as_of = Sys.Date(), return_date = TRUE)$date,
