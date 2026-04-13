@@ -858,29 +858,43 @@ fews_collect <- function(as_of = Sys.Date()) {
 }
 
 fews_collect_api <- function() {
-  # Learn download URL from resource metadata
-  url <- 'https://datacatalogapi.worldbank.org/ddhxext/ResourceView?resource_unique_id=DR0091743'
-  queryString <- list('resource_unique_id' = "DR0091743")
-  response <- VERB("GET", url, query = queryString)
-  metadata <- fromJSON(content(response, "text"))
-  version_date <- as.Date(str_extract(basename(metadata$distribution$url), "20\\d{2}-\\d{1,2}-\\d{1,2}"))
-  local_most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = Sys.Date(), return_date = T, return_name = T)
-  
-  if (version_date != local_most_recent$date) {
-    filename <- file.path(inputs_archive_path, "fews", paste0("fews-", version_date, ".csv"))
-    curl::curl_download(url = str_extract(metadata$distribution$url, ".*(?=\\?)"), destfile = filename)
-  }
-}
+  # 1. Get the latest file URL from the World Bank Data Catalog API
+  resp     <- httr::GET("https://datacatalogapi.worldbank.org/ddhxext/ResourceView",
+                        query = list(resource_unique_id = "DR0091743"))
+  metadata <- fromJSON(content(resp, "text", encoding = "UTF-8"))
 
-fews_collect_many <- function(as_of = Sys.Date()) {
-  if (!dir.exists(paste_path(inputs_archive_path, "fews"))) {
-    dir.create(paste_path(inputs_archive_path, "fews"))
+  raw_url      <- metadata$distribution$url
+  if (is.list(raw_url)) raw_url <- unlist(raw_url, use.names = FALSE)
+  download_url <- str_replace(as.character(raw_url)[1], "\\?.*$", "")  # strip query string
+
+  # 2. Extract version date from the filename.
+  #    Handles ISO (2026-03-15) and short US format (03-15-26).
+  fname        <- basename(download_url)
+  version_date <- suppressWarnings(as.Date(str_extract(fname, "20\\d{2}-\\d{1,2}-\\d{1,2}")))
+  if (is.na(version_date)) {
+    short_date   <- str_extract(fname, "\\d{2}-\\d{2}-\\d{2}(?=\\.csv)")
+    version_date <- suppressWarnings(as.Date(short_date, format = "%m-%d-%y"))
   }
-  existing_files <- list.files(paste_path(inputs_archive_path, "fews"))
-  new_dates <- read_most_recent("hosted-data/fews", FUN = paste, as_of = as_of,
-    n = "all", return_date = T, return_name = T) %>%
-    { .[["date"]][.$name %ni% existing_files] }
-  lapply(new_dates, fews_collect) %>% invisible()
+  if (is.na(version_date)) stop(sprintf("fews_collect_api: no date found in filename: %s", fname))
+
+  # 3. Skip download if already up to date
+  local_date <- tryCatch(
+    read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste,
+                     as_of = Sys.Date(), return_date = TRUE)$date,
+    error = function(e) as.Date(NA))
+
+  message(sprintf("fews_collect_api | version_date: %s | local: %s", version_date, local_date))
+
+  if (!is.na(local_date) && version_date == local_date) {
+    message("fews_collect_api | source: local archive (download skipped)")
+    return(invisible(NULL))
+  }
+
+  # 4. Download
+  destfile <- file.path(inputs_archive_path, "fews", sprintf("fews-%s.csv", version_date))
+  message(sprintf("fews_collect_api | downloading: %s", fname))
+  curl::curl_download(url = download_url, destfile = destfile)
+  message("fews_collect_api | done")
 }
 
 fews_process <- function(as_of) {
