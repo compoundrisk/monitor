@@ -858,129 +858,21 @@ fews_collect <- function(as_of = Sys.Date()) {
 }
 
 fews_collect_api <- function() {
-  download_url <- NA_character_
+  # Direct download URL. FEWS NET publishes a new file approximately every 2 months.
+  # When a new version is available, update this URL and the archived file will be
+  # downloaded on the next run. Check:
+  # https://datacatalog.worldbank.org/search/dataset/0064614
+  download_url <- "https://datacatalogfiles.worldbank.org/ddh-published/0064614/DR0091743/FEWS_February_2026_Update_TrueBoundaries_03-15-26.csv"
 
-  # Helper: extract datacatalogfiles CSV URL from raw HTML using CSS selector,
-  # XPath (mirrors browser inspector path), or regex fallback.
-  extract_csv_url_from_html <- function(raw_html) {
-    doc <- tryCatch(xml2::read_html(raw_html), error = function(e) NULL)
-    if (!is.null(doc)) {
-      # CSS class on the download anchor (confirmed present in SSR-rendered HTML)
-      u <- tryCatch(
-        doc %>% html_element("a.icon-download-blue") %>% html_attr("href"),
-        error = function(e) NA_character_)
-      # XPath equivalent of browser inspector path (a[2] inside the resources h5)
-      if (is.na(u)) {
-        u <- tryCatch(
-          doc %>%
-            html_element(xpath = "//app-search-detail-page//tabset//tab//h5//div/div/a[2]") %>%
-            html_attr("href"),
-          error = function(e) NA_character_)
-      }
-      if (!is.na(u) && grepl("datacatalogfiles", u, fixed = TRUE)) return(u)
-    }
-    # Regex over raw HTML (catches URL even if HTML parsing fails)
-    u <- str_extract(
-      raw_html,
-      "https://datacatalogfiles\\.worldbank\\.org/ddh-published/\\d+/DR\\d+/[^\"' ]+\\.csv")
-    if (is.null(u)) NA_character_ else u
-  }
-
-  # Build a browser-like curl handle with in-memory cookies and full Accept headers.
-  # The SSR server checks UA + Accept headers to decide whether to pre-render.
-  make_browser_handle <- function(referer = "") {
-    h <- curl::new_handle(
-      useragent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      followlocation = TRUE,
-      cookiefile     = "",   # enable in-memory cookie engine
-      cookiejar      = ""
-    )
-    if (nchar(referer) > 0) curl::handle_setopt(h, referer = referer)
-    curl::handle_setheaders(h,
-      "Accept"                    = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language"           = "en-US,en;q=0.9",
-      "Accept-Encoding"           = "gzip, deflate, br",
-      "Cache-Control"             = "no-cache",
-      "Pragma"                    = "no-cache",
-      "Upgrade-Insecure-Requests" = "1",
-      "Sec-Fetch-Dest"            = "document",
-      "Sec-Fetch-Mode"            = "navigate",
-      "Sec-Fetch-Site"            = "none",
-      "Sec-Fetch-User"            = "?1"
-    )
-    h
-  }
-
-  try_fetch_page <- function(url, label) {
-    tryCatch({
-      h        <- make_browser_handle()
-      raw      <- curl::curl_fetch_memory(url, handle = h)
-      raw_html <- rawToChar(raw$content)
-      u        <- extract_csv_url_from_html(raw_html)
-      if (!is.na(u) && nchar(u) > 10) {
-        message("fews_collect_api | URL found via ", label, ": ", u)
-        u
-      } else {
-        message("fews_collect_api | ", label, " failed | HTTP ", raw$status_code,
-                " | snippet: ", substr(raw_html, 1, 400))
-        NA_character_
-      }
-    }, error = function(e) {
-      message("fews_collect_api | ", label, " error: ", conditionMessage(e))
-      NA_character_
-    })
-  }
-
-  # --- Approach 1: two-step — seed session cookies from homepage, then dataset page ---
-  if (is.na(download_url)) {
-    tryCatch({
-      h <- make_browser_handle()
-      curl::curl_fetch_memory("https://datacatalog.worldbank.org", handle = h)
-      # Reuse same handle (carries cookies) for dataset page
-      dataset_url <- "https://datacatalog.worldbank.org/int/search/dataset/0064614/harmonized-sub-national-food-security-data"
-      raw      <- curl::curl_fetch_memory(dataset_url, handle = h)
-      raw_html <- rawToChar(raw$content)
-      u        <- extract_csv_url_from_html(raw_html)
-      if (!is.na(u) && nchar(u) > 10) {
-        download_url <- u
-        message("fews_collect_api | URL found via two-step session: ", download_url)
-      } else {
-        message("fews_collect_api | two-step failed | HTTP ", raw$status_code,
-                " | snippet: ", substr(raw_html, 1, 400))
-      }
-    }, error = function(e) {
-      message("fews_collect_api | two-step error: ", conditionMessage(e))
-    })
-  }
-
-  # --- Approach 2: public URL (no /int/) ---
-  if (is.na(download_url)) {
-    download_url <- try_fetch_page(
-      "https://datacatalog.worldbank.org/search/dataset/0064614/harmonized-sub-national-food-security-data",
-      "public catalog page")
-  }
-
-  # --- Approach 3: /int/ URL direct (single request, full headers) ---
-  if (is.na(download_url)) {
-    download_url <- try_fetch_page(
-      "https://datacatalog.worldbank.org/int/search/dataset/0064614/harmonized-sub-national-food-security-data",
-      "/int/ catalog page")
-  }
-
-  if (is.na(download_url)) {
-    stop("fews_collect_api: could not find download URL on data catalog page")
-  }
-
-  # Extract version date (ISO: 2026-03-15 or short US: 03-15-26)
   fname        <- basename(download_url)
-  version_date <- suppressWarnings(as.Date(str_extract(fname, "20\\d{2}-\\d{1,2}-\\d{1,2}")))
-  if (is.na(version_date)) {
-    short_date   <- str_extract(fname, "\\d{2}-\\d{2}-\\d{2}(?=\\.csv)")
-    version_date <- suppressWarnings(as.Date(short_date, format = "%m-%d-%y"))
-  }
-  if (is.na(version_date)) stop(sprintf("fews_collect_api: no date found in filename: %s", fname))
+  short_date   <- str_extract(fname, "\\d{2}-\\d{2}-\\d{2}(?=\\.csv)")
+  version_date <- as.Date(short_date, format = "%m-%d-%y")
 
-  # Skip if already up to date
+  # Remind to check for a new file every ~2 months
+  if (Sys.Date() > version_date + 60) {
+    print("lets check for new fews file")
+  }
+
   local_date <- tryCatch(
     read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste,
                      as_of = Sys.Date(), return_date = TRUE)$date,
@@ -988,17 +880,28 @@ fews_collect_api <- function() {
 
   message(sprintf("fews_collect_api | version_date: %s | local: %s", version_date, local_date))
 
-  if (!is.na(local_date) && version_date == local_date) {
+  if (!is.na(local_date) && version_date <= local_date) {
     message("fews_collect_api | source: local archive (download skipped)")
     return(invisible(NULL))
   }
 
-  # Download
   destfile <- file.path(inputs_archive_path, "fews", sprintf("fews-%s.csv", version_date))
   message(sprintf("fews_collect_api | downloading: %s", fname))
   curl::curl_download(url = download_url, destfile = destfile)
   message("fews_collect_api | done")
 }
+
+fews_collect_many <- function(as_of = Sys.Date()) {
+  if (!dir.exists(paste_path(inputs_archive_path, "fews"))) {
+    dir.create(paste_path(inputs_archive_path, "fews"))
+  }
+  existing_files <- list.files(paste_path(inputs_archive_path, "fews"))
+  new_dates <- read_most_recent("hosted-data/fews", FUN = paste, as_of = as_of,
+    n = "all", return_date = T, return_name = T) %>%
+    { .[["date"]][.$name %ni% existing_files] }
+  lapply(new_dates, fews_collect) %>% invisible()
+}
+
 
 
 fews_process <- function(as_of) {
