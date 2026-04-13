@@ -170,35 +170,68 @@ add_new_input_cols <- function(df1, df2) {
 #--------------------—LOAD ACAPS realtime database-----------------------------
 inform_severity_collect <- function() {
   # Method using INFORM Severity's own site; previous method used acaps.org
+  #
+  # The server (drmkc.jrc.ec.europa.eu) sits behind an F5 BIG-IP WAF that
+  # fingerprints clients via TLS and sets session cookies (TS017a68fb) on the
+  # first response.  Plain curl::curl_download calls fail with
+  # "Connection reset by peer" because the WAF rejects non-browser clients
+  # during file transfers.  The fix is to:
+  #   1. Create a shared curl handle with a browser User-Agent and in-memory
+  #      cookie storage.
+  #   2. Fetch the listing page through that handle so the WAF session cookie
+  #      is captured.
+  #   3. Reuse the same handle (now carrying the cookies + Referer) for every
+  #      subsequent file download.
   inform_directory <- file.path(inputs_archive_path, "inform-severity")
 
   if (!dir.exists(inform_directory)) {
     dir.create(inform_directory)
   }
-  
+
   existing_files <- list.files(inform_directory) %>%
     str_replace("^\\d{8}--", "")
   existing_files_misnamed <- list.files(inform_directory) %>%
     subset(!str_detect(., "^\\d{8}"))
-  
-  urls <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Severity/Results-and-data") %>%
+
+  base_url    <- "https://drmkc.jrc.ec.europa.eu"
+  listing_url <- paste0(base_url, "/inform-index/INFORM-Severity/Results-and-data")
+
+  # Build a shared curl handle that mimics a real browser session.
+  # cookiefile = "" enables the in-memory cookie engine (no file written).
+  # cookiejar  = "" keeps cookies in memory only.
+  h <- curl::new_handle(
+    useragent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    followlocation = TRUE,
+    cookiefile   = "",
+    cookiejar    = "",
+    referer      = listing_url
+  )
+
+  # Visit the listing page so the WAF sets its session cookie on the handle.
+  page_raw <- tryCatch(
+    curl::curl_fetch_memory(listing_url, handle = h),
+    error = function(e) stop(sprintf("inform_severity_collect: failed to fetch listing page: %s", conditionMessage(e)))
+  )
+  page_content <- rawToChar(page_raw$content)
+
+  urls <- xml2::read_html(page_content) %>%
     html_elements("a") %>%
     html_attr("href") %>%
     { .[str_detect(., "xlsx") & !is.na(.)] } %>%
-    { data.frame(url = paste0("https://drmkc.jrc.ec.europa.eu", .))} %>%
+    { data.frame(url = paste0(base_url, .))} %>%
     mutate(
       file_name = str_extract(url, "[^/]*?.xlsx"),
       url = str_replace_all(url, " ", "%20")) %>%
     filter(file_name %ni% existing_files | file_name %in% existing_files_misnamed) %>%
     .[nrow(.):1,] %>% # Reverses order
     filter(!is.na(url))
-    
+
   if (nrow(urls) > 0) {
     # Wrap in tryCatch so one bad file doesn't kill the entire collection
     tryCatch({
       urls %>% apply(1, function(url) {
         destfile <- file.path(inform_directory, url["file_name"])
-        
+
         # Wrap each file download in tryCatch to continue on error
         tryCatch({
           curl_download_retry(
@@ -206,7 +239,8 @@ inform_severity_collect <- function() {
             destfile = destfile,
             retries = 4,
             wait_seconds = 2,
-            backoff = 1.5
+            backoff = 1.5,
+            handle = h  # reuse session handle so WAF cookies + Referer are sent
           )
           if (!str_detect(url["file_name"], "^20\\d{6}")) {
             # Rename file with YYYYMMDD prefix if it doesn't alreay have one
@@ -2893,6 +2927,7 @@ gic_process <- function(as_of) {
   return(coups_recent)
 }
 
+
 #--------------------------IFES Inter. Foundation for Electoral Systems -------
 ifes_collect <- function() {
   # string <- read_html("https://www.electionguide.org/ajax/election/?sEcho=1&iColumns=5&sColumns=&iDisplayStart=0&iDisplayLength=2000&iSortCol_0=3&sSortDir_0=desc&iSortingCols=1") %>%
@@ -2933,24 +2968,43 @@ ifes_collect <- function() {
   #       election_type = 'c',
   #       country_id = 'd'))
   
-ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
-  html_element("#electionsTable") %>%
-  html_table()
+  ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
+    html_element("#electionsTable") %>%
+    html_table()
 
-ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
-  html_element("#electionsTable") %>%
-  html_table()
+  ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
+    html_element("#electionsTable") %>%
+    html_table()
 
-ifes <- bind_rows(ifes_upcoming, ifes_past) %>% 
-  mutate(.keep = "none",
-    Countryname = Country,
-    office = `Election for`,
-    date = str_extract(`Date`, ".*\\d\\d\\d\\d"),
-    date = as.Date(date, format = "%b %d, %Y"),
-    status = Status,
-    election_type = NULL,
-    # Last_Held = as.Date(`Last Held*`, format = "%b %d, %Y"),
-    )
+  ifes_raw <- bind_rows(ifes_upcoming, ifes_past)
+
+  # Locate columns by case-insensitive partial matching so the function is
+  # resilient to minor label changes on the electionguide.org website.
+  find_col <- function(df, pattern) {
+    names(df)[str_detect(names(df), regex(pattern, ignore_case = TRUE))][1]
+  }
+  col_country <- find_col(ifes_raw, "^country$")
+  col_office  <- find_col(ifes_raw, "election.?for")
+  col_date    <- find_col(ifes_raw, "^date")
+  col_status  <- find_col(ifes_raw, "^status$")
+
+  missing_cols <- c(country = col_country, office = col_office,
+                    date = col_date, status = col_status)
+  missing_cols <- missing_cols[is.na(missing_cols)]
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "ifes_collect: expected column(s) not found: %s. Available columns: %s",
+      paste(names(missing_cols), collapse = ", "),
+      paste(names(ifes_raw), collapse = ", ")))
+  }
+
+  ifes <- ifes_raw %>%
+    mutate(.keep = "none",
+      Countryname  = .data[[col_country]],
+      office       = .data[[col_office]],
+      date         = str_extract(.data[[col_date]], ".*\\d{4}"),
+      date         = as.Date(date, format = "%b %d, %Y"),
+      status       = .data[[col_status]])
 
   archiveInputs(ifes, group_by = NULL)
 

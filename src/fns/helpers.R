@@ -121,14 +121,21 @@ curl_and_delete <- compiler::cmpfun(function(url, FUN, ...) {
 
 # Retry wrapper for transient network failures during file downloads.
 # Detects rate-limit (429/503) errors and applies more aggressive backoff.
-curl_download_retry <- compiler::cmpfun(function(url, destfile, retries = 3, wait_seconds = 2, backoff = 1.5, ...) {
+# Accepts an optional `handle` (curl::new_handle()) so callers can pass a
+# pre-configured handle carrying session cookies, a browser User-Agent, a
+# Referer header, etc.  When NULL a plain default handle is used.
+curl_download_retry <- compiler::cmpfun(function(url, destfile, retries = 3, wait_seconds = 2, backoff = 1.5, handle = NULL, ...) {
   last_error <- NULL
   is_rate_limit <- FALSE
 
   for (attempt in seq_len(retries)) {
     is_rate_limit <- FALSE
     ok <- tryCatch({
-      curl::curl_download(url = url, destfile = destfile, ...)
+      if (is.null(handle)) {
+        curl::curl_download(url = url, destfile = destfile, ...)
+      } else {
+        curl::curl_download(url = url, destfile = destfile, handle = handle, ...)
+      }
       TRUE
     }, error = function(e) {
       last_error <<- e
