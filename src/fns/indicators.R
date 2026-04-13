@@ -858,17 +858,17 @@ fews_collect <- function(as_of = Sys.Date()) {
 }
 
 fews_collect_api <- function() {
-  # 1. Get the latest file URL from the World Bank Data Catalog API
-  resp     <- httr::GET("https://datacatalogapi.worldbank.org/ddhxext/ResourceView",
-                        query = list(resource_unique_id = "DR0091743"))
-  metadata <- fromJSON(content(resp, "text", encoding = "UTF-8"))
+  # Scrape the latest CSV download link from the World Bank Data Catalog page
+  catalog_url  <- "https://datacatalog.worldbank.org/int/search/dataset/0064614/harmonized-sub-national-food-security-data"
+  download_url <- read_html(catalog_url) %>%
+    html_element(xpath = '//*[@id="tab1"]/div/div[1]/div/div/h5/div/div/a[2]') %>%
+    html_attr("href")
 
-  raw_url      <- metadata$distribution$url
-  if (is.list(raw_url)) raw_url <- unlist(raw_url, use.names = FALSE)
-  download_url <- str_replace(as.character(raw_url)[1], "\\?.*$", "")  # strip query string
+  if (is.na(download_url) || is.null(download_url)) {
+    stop("fews_collect_api: could not find download URL on data catalog page: ", catalog_url)
+  }
 
-  # 2. Extract version date from the filename.
-  #    Handles ISO (2026-03-15) and short US format (03-15-26).
+  # Extract version date from filename (ISO: 2026-03-15 or short US: 03-15-26)
   fname        <- basename(download_url)
   version_date <- suppressWarnings(as.Date(str_extract(fname, "20\\d{2}-\\d{1,2}-\\d{1,2}")))
   if (is.na(version_date)) {
@@ -877,7 +877,7 @@ fews_collect_api <- function() {
   }
   if (is.na(version_date)) stop(sprintf("fews_collect_api: no date found in filename: %s", fname))
 
-  # 3. Skip download if already up to date
+  # Skip download if already up to date
   local_date <- tryCatch(
     read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste,
                      as_of = Sys.Date(), return_date = TRUE)$date,
@@ -890,12 +890,13 @@ fews_collect_api <- function() {
     return(invisible(NULL))
   }
 
-  # 4. Download
+  # Download
   destfile <- file.path(inputs_archive_path, "fews", sprintf("fews-%s.csv", version_date))
   message(sprintf("fews_collect_api | downloading: %s", fname))
   curl::curl_download(url = download_url, destfile = destfile)
   message("fews_collect_api | done")
 }
+
 
 fews_process <- function(as_of) {
   fewswb <- read_most_recent(directory_path = file.path(inputs_archive_path, "fews"), 
