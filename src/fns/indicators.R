@@ -2999,7 +2999,7 @@ ifes_collect <- function() {
   }
   col_country <- find_col(ifes_raw, "^country$")
   col_office  <- find_col(ifes_raw, "election.?for")
-  col_date    <- find_col(ifes_raw, "^date")
+  col_date    <- find_col(ifes_raw, "start.?date|^date$")
   col_status  <- find_col(ifes_raw, "^status$")
 
   missing_cols <- c(country = col_country, office = col_office,
