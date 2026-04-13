@@ -1390,8 +1390,7 @@ eiu_process <- function(as_of) {
              orders = c("b Y", "B Y", "Y-m", "Y/m", "m/Y", "Y b", "Y B")
            ))) %>%
     {
-      failed <- . %>%
-        filter(is.na(Month_parsed)) %>%
+      failed <- filter(., is.na(Month_parsed)) %>%
         count(Month_raw, sort = TRUE)
       if (nrow(failed) > 0) {
         warning(paste0(
@@ -1799,8 +1798,7 @@ eiu_security_process <- function(as_of) {
              orders = c("b Y", "B Y", "Y-m", "Y/m", "m/Y", "Y b", "Y B")
            ))) %>%
     {
-      failed <- . %>%
-        filter(is.na(Month_parsed)) %>%
+      failed <- filter(., is.na(Month_parsed)) %>%
         count(Month_raw, sort = TRUE)
       if (nrow(failed) > 0) {
         warning(paste0(
