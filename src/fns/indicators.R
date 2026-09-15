@@ -2293,19 +2293,71 @@ iri_process_temp <- function() {
 
 #-------------------------------------—Locust outbreaks----------------------------------------------
 # List of countries and risk factors associated with locusts (FAO), see: http://www.fao.org/ag/locusts/en/info/info/index.html
+fao_locust_bulletin_ua <- httr::user_agent(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
+# FAO's bulletin listing mixes direct DSpace "bitstreams/.../content" file
+# URLs with "handle/..." landing-page URLs. The handle pages are served by an
+# Angular SPA with no PDF link in the raw HTML (everything loads client-side),
+# so the actual bitstream has to be resolved through DSpace's REST API:
+# handle -> item UUID -> item's "ORIGINAL" bundle -> that bundle's bitstream
+# -> the bitstream's content URL. Returns NA if any step fails.
+fao_locust_resolve_pdf_url <- function(bulletin_url) {
+  if (str_detect(bulletin_url, "/bitstreams/[^/]+/content$")) return(bulletin_url)
+
+  base_url <- str_extract(bulletin_url, "^https?://[^/]+")
+  handle <- str_extract(bulletin_url, "handle/(.+)$", group = 1)
+  if (is.na(base_url) || is.na(handle)) return(NA_character_)
+
+  item <- tryCatch({
+    resp <- httr::GET(paste0(base_url, "/server/api/pid/find"), query = list(id = handle),
+                       fao_locust_bulletin_ua)
+    if (httr::http_error(resp)) NULL else httr::content(resp, as = "parsed", type = "application/json")
+  }, error = function(e) NULL)
+  if (is.null(item) || is.null(item$uuid)) return(NA_character_)
+
+  bundles <- tryCatch({
+    resp <- httr::GET(paste0(base_url, "/server/api/core/items/", item$uuid, "/bundles"),
+                       fao_locust_bulletin_ua)
+    if (httr::http_error(resp)) NULL else httr::content(resp, as = "parsed", type = "application/json")$`_embedded`$bundles
+  }, error = function(e) NULL)
+  original_bundle <- Filter(\(b) identical(b$name, "ORIGINAL"), bundles)
+  if (length(original_bundle) == 0) return(NA_character_)
+
+  bitstreams <- tryCatch({
+    resp <- httr::GET(original_bundle[[1]]$`_links`$bitstreams$href, fao_locust_bulletin_ua)
+    if (httr::http_error(resp)) NULL else httr::content(resp, as = "parsed", type = "application/json")$`_embedded`$bitstreams
+  }, error = function(e) NULL)
+  if (length(bitstreams) == 0) return(NA_character_)
+
+  content_url <- bitstreams[[1]]$`_links`$content$href
+  if (is.null(content_url)) NA_character_ else content_url
+}
+
 fao_locust_pdf_collect <- function(bulletin_url) {
-      # FAO's bulletin listing mixes DSpace "handle" landing-page URLs (HTML) with
-      # direct "bitstreams/.../content" file URLs. pdf_text() has no way to tell
-      # these apart and will crash trying to parse an HTML page as a PDF, so check
-      # the Content-Type first and skip anything that isn't actually a PDF.
-      head_resp <- tryCatch(httr::HEAD(bulletin_url), error = function(e) NULL)
-      content_type <- if (!is.null(head_resp)) httr::headers(head_resp)[["content-type"]] else NA
-      if (is.null(content_type) || is.na(content_type) || !str_detect(content_type, "application/pdf")) {
-        warning("fao_locust_pdf_collect | skipping non-PDF bulletin URL: ", bulletin_url,
+      pdf_url <- fao_locust_resolve_pdf_url(bulletin_url)
+      if (is.na(pdf_url)) {
+        warning("fao_locust_pdf_collect | could not resolve a PDF bitstream for bulletin URL: ", bulletin_url)
+        return(NULL)
+      }
+
+      # A HEAD request to DSpace's bitstream endpoint returns a JSON metadata
+      # blob instead of the file (content negotiation quirk specific to HEAD),
+      # so GET the file directly and check the actual bytes for the PDF magic
+      # number instead of trusting Content-Type.
+      resp <- tryCatch(httr::GET(pdf_url, fao_locust_bulletin_ua, httr::timeout(60)), error = function(e) NULL)
+      body <- if (!is.null(resp)) httr::content(resp, "raw") else raw(0)
+      if (is.null(resp) || httr::http_error(resp) || length(body) < 4 ||
+          !identical(body[1:4], charToRaw("%PDF"))) {
+        content_type <- if (!is.null(resp)) httr::headers(resp)[["content-type"]] else NA
+        warning("fao_locust_pdf_collect | skipping non-PDF bulletin URL: ", pdf_url,
                 " (content-type: ", content_type, ")")
         return(NULL)
       }
-      locust_pdf <- pdf_text(bulletin_url)
+      tmp_pdf <- tempfile(fileext = ".pdf")
+      writeBin(body, tmp_pdf)
+      on.exit(unlink(tmp_pdf), add = TRUE)
+      locust_pdf <- pdf_text(tmp_pdf)
 
       fao_locust <- locust_pdf %>%
         subset(str_detect(., "Desert Locust Bulletin")) %>%
@@ -2349,6 +2401,13 @@ fao_locust_pdf_collect <- function(bulletin_url) {
           archiveInputs(fao_locust, group_by = "Country", today = bulletin_date)
           return(fao_locust)
         }) %>% bind_rows()
+    if (nrow(fao_locust) == 0) {
+      warning("fao_locust_pdf_collect | PDF downloaded OK but no bulletin pages were parsed out of it: ",
+              pdf_url, " (bulletin_url: ", bulletin_url, ")")
+    } else {
+      message("fao_locust_pdf_collect | OK: ", bulletin_url, " -> ", nrow(fao_locust),
+              " country rows for bulletin_date ", unique(fao_locust$bulletin_date))
+    }
     return(fao_locust)
 }
 
@@ -2379,12 +2438,28 @@ fao_locust_multi_collect <- function() {
     which_not(fao_locust_existing$bulletin_url) %>%
     sort()
 
-  if (length(bulletin_urls) > 0) {
-  fao_locust <- bulletin_urls %>%
-    lapply(fao_locust_pdf_collect) %>%
-    bind_rows() %>%
-    arrange(bulletin_date, Country)
+  if (length(bulletin_urls) == 0) {
+    message("fao_locust_multi_collect | no new bulletin URLs found")
+    return(invisible(NULL))
   }
+
+  message("fao_locust_multi_collect | found ", length(bulletin_urls), " new bulletin URL(s) to process")
+  results <- bulletin_urls %>% lapply(fao_locust_pdf_collect)
+  ok <- !sapply(results, is.null)
+  message("fao_locust_multi_collect | ", sum(ok), "/", length(bulletin_urls),
+          " new bulletin URL(s) parsed successfully",
+          if (any(!ok)) paste0(", ", sum(!ok), " skipped (see warnings above): ",
+                                paste(bulletin_urls[!ok], collapse = "; ")) else "")
+
+  fao_locust <- bind_rows(results)
+
+  if (nrow(fao_locust) == 0) {
+    message("fao_locust_multi_collect | no valid new bulletins parsed this run",
+            " (all candidate URLs were skipped - see warnings above)")
+    return(invisible(NULL))
+  }
+
+  fao_locust %>% arrange(bulletin_date, Country)
 }
 
 fao_locust_process <- function(as_of) {
