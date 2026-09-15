@@ -442,7 +442,8 @@ display: none;
 ├── monitor-xlsx/                  ← Separate repo, public Excel workbook
 │
 └── init-script/
-    └── compoundriskmonitor.sh     (Databricks cluster-start script)</code></pre>
+    ├── compoundriskmonitor.sh     (older cluster-start script; superseded, see below)
+    └── compoundriskmonitor_v2.sh  (actual cluster-start script in use as of this doc)</code></pre>
 <hr />
 </div>
 </div>
@@ -778,7 +779,8 @@ DATABRICKS (production, daily job ~10am ET)
 ├── monitor-xlsx/                     # separate repo, public workbook
 │
 └── init-script/
-    └── compoundriskmonitor.sh</code></pre>
+    ├── compoundriskmonitor.sh     # older version, superseded
+    └── compoundriskmonitor_v2.sh  # actual cluster-start script, see Known Issues</code></pre>
 <p><code>production/crm-dashboard-prod.csv</code> lives under <code>mounted_path</code>, i.e. <code>output/production/</code> locally or <code>/dbfs/mnt/CompoundRiskMonitor/production/</code> on Databricks — not in a folder called <code>production(creadamanual)/</code>.</p>
 <hr />
 </div>
@@ -1021,6 +1023,7 @@ lap_print("Health dimension finished collecting")   # prints elapsed time since 
 <div id="known-issues" class="section level2">
 <h2>⚠️ Known Issues</h2>
 <ul>
+<li><strong>(Resolved incident, keep for reference)</strong> The <code>DECPY_CompoundRiskMonitor_Johan</code> cluster's init script (<code>compoundriskmonitor_v2.sh</code>, running on Databricks Runtime 16.4.x — <strong>not the same as the older <code>init-script/compoundriskmonitor.sh</code></strong> already in this repo) installed <code>r-base</code>/<code>r-base-dev</code> via <code>apt-get</code>. DBR 16.4.x already bundles its own R build with a matching IRkernel; installing <code>r-base</code> via APT overwrites the bundled R (<code>libR.so</code>, <code>/usr/bin/R</code>), so the IRkernel (compiled against the original bundled R) crashes on an ABI mismatch as soon as the R REPL tries to start. This surfaced as every job run failing with <code>ReplStartFailureException: Kernel exited while we were waiting for the kernel_info_reply message</code> — the notebook code (including the <code>.libPaths()</code>/<code>library(rlang, ...)</code>/<code>library(cli, ...)</code> lines at the top of the notebooks) never even ran. <strong>Fixed</strong> and now version-controlled at <a href="init-script/compoundriskmonitor_v2.sh"><code>init-script/compoundriskmonitor_v2.sh</code></a> — <code>r-base</code>/<code>r-base-dev</code> were removed from the <code>apt-get install</code> line (DBR already provides R and headers); everything else (the local-compile workaround for <code>sf</code>/<code>lwgeom</code>/<code>rgdal</code>/<code>terra</code>/<code>exactextractr</code>/<code>pdftools</code>, the DBFS-lock cleanup, and the <code>.so</code> dependency verification step) was preserved as-is. <strong>The cluster's init script setting must point at this file</strong> (or be updated to match it) for the fix to take effect — editing the file in git alone does not change what the cluster runs. If a future compile step needs headers, add back only <code>r-base-dev</code>, pinned to the exact version already bundled with the runtime (<code>dpkg -l r-base-core</code> on a fresh cluster) — never plain <code>r-base</code>.</li>
 <li><strong>ACAPS Risk List</strong> and <strong>Food Price Inflation</strong> were both flagged as behind on the live dashboard — verify both after the next full run rather than assuming the automation is keeping them current.</li>
 <li><strong>FEWS NET</strong> collection is currently disabled (commented out); the URL it uses when re-enabled needs a manual bump every ~2 months.</li>
 <li><strong>WFP Hunger Hotspots</strong> is running on a stale scrape because the session tokens it needs have not been refreshed and the collector is disabled.</li>

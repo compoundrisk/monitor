@@ -101,7 +101,8 @@ monitor/
 ├── monitor-xlsx/                  ← Separate repo, public Excel workbook
 │
 └── init-script/
-    └── compoundriskmonitor.sh     (Databricks cluster-start script)
+    ├── compoundriskmonitor.sh     (older cluster-start script; superseded, see below)
+    └── compoundriskmonitor_v2.sh  (actual cluster-start script in use as of this doc)
 ```
 
 ---
@@ -360,7 +361,8 @@ monitor/                              # this repo, `databricks` branch
 ├── monitor-xlsx/                     # separate repo, public workbook
 │
 └── init-script/
-    └── compoundriskmonitor.sh
+    ├── compoundriskmonitor.sh     # older version, superseded
+    └── compoundriskmonitor_v2.sh  # actual cluster-start script, see Known Issues
 ```
 
 `production/crm-dashboard-prod.csv` lives under `mounted_path`, i.e. `output/production/` locally or `/dbfs/mnt/CompoundRiskMonitor/production/` on Databricks — not in a folder called `production(creadamanual)/`.
@@ -548,6 +550,8 @@ Status notes below reflect what was actually on disk in a local `hosted-data` ch
 ---
 
 ## ⚠️ Known Issues
+
+- **(Resolved incident, keep for reference)** The `DECPY_CompoundRiskMonitor_Johan` cluster's init script (`compoundriskmonitor_v2.sh`, running on Databricks Runtime 16.4.x — **not the same as the older `init-script/compoundriskmonitor.sh`** already in this repo) installed `r-base`/`r-base-dev` via `apt-get`. DBR 16.4.x already bundles its own R build with a matching IRkernel; installing `r-base` via APT overwrites the bundled R (`libR.so`, `/usr/bin/R`), so the IRkernel (compiled against the original bundled R) crashes on an ABI mismatch as soon as the R REPL tries to start. This surfaced as every job run failing with `ReplStartFailureException: Kernel exited while we were waiting for the kernel_info_reply message` — the notebook code (including the `.libPaths()`/`library(rlang, ...)`/`library(cli, ...)` lines at the top of the notebooks) never even ran. **Fixed** and now version-controlled at [`init-script/compoundriskmonitor_v2.sh`](init-script/compoundriskmonitor_v2.sh) — `r-base`/`r-base-dev` were removed from the `apt-get install` line (DBR already provides R and headers); everything else (the local-compile workaround for `sf`/`lwgeom`/`rgdal`/`terra`/`exactextractr`/`pdftools`, the DBFS-lock cleanup, and the `.so` dependency verification step) was preserved as-is. **The cluster's init script setting must point at this file** (or be updated to match it) for the fix to take effect — editing the file in git alone does not change what the cluster runs. If a future compile step needs headers, add back only `r-base-dev`, pinned to the exact version already bundled with the runtime (`dpkg -l r-base-core` on a fresh cluster) — never plain `r-base`.
 
 - **ACAPS Risk List** and **Food Price Inflation** were both flagged as behind on the live dashboard — verify both after the next full run rather than assuming the automation is keeping them current.
 - **FEWS NET** collection is currently disabled (commented out); the URL it uses when re-enabled needs a manual bump every ~2 months.
