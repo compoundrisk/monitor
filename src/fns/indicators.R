@@ -2302,56 +2302,80 @@ fao_locust_bulletin_ua <- httr::user_agent(
 # so the actual bitstream has to be resolved through DSpace's REST API:
 # handle -> item UUID -> item's "ORIGINAL" bundle -> that bundle's bitstream
 # -> the bitstream's content URL. Returns NA if any step fails.
+# GET a DSpace REST endpoint and parse it as JSON, capturing *why* it failed
+# (network error vs HTTP status vs bad body) instead of collapsing every
+# failure mode to a bare NULL/NA - that distinction is what tells us whether
+# openknowledge.fao.org is even reachable from wherever this runs.
+fao_locust_api_get <- function(url, query = NULL) {
+  resp <- tryCatch(
+    httr::GET(url, fao_locust_bulletin_ua, httr::timeout(30), query = query),
+    error = function(e) conditionMessage(e))
+  if (is.character(resp)) return(list(ok = FALSE, reason = paste0("request error: ", resp)))
+  if (httr::http_error(resp)) {
+    return(list(ok = FALSE, reason = paste0("HTTP ", httr::status_code(resp))))
+  }
+  parsed <- tryCatch(httr::content(resp, as = "parsed", type = "application/json"),
+                      error = function(e) NULL)
+  if (is.null(parsed)) return(list(ok = FALSE, reason = "could not parse JSON response"))
+  list(ok = TRUE, data = parsed)
+}
+
+fao_locust_na_with_reason <- function(reason) structure(NA_character_, reason = reason)
+
 fao_locust_resolve_pdf_url <- function(bulletin_url) {
   if (str_detect(bulletin_url, "/bitstreams/[^/]+/content$")) return(bulletin_url)
 
   base_url <- str_extract(bulletin_url, "^https?://[^/]+")
   handle <- str_extract(bulletin_url, "handle/(.+)$", group = 1)
-  if (is.na(base_url) || is.na(handle)) return(NA_character_)
+  if (is.na(base_url) || is.na(handle)) {
+    return(fao_locust_na_with_reason("could not parse base_url/handle from bulletin_url"))
+  }
 
-  item <- tryCatch({
-    resp <- httr::GET(paste0(base_url, "/server/api/pid/find"), query = list(id = handle),
-                       fao_locust_bulletin_ua)
-    if (httr::http_error(resp)) NULL else httr::content(resp, as = "parsed", type = "application/json")
-  }, error = function(e) NULL)
-  if (is.null(item) || is.null(item$uuid)) return(NA_character_)
+  item_resp <- fao_locust_api_get(paste0(base_url, "/server/api/pid/find"), query = list(id = handle))
+  if (!item_resp$ok) return(fao_locust_na_with_reason(paste("pid/find failed:", item_resp$reason)))
+  if (is.null(item_resp$data$uuid)) return(fao_locust_na_with_reason("pid/find response had no uuid"))
 
-  bundles <- tryCatch({
-    resp <- httr::GET(paste0(base_url, "/server/api/core/items/", item$uuid, "/bundles"),
-                       fao_locust_bulletin_ua)
-    if (httr::http_error(resp)) NULL else httr::content(resp, as = "parsed", type = "application/json")$`_embedded`$bundles
-  }, error = function(e) NULL)
+  bundles_resp <- fao_locust_api_get(paste0(base_url, "/server/api/core/items/", item_resp$data$uuid, "/bundles"))
+  if (!bundles_resp$ok) return(fao_locust_na_with_reason(paste("bundles lookup failed:", bundles_resp$reason)))
+  bundles <- bundles_resp$data$`_embedded`$bundles
   original_bundle <- Filter(\(b) identical(b$name, "ORIGINAL"), bundles)
-  if (length(original_bundle) == 0) return(NA_character_)
+  if (length(original_bundle) == 0) return(fao_locust_na_with_reason("no ORIGINAL bundle found"))
 
-  bitstreams <- tryCatch({
-    resp <- httr::GET(original_bundle[[1]]$`_links`$bitstreams$href, fao_locust_bulletin_ua)
-    if (httr::http_error(resp)) NULL else httr::content(resp, as = "parsed", type = "application/json")$`_embedded`$bitstreams
-  }, error = function(e) NULL)
-  if (length(bitstreams) == 0) return(NA_character_)
+  bitstreams_resp <- fao_locust_api_get(original_bundle[[1]]$`_links`$bitstreams$href)
+  if (!bitstreams_resp$ok) return(fao_locust_na_with_reason(paste("bitstreams lookup failed:", bitstreams_resp$reason)))
+  bitstreams <- bitstreams_resp$data$`_embedded`$bitstreams
+  if (length(bitstreams) == 0) return(fao_locust_na_with_reason("ORIGINAL bundle has no bitstreams"))
 
   content_url <- bitstreams[[1]]$`_links`$content$href
-  if (is.null(content_url)) NA_character_ else content_url
+  if (is.null(content_url)) fao_locust_na_with_reason("bitstream had no content link") else content_url
 }
 
 fao_locust_pdf_collect <- function(bulletin_url) {
       pdf_url <- fao_locust_resolve_pdf_url(bulletin_url)
       if (is.na(pdf_url)) {
-        warning("fao_locust_pdf_collect | could not resolve a PDF bitstream for bulletin URL: ", bulletin_url)
+        reason <- attr(pdf_url, "reason")
+        warning("fao_locust_pdf_collect | could not resolve a PDF bitstream for bulletin URL: ", bulletin_url,
+                " (", if (is.null(reason)) "unknown reason" else reason, ")")
         return(NULL)
       }
 
       # A HEAD request to DSpace's bitstream endpoint returns a JSON metadata
       # blob instead of the file (content negotiation quirk specific to HEAD),
       # so GET the file directly and check the actual bytes for the PDF magic
-      # number instead of trusting Content-Type.
-      resp <- tryCatch(httr::GET(pdf_url, fao_locust_bulletin_ua, httr::timeout(60)), error = function(e) NULL)
+      # number instead of trusting Content-Type. Capture the actual request
+      # error (DNS/timeout/SSL/etc.) instead of collapsing it to NULL, since
+      # that's what tells us whether the host is even reachable.
+      resp <- tryCatch(httr::GET(pdf_url, fao_locust_bulletin_ua, httr::timeout(60)),
+                        error = function(e) conditionMessage(e))
+      fetch_error <- if (is.character(resp)) resp else NA
+      if (is.character(resp)) resp <- NULL
       body <- if (!is.null(resp)) httr::content(resp, "raw") else raw(0)
       if (is.null(resp) || httr::http_error(resp) || length(body) < 4 ||
           !identical(body[1:4], charToRaw("%PDF"))) {
         content_type <- if (!is.null(resp)) httr::headers(resp)[["content-type"]] else NA
         warning("fao_locust_pdf_collect | skipping non-PDF bulletin URL: ", pdf_url,
-                " (content-type: ", content_type, ")")
+                " (content-type: ", content_type,
+                if (!is.na(fetch_error)) paste0(", request error: ", fetch_error) else "", ")")
         return(NULL)
       }
       tmp_pdf <- tempfile(fileext = ".pdf")
