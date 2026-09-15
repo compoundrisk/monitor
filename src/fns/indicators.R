@@ -2294,8 +2294,19 @@ iri_process_temp <- function() {
 #-------------------------------------—Locust outbreaks----------------------------------------------
 # List of countries and risk factors associated with locusts (FAO), see: http://www.fao.org/ag/locusts/en/info/info/index.html
 fao_locust_pdf_collect <- function(bulletin_url) {
+      # FAO's bulletin listing mixes DSpace "handle" landing-page URLs (HTML) with
+      # direct "bitstreams/.../content" file URLs. pdf_text() has no way to tell
+      # these apart and will crash trying to parse an HTML page as a PDF, so check
+      # the Content-Type first and skip anything that isn't actually a PDF.
+      head_resp <- tryCatch(httr::HEAD(bulletin_url), error = function(e) NULL)
+      content_type <- if (!is.null(head_resp)) httr::headers(head_resp)[["content-type"]] else NA
+      if (is.null(content_type) || is.na(content_type) || !str_detect(content_type, "application/pdf")) {
+        warning("fao_locust_pdf_collect | skipping non-PDF bulletin URL: ", bulletin_url,
+                " (content-type: ", content_type, ")")
+        return(NULL)
+      }
       locust_pdf <- pdf_text(bulletin_url)
-      
+
       fao_locust <- locust_pdf %>%
         subset(str_detect(., "Desert Locust Bulletin")) %>%
         lapply(\(page) {
