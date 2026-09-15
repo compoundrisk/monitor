@@ -2994,6 +2994,16 @@ reign_process <- function(as_of) {
   return(reign)
 }
 
+# read_html() gives a bare "Error in open.connection(x, "rb") : cannot open
+# the connection" on failure - no URL, no reason - unlike httr/readr's curl-
+# based fetches which at least say what went wrong. Wrap it so a connection
+# failure says which URL and why, instead of forcing another guessing round.
+fetch_html_diag <- function(url) {
+  tryCatch(read_html(url), error = function(e) {
+    stop("could not fetch ", url, ": ", conditionMessage(e))
+  })
+}
+
 #--------------------------GIC Global Instances of Coups-----------------------
 gic_collect <- function() {
   # The uky.edu personal page that used to host this file now 403s outright
@@ -3002,7 +3012,7 @@ gic_collect <- function() {
   # jonathanmpowell.com/coups/ as a dated CSV (e.g. pt_20260829.csv) that
   # changes with every update, so scrape the current download link from the
   # page instead of hardcoding a filename that will go stale.
-  gic_page <- read_html("https://jonathanmpowell.com/coups/")
+  gic_page <- fetch_html_diag("https://jonathanmpowell.com/coups/")
   gic_link_nodes <- Filter(
     \(a) str_detect(html_text(a), regex("list of coups by country", ignore_case = TRUE)),
     html_elements(gic_page, "a"))
@@ -3112,11 +3122,11 @@ ifes_collect <- function() {
   #       election_type = 'c',
   #       country_id = 'd'))
   
-  ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
+  ifes_upcoming <- fetch_html_diag("https://www.electionguide.org/elections/type/upcoming/") %>%
     html_element("#electionsTable") %>%
     html_table()
 
-  ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
+  ifes_past <- fetch_html_diag("https://www.electionguide.org/elections/type/past/") %>%
     html_element("#electionsTable") %>%
     html_table()
 
