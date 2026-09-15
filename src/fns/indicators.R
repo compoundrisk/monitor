@@ -2996,8 +2996,22 @@ reign_process <- function(as_of) {
 
 #--------------------------GIC Global Instances of Coups-----------------------
 gic_collect <- function() {
-  gic <- read_tsv("http://www.uky.edu/~clthyn2/coup_data/powell_thyne_coups_final.txt",
-                  col_types = "cdddddddc") %>%
+  # The uky.edu personal page that used to host this file now 403s outright
+  # (its author, Clayton Thyne, left for WVU in April 2026) - the actively
+  # maintained continuation is published by co-author Jonathan Powell at
+  # jonathanmpowell.com/coups/ as a dated CSV (e.g. pt_20260829.csv) that
+  # changes with every update, so scrape the current download link from the
+  # page instead of hardcoding a filename that will go stale.
+  gic_page <- read_html("https://jonathanmpowell.com/coups/")
+  gic_link_nodes <- Filter(
+    \(a) str_detect(html_text(a), regex("list of coups by country", ignore_case = TRUE)),
+    html_elements(gic_page, "a"))
+  if (length(gic_link_nodes) == 0) {
+    stop("gic_collect | could not find the 'List of coups by country' download link on jonathanmpowell.com/coups/ - the page layout may have changed")
+  }
+  gic_url <- html_attr(gic_link_nodes[[1]], "href")
+
+  gic <- read_csv(gic_url, col_types = "cdddddddc") %>%
     subset(year > 2020)
   
   version_date <- gic$version[1] %>%
