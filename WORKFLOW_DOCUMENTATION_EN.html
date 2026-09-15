@@ -965,7 +965,7 @@ lap_print("Health dimension finished collecting")   # prints elapsed time since 
 <td><code>hosted-data/imf-unemployment/</code></td>
 <td>IMF World Economic Outlook Database, Unemployment Rate, ISO3 + <code>.</code> decimal</td>
 <td>Semi-annual (WEO publishes ~April and ~October)</td>
-<td>Newest file on disk: <strong>2025-10-01</strong>. An April 2026 WEO edition should exist by now — <strong>likely needs update</strong>.</td>
+<td>Newest file on disk: <code>imf-unemployment-2026-04-01.csv</code> — up to date with the April 2026 WEO edition. The October 2026 edition will be the next one to watch for.</td>
 </tr>
 <tr class="odd">
 <td>INFORM Risk</td>
@@ -1025,7 +1025,7 @@ lap_print("Health dimension finished collecting")   # prints elapsed time since 
 <li><strong>FEWS NET</strong> collection is currently disabled (commented out); the URL it uses when re-enabled needs a manual bump every ~2 months.</li>
 <li><strong>WFP Hunger Hotspots</strong> is running on a stale scrape because the session tokens it needs have not been refreshed and the collector is disabled.</li>
 <li><strong>Macro Fiscal</strong> dimension is single-source (EIU only) even though an MFR Watchlist collector still runs — worth deciding whether to wire it back in or remove the now-pointless collection call.</li>
-<li><strong>IMF Unemployment</strong> likely has an edition on disk older than a newer one already published by the source — see the Status column in the checklist above, and re-check <code>hosted-data/imf-unemployment/</code> for the newest filename before assuming the dashboard reflects the latest edition. (GHSI, GFSI, EIU, FSI, and INFORM Risk, by contrast, are up to date.)</li>
+<li>As of this review, all sources in the checklist above (GHSI, GFSI, EIU, FSI, FCS, IMF Unemployment, INFORM Risk, Proteus) are confirmed up to date. Re-check <code>hosted-data/&lt;source&gt;/</code> for the newest filename periodically — this status will drift as new editions are published.</li>
 <li>A local run has <strong>no fault tolerance</strong> by default (<code>error_delay</code> defaults to <code>FALSE</code>): one broken source stops the whole script. Set <code>error_delay &lt;- TRUE</code> before sourcing the notebooks if you want a best-effort run that skips failing sources.</li>
 </ul>
 <hr />
