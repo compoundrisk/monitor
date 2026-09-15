@@ -1504,7 +1504,7 @@ mpo_collect <- function() {
       "&format=csv"
     )
     
-    response <- GET(url, timeout(120))
+    response <- GET(url, timeout(300))
     
     if (status_code(response) != 200) {
       warning("API error for poverty line ", pov, ": ", status_code(response))
