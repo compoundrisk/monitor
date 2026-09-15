@@ -913,6 +913,7 @@ lap_print("Health dimension finished collecting")   # prints elapsed time since 
 <p>Cross-referenced against Ben's onboarding emails and the sources actually read from <code>hosted-data/</code> in the current code.</p>
 <div id="a.-still-manual-upload-a-new-edition-when-one-is-released" class="section level3">
 <h3>A. Still manual — upload a new edition when one is released</h3>
+<p>Status notes below reflect what was actually on disk in a local <code>hosted-data</code> checkout, cross-checked against each publisher's site, as of this documentation date. Re-verify before treating them as current.</p>
 <table class="table table-bordered">
 <thead>
 <tr class="header">
@@ -920,6 +921,7 @@ lap_print("Health dimension finished collecting")   # prints elapsed time since 
 <th>Folder</th>
 <th>Where to get it</th>
 <th>Cadence</th>
+<th>Status (as observed)</th>
 </tr>
 </thead>
 <tbody>
@@ -928,54 +930,63 @@ lap_print("Health dimension finished collecting")   # prints elapsed time since 
 <td><code>hosted-data/ghsi/ghsi.csv</code></td>
 <td>ghsindex.org — download data model, copy overall score</td>
 <td>Annual</td>
+<td>Publisher's last edition is <strong>2021</strong> — no newer edition has been released since. Our copy is up to date.</td>
 </tr>
 <tr class="even">
 <td>GFSI</td>
 <td><code>hosted-data/gfsi/</code></td>
 <td>impact.economist.com/sustainability/project/food-security-index/</td>
 <td>Annual</td>
+<td>Publisher's last edition is <strong>2022</strong> (11th iteration) — the index appears paused/discontinued since. Our copy (<code>gfsi-2022-09-01.csv</code>) is up to date.</td>
 </tr>
 <tr class="odd">
 <td>EIU Operational Risk</td>
 <td><code>hosted-data/eiu/</code></td>
 <td>viewpoint.eiu.com/analysis/risk/operational-risk — set frequency to Monthly, download</td>
 <td>Monthly (watch the off-by-one-month bug handled in <code>eiu_process()</code>)</td>
+<td>Newest file on disk: <code>EIU_OR_Tracker_ByGeography-2026-09-15</code> (2026-09-15) — up to date.</td>
 </tr>
 <tr class="even">
 <td>FSI (Fragile States Index)</td>
 <td><code>hosted-data/fsi/</code></td>
 <td>fragilestatesindex.org/global-data/</td>
 <td>Annual</td>
+<td>Publisher's last available edition is <strong>2024</strong>. Our copy (<code>fsi-2024-11-20.xlsx</code>) is up to date.</td>
 </tr>
 <tr class="odd">
 <td>FCS (Fragile &amp; Conflict-affected)</td>
 <td><code>hosted-data/fcs/</code></td>
 <td>worldbank.org FCS classification page — use <code>fcs_create_file()</code> helper</td>
 <td>Annual</td>
+<td>Up to date — reflects the official FY2027 list and new methodology, published at <a href="https://www.worldbank.org/en/brief/2026/07/01/classification-of-fragile-and-conflict-affected-situations">worldbank.org/en/brief/2026/07/01/classification-of-fragile-and-conflict-affected-situations</a>.</td>
 </tr>
 <tr class="even">
 <td>IMF Unemployment</td>
 <td><code>hosted-data/imf-unemployment/</code></td>
 <td>IMF World Economic Outlook Database, Unemployment Rate, ISO3 + <code>.</code> decimal</td>
-<td>Semi-annual</td>
+<td>Semi-annual (WEO publishes ~April and ~October)</td>
+<td>Newest file on disk: <strong>2025-10-01</strong>. An April 2026 WEO edition should exist by now — <strong>likely needs update</strong>.</td>
 </tr>
 <tr class="odd">
 <td>INFORM Risk</td>
 <td><code>hosted-data/inform-risk/</code></td>
 <td>drmkc.jrc.ec.europa.eu/inform-index — use the conversion script in the folder</td>
-<td>Semi-annual (usually Apr/Oct)</td>
+<td>Semi-annual (publisher updates ~March and ~September)</td>
+<td>Newest file on disk: <code>inform-risk-2026-08-31.csv</code> — up to date with the 2026 edition.</td>
 </tr>
 <tr class="even">
 <td>EFI/MFR household &amp; macro-financial risk</td>
 <td><code>hosted-data/efi-mfr/macrofin.csv</code></td>
-<td>not in Ben's original list — confirm current source with the EFI/MFR team</td>
-<td>Unclear — verify</td>
+<td>Internal WB Macro-Financial Review (Finance/EFI practice), published on an internal SharePoint site (<code>worldbankgroup.sharepoint.com/sites/wbfinance/.../macrofinancial-reviews</code>) — not publicly accessible, requires the WB Finance team's file</td>
+<td>Quarterly</td>
+<td>Single undated file on disk, no version history — freshness can't be assessed from the filename; confirm with the source owner. Note: only two of the file's ~10 risk categories (Household risks, overall Macro-Financial Risk) are pulled into the CRM, both landing in the Socioeconomic Vulnerability sheet despite the <code>M_</code> prefix on the latter.</td>
 </tr>
 <tr class="odd">
 <td>Proteus Composite Index</td>
 <td><code>hosted-data/proteus/proteus.csv</code></td>
-<td>not in Ben's original list either</td>
-<td>Ad hoc</td>
+<td>WFP-developed food security composite index; see <a href="https://www.researchgate.net/publication/338972365_The_Proteus_composite_index_Towards_a_better_metric_for_global_food_security">&quot;The Proteus composite index&quot;</a> and <a href="https://dataviz.vam.wfp.org/economic/food-security-index">dataviz.vam.wfp.org/economic/food-security-index</a></td>
+<td>Ad hoc (no fixed publication schedule)</td>
+<td>Publisher's last edition is <strong>2017</strong> — no newer edition has been released since. Our copy is up to date. Feeds the Food Security dimension as <code>F_Proteus_Score</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -1014,7 +1025,7 @@ lap_print("Health dimension finished collecting")   # prints elapsed time since 
 <li><strong>FEWS NET</strong> collection is currently disabled (commented out); the URL it uses when re-enabled needs a manual bump every ~2 months.</li>
 <li><strong>WFP Hunger Hotspots</strong> is running on a stale scrape because the session tokens it needs have not been refreshed and the collector is disabled.</li>
 <li><strong>Macro Fiscal</strong> dimension is single-source (EIU only) even though an MFR Watchlist collector still runs — worth deciding whether to wire it back in or remove the now-pointless collection call.</li>
-<li>Several manually-uploaded sources (GFSI, FSI, INFORM Risk, GHSI) had editions on disk noticeably older than their expected cadence at the time of this review — check <code>hosted-data/&lt;source&gt;/</code> for the newest filename before assuming the dashboard reflects the latest edition.</li>
+<li><strong>IMF Unemployment</strong> likely has an edition on disk older than a newer one already published by the source — see the Status column in the checklist above, and re-check <code>hosted-data/imf-unemployment/</code> for the newest filename before assuming the dashboard reflects the latest edition. (GHSI, GFSI, EIU, FSI, and INFORM Risk, by contrast, are up to date.)</li>
 <li>A local run has <strong>no fault tolerance</strong> by default (<code>error_delay</code> defaults to <code>FALSE</code>): one broken source stops the whole script. Set <code>error_delay &lt;- TRUE</code> before sourcing the notebooks if you want a best-effort run that skips failing sources.</li>
 </ul>
 <hr />
