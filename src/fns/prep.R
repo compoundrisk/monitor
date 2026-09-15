@@ -30,23 +30,44 @@ source("src/fns/helpers.R")
 country_groups <- tryCatch(
   {
     wb_countries_collect <- function() {
-      # Source file has changed; saving in case it reverts soon
-      # codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xls",
-      #   FUN = read_xls, sheet = 1, range = "C5:I224")[-1,]
-      codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
-        FUN = read_xlsx, sheet = 1, range = "A1:F219")
-      group_codes <- curl_and_delete("http://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
-        FUN = read_xlsx, sheet = "Groups")
+      class_urls <- c(
+        "https://databank.worldbank.org/data/download/site-content/CLASS.xlsx",
+        "http://databank.worldbank.org/data/download/site-content/CLASS.xlsx"
+      )
+
+      fetch_class_sheet <- function(sheet, range = NULL) {
+        last_error <- NULL
+        for (u in class_urls) {
+          result <- tryCatch(
+            {
+              if (is.null(range)) {
+                curl_and_delete(u, FUN = read_xlsx, sheet = sheet)
+              } else {
+                curl_and_delete(u, FUN = read_xlsx, sheet = sheet, range = range)
+              }
+            },
+            error = function(e) {
+              last_error <<- e
+              NULL
+            }
+          )
+          if (!is.null(result)) return(result)
+        }
+        stop(last_error)
+      }
+
+      codes <- fetch_class_sheet(sheet = 1, range = "A1:F219")
+      group_codes <- fetch_class_sheet(sheet = "Groups")
       region_codes <- group_codes %>%
-        select(region_code_all = GroupCode, GroupName) %>%
+        dplyr::select(region_code_all = GroupCode, GroupName) %>%
         distinct() %>%
         subset(GroupName %in% codes$Region)
       no_high_income <- group_codes %>%
         subset(str_detect(GroupName, "excluding high income")) %>%
-        select(region_code_no_high = GroupCode, Code = CountryCode)
-      country_groups <- left_join(codes, region_codes, by = c("Region" = "GroupName")) %>%
-        left_join(no_high_income, by = "Code") %>%
-        mutate(region_code = str_replace_all(region_code_all, c(
+        dplyr::select(region_code_no_high = GroupCode, Code = CountryCode)
+      country_groups <- dplyr::left_join(codes, region_codes, by = c("Region" = "GroupName")) %>%
+        dplyr::left_join(no_high_income, by = "Code") %>%
+        dplyr::mutate(region_code = str_replace_all(region_code_all, c(
           "LCN" = "LAC",
           "SAS" = "SAR",
           "SSF" = "SSA",
@@ -60,16 +81,18 @@ country_groups <- tryCatch(
     wb_countries_collect()
   },
   error = function(e) {
-    print("Unable to download country groups file from databank.worldbank.org")
-    df <- read_csv("src/country-groups.csv", col_types = "cccc")
-    return(df)
+    warning("Unable to download country groups file from databank.worldbank.org; using local src/country-groups.csv")
+    if (file.exists("src/country-groups.csv")) {
+      return(read_csv("src/country-groups.csv", col_types = "ccccccccc"))
+    }
+    stop("Country groups download failed and local src/country-groups.csv was not found.")
   })
 
 countrylist <- country_groups %>% 
-  select(Countryname = Economy, Country = Code) %>%
-  arrange(Country)
+  dplyr::select(Countryname = Economy, Country = Code) %>%
+  dplyr::arrange(Country)
 
-regions <- select(country_groups, iso = Code, region = Region, region_code)
+regions <- dplyr::select(country_groups, iso = Code, region = Region, region_code)
 
 indicators_list <- as.data.frame(read.csv("src/indicators-list.csv")) %>%
   subset(active == T)

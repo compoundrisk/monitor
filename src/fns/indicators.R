@@ -170,42 +170,99 @@ add_new_input_cols <- function(df1, df2) {
 #--------------------—LOAD ACAPS realtime database-----------------------------
 inform_severity_collect <- function() {
   # Method using INFORM Severity's own site; previous method used acaps.org
+  #
+  # The server (drmkc.jrc.ec.europa.eu) sits behind an F5 BIG-IP WAF that
+  # fingerprints clients via TLS and sets session cookies (TS017a68fb) on the
+  # first response.  Plain curl::curl_download calls fail with
+  # "Connection reset by peer" because the WAF rejects non-browser clients
+  # during file transfers.  The fix is to:
+  #   1. Create a shared curl handle with a browser User-Agent and in-memory
+  #      cookie storage.
+  #   2. Fetch the listing page through that handle so the WAF session cookie
+  #      is captured.
+  #   3. Reuse the same handle (now carrying the cookies + Referer) for every
+  #      subsequent file download.
   inform_directory <- file.path(inputs_archive_path, "inform-severity")
 
   if (!dir.exists(inform_directory)) {
     dir.create(inform_directory)
   }
-  
+
   existing_files <- list.files(inform_directory) %>%
     str_replace("^\\d{8}--", "")
   existing_files_misnamed <- list.files(inform_directory) %>%
     subset(!str_detect(., "^\\d{8}"))
-  
-  urls <- read_html("https://drmkc.jrc.ec.europa.eu/inform-index/INFORM-Severity/Results-and-data") %>%
+
+  base_url    <- "https://drmkc.jrc.ec.europa.eu"
+  listing_url <- paste0(base_url, "/inform-index/INFORM-Severity/Results-and-data")
+
+  # Build a shared curl handle that mimics a real browser session.
+  # cookiefile = "" enables the in-memory cookie engine (no file written).
+  # cookiejar  = "" keeps cookies in memory only.
+  h <- curl::new_handle(
+    useragent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    followlocation = TRUE,
+    cookiefile   = "",
+    cookiejar    = "",
+    referer      = listing_url
+  )
+
+  # Visit the listing page so the WAF sets its session cookie on the handle.
+  page_raw <- tryCatch(
+    curl::curl_fetch_memory(listing_url, handle = h),
+    error = function(e) stop(sprintf("inform_severity_collect: failed to fetch listing page: %s", conditionMessage(e)))
+  )
+  page_content <- rawToChar(page_raw$content)
+
+  urls <- xml2::read_html(page_content) %>%
     html_elements("a") %>%
     html_attr("href") %>%
     { .[str_detect(., "xlsx") & !is.na(.)] } %>%
-    { data.frame(url = paste0("https://drmkc.jrc.ec.europa.eu", .))} %>%
+    { data.frame(url = paste0(base_url, .))} %>%
     mutate(
       file_name = str_extract(url, "[^/]*?.xlsx"),
       url = str_replace_all(url, " ", "%20")) %>%
     filter(file_name %ni% existing_files | file_name %in% existing_files_misnamed) %>%
     .[nrow(.):1,] %>% # Reverses order
     filter(!is.na(url))
-    
+
   if (nrow(urls) > 0) {
-    urls %>% apply(1, function(url) {
-      destfile <- file.path(inform_directory, url["file_name"])
-      curl_download(url["url"], destfile = destfile)
-      if (!str_detect(url["file_name"], "^20\\d{6}")) {
-        # Rename file with YYYYMMDD prefix if it doesn't alreay have one
-        # Using "--" to signal the prefix is not a part of the original file name
-        write_date <- format(as.Date(pull(read_xlsx(destfile, range = "A3", col_names = "date")), format = "%d/%m/%Y"), "%Y%m%d--")
-        file.rename(destfile, file.path(inform_directory, paste0(write_date, url["file_name"])))
-      }
+    # Wrap in tryCatch so one bad file doesn't kill the entire collection
+    tryCatch({
+      urls %>% apply(1, function(url) {
+        destfile <- file.path(inform_directory, url["file_name"])
+
+        # Wrap each file download in tryCatch to continue on error
+        tryCatch({
+          curl_download_retry(
+            url = unname(url["url"]),
+            destfile = destfile,
+            retries = 4,
+            wait_seconds = 2,
+            backoff = 1.5,
+            handle = h  # reuse session handle so WAF cookies + Referer are sent
+          )
+          if (!str_detect(url["file_name"], "^20\\d{6}")) {
+            # Rename file with YYYYMMDD prefix if it doesn't alreay have one
+            # Using "--" to signal the prefix is not a part of the original file name
+            write_date <- format(as.Date(pull(read_xlsx(destfile, range = "A3", col_names = "date")), format = "%d/%m/%Y"), "%Y%m%d--")
+            file.rename(destfile, file.path(inform_directory, paste0(write_date, url["file_name"])))
+          }
+        }, error = function(e) {
+          warning(sprintf("Failed to process %s: %s", url["file_name"], conditionMessage(e)))
+          # Ensure partial files are deleted
+          if (file.exists(destfile)) {
+            tryCatch(file.remove(destfile), error = function(e_rm) {})
+          }
+          invisible(NULL)
+        })
+      })
+    }, error = function(e) {
+      warning(sprintf("inform_severity_collect encountered an error: %s", conditionMessage(e)))
     })
   }
 }
+
 
 ## Add in *_collect() function for ACAPS
 inform_severity_process <- function(as_of, dimension, prefix) {
@@ -467,7 +524,18 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
         # add_dimension_prefix(prefix)
   if (as_of >= as.Date("2023-04-19")) {
     # Compare to the most recent reviewed ACAPS Risk List file
-    path <- paste_path(mounted_path, "acaps-risk-list-reviewed", dim)
+    candidate_paths <- c(
+      paste_path(mounted_path, "acaps-risk-list-reviewed", dim),
+      if (exists("working_path", inherits = T)) paste_path(get("working_path", inherits = T), "hosted-data", "acaps-risk-list-reviewed", dim) else NA_character_,
+      paste_path(getwd(), "hosted-data", "acaps-risk-list-reviewed", dim),
+      paste_path("hosted-data", "acaps-risk-list-reviewed", dim)
+    )
+    candidate_paths <- unique(candidate_paths[!is.na(candidate_paths)])
+    existing_paths <- candidate_paths[dir.exists(candidate_paths)]
+    if (length(existing_paths) == 0) {
+      stop(paste0("ACAPS reviewed directory not found for dimension ", dim, ". Tried: ", paste(candidate_paths, collapse = ", ")))
+    }
+    path <- existing_paths[[1]]
     most_recent <- read_most_recent(path, as_of = as_of, return_date = T) 
     previous_review <- most_recent$data
     # Separate today's crisis_events file into events that were updated before the last manual review and after the last manual review
@@ -492,7 +560,18 @@ acaps_risk_list_process <- function(as_of, dim, prefix, after = as.Date("2000-01
 }
 
 acaps_risk_list_reviewed_process <- function(dim, prefix, as_of) {
-  path <- paste_path(mounted_path, "acaps-risk-list-reviewed", dim)
+  candidate_paths <- c(
+    paste_path(mounted_path, "acaps-risk-list-reviewed", dim),
+    if (exists("working_path", inherits = T)) paste_path(get("working_path", inherits = T), "hosted-data", "acaps-risk-list-reviewed", dim) else NA_character_,
+    paste_path(getwd(), "hosted-data", "acaps-risk-list-reviewed", dim),
+    paste_path("hosted-data", "acaps-risk-list-reviewed", dim)
+  )
+  candidate_paths <- unique(candidate_paths[!is.na(candidate_paths)])
+  existing_paths <- candidate_paths[dir.exists(candidate_paths)]
+  if (length(existing_paths) == 0) {
+    stop(paste0("ACAPS reviewed directory not found for dimension ", dim, ". Tried: ", paste(candidate_paths, collapse = ", ")))
+  }
+  path <- existing_paths[[1]]
   output <- read_most_recent(path, as_of = Sys.Date(), n = "all") %>%
     bind_rows() %>%
     mutate(last_risk_update = as.Date(last_risk_update, format = "%m/%d/%y")) %>%
@@ -779,18 +858,37 @@ fews_collect <- function(as_of = Sys.Date()) {
 }
 
 fews_collect_api <- function() {
-  # Learn download URL from resource metadata
-  url <- 'https://datacatalogapi.worldbank.org/ddhxext/ResourceView?resource_unique_id=DR0091743'
-  queryString <- list('resource_unique_id' = "DR0091743")
-  response <- VERB("GET", url, query = queryString)
-  metadata <- fromJSON(content(response, "text"))
-  version_date <- as.Date(str_extract(basename(metadata$distribution$url), "20\\d{2}-\\d{1,2}-\\d{1,2}"))
-  local_most_recent <- read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste, as_of = Sys.Date(), return_date = T, return_name = T)
-  
-  if (version_date != local_most_recent$date) {
-    filename <- file.path(inputs_archive_path, "fews", paste0("fews-", version_date, ".csv"))
-    curl::curl_download(url = str_extract(metadata$distribution$url, ".*(?=\\?)"), destfile = filename)
+  # Direct download URL. FEWS NET publishes a new file approximately every 2 months.
+  # When a new version is available, update this URL and the archived file will be
+  # downloaded on the next run. Check:
+  # https://datacatalog.worldbank.org/search/dataset/0064614
+  download_url <- "https://datacatalogfiles.worldbank.org/ddh-published/0064614/DR0091743/FEWS_February_2026_Update_TrueBoundaries_03-15-26.csv"
+
+  fname        <- basename(download_url)
+  short_date   <- str_extract(fname, "\\d{2}-\\d{2}-\\d{2}(?=\\.csv)")
+  version_date <- as.Date(short_date, format = "%m-%d-%y")
+
+  # Remind to check for a new file every ~2 months
+  if (Sys.Date() > version_date + 60) {
+    print("lets check for new fews file")
   }
+
+  local_date <- tryCatch(
+    read_most_recent(file.path(inputs_archive_path, "fews"), FUN = paste,
+                     as_of = Sys.Date(), return_date = TRUE)$date,
+    error = function(e) as.Date(NA))
+
+  message(sprintf("fews_collect_api | version_date: %s | local: %s", version_date, local_date))
+
+  if (!is.na(local_date) && version_date <= local_date) {
+    message("fews_collect_api | source: local archive (download skipped)")
+    return(invisible(NULL))
+  }
+
+  destfile <- file.path(inputs_archive_path, "fews", sprintf("fews-%s.csv", version_date))
+  message(sprintf("fews_collect_api | downloading: %s", fname))
+  curl::curl_download(url = download_url, destfile = destfile)
+  message("fews_collect_api | done")
 }
 
 fews_collect_many <- function(as_of = Sys.Date()) {
@@ -803,6 +901,8 @@ fews_collect_many <- function(as_of = Sys.Date()) {
     { .[["date"]][.$name %ni% existing_files] }
   lapply(new_dates, fews_collect) %>% invisible()
 }
+
+
 
 fews_process <- function(as_of) {
   fewswb <- read_most_recent(directory_path = file.path(inputs_archive_path, "fews"), 
@@ -1286,7 +1386,31 @@ eiu_collect_many <- function(as_of = Sys.Date()) {
 eiu_process <- function(as_of) {
   eiu_data <- loadInputs("eiu", group_by = c("Month", "Country"), 
     as_of = as_of, col_types = "ffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>%
-    mutate(Month = as.yearmon(Month)) %>%
+    filter(!is.na(Month)) %>%
+    mutate(Month_raw = as.character(Month),
+           # Trim whitespace
+           Month_raw = trimws(Month_raw),
+           # Convert "Apr-25" format to "Apr 2025" for consistency
+           Month_raw = gsub("^([A-Za-z]+)-([0-9]{2})$", "\\1 20\\2", Month_raw),
+           # Parse mixed month formats from historical EIU files
+           Month_parsed = suppressWarnings(lubridate::parse_date_time(
+             Month_raw,
+             orders = c("b Y", "B Y", "Y-m", "Y/m", "m/Y", "Y b", "Y B")
+           ))) %>%
+    {
+      failed <- filter(., is.na(Month_parsed)) %>%
+        count(Month_raw, sort = TRUE)
+      if (nrow(failed) > 0) {
+        warning(paste0(
+          "eiu_process(): ", sum(failed$n), " rows could not parse Month. Top raw values: ",
+          paste(head(failed$Month_raw, 10), collapse = ", ")
+        ))
+      }
+      .
+    } %>%
+    mutate(Month = as.yearmon(Month_parsed)) %>%
+    filter(!is.na(Month)) %>%
+    select(-Month_raw, -Month_parsed) %>%
     filter(Month > as.yearmon(as_of) - 1.5)
   eiu_data <- eiu_data %>% select(Country, Month, Financial = FR00, Trade_and_Payments = PR00, Macroeconomic = MR00) %>%
     mutate(EIU_Score = (Financial + Trade_and_Payments + Macroeconomic)/3)
@@ -1670,7 +1794,31 @@ imf_process <- function(as_of) {
 eiu_security_process <- function(as_of) {
   eiu_data <- loadInputs("eiu", group_by = c("Month", "Country"), 
     as_of = as_of, col_types = "ffdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddD") %>%
-    mutate(Month = as.yearmon(Month)) %>%
+    filter(!is.na(Month)) %>%
+    mutate(Month_raw = as.character(Month),
+           # Trim whitespace
+           Month_raw = trimws(Month_raw),
+           # Convert "Apr-25" format to "Apr 2025" for consistency
+           Month_raw = gsub("^([A-Za-z]+)-([0-9]{2})$", "\\1 20\\2", Month_raw),
+           # Parse mixed month formats from historical EIU files
+           Month_parsed = suppressWarnings(lubridate::parse_date_time(
+             Month_raw,
+             orders = c("b Y", "B Y", "Y-m", "Y/m", "m/Y", "Y b", "Y B")
+           ))) %>%
+    {
+      failed <- filter(., is.na(Month_parsed)) %>%
+        count(Month_raw, sort = TRUE)
+      if (nrow(failed) > 0) {
+        warning(paste0(
+          "eiu_security_process(): ", sum(failed$n), " rows could not parse Month. Top raw values: ",
+          paste(head(failed$Month_raw, 10), collapse = ", ")
+        ))
+      }
+      .
+    } %>%
+    mutate(Month = as.yearmon(Month_parsed)) %>%
+    filter(!is.na(Month)) %>%
+    select(-Month_raw, -Month_parsed) %>%
     filter(Month > as.yearmon(as_of) - 1.5)
 
     series_names <- c(
@@ -1747,6 +1895,7 @@ eiu_security_process <- function(as_of) {
 
     return(eiu_security_risk)
 }
+
 
 #### NATURAL HAZARDS
 
@@ -2327,16 +2476,60 @@ fcs_process <- function(as_of) {
 #-------------------------—FSI---------------------------------------------
 
 fsi_collect <- function() {
-    most_recent <- read_most_recent('hosted-data/fsi', FUN = read_xlsx, as_of = Sys.Date(), return_date = T)
-    fsi <- most_recent$data
-    file_date <- most_recent$date
+    candidate_dirs <- c(
+      paste_path(mounted_path, "fsi"),
+      paste_path(mounted_path, "hosted-data", "fsi"),
+      if (exists("working_path", inherits = T)) paste_path(get("working_path", inherits = T), "hosted-data", "fsi") else NA_character_,
+      paste_path(getwd(), "hosted-data", "fsi"),
+      "hosted-data/fsi"
+    )
+    candidate_dirs <- unique(candidate_dirs[!is.na(candidate_dirs)])
+    tried_dirs <- candidate_dirs
+    candidate_dirs <- candidate_dirs[dir.exists(candidate_dirs)]
+
+    if (length(candidate_dirs) == 0) {
+      stop(paste0("FSI directory not found. Tried: ", paste(tried_dirs, collapse = ", ")))
+    }
+
+    fsi_dir <- candidate_dirs[[1]]
+    most_recent <- tryCatch(
+      read_most_recent(fsi_dir, FUN = read_xlsx, as_of = Sys.Date(), return_date = T),
+      error = function(e) NULL
+    )
+
+    if (is.null(most_recent) || is.null(most_recent$data) || is.null(most_recent$date) || length(most_recent$date) == 0 || all(is.na(most_recent$date))) {
+      fsi_files <- list.files(fsi_dir, pattern = "\\.xlsx$", full.names = TRUE, ignore.case = TRUE)
+      if (length(fsi_files) == 0) {
+        stop(paste0("No FSI .xlsx files found in ", fsi_dir))
+      }
+
+      file_tbl <- data.frame(path = fsi_files, file_name = basename(fsi_files), stringsAsFactors = FALSE) %>%
+        mutate(
+          name_date_text = str_extract(file_name, "20\\d{2}[-._]?\\d{1,2}[-._]?\\d{1,2}"),
+          name_date = str_replace_all(name_date_text, "[^0-9]", "") %>% as.Date(format = "%Y%m%d"),
+          file_mtime = as.Date(file.info(path)$mtime)
+        )
+
+      if (any(!is.na(file_tbl$name_date))) {
+        selected <- file_tbl %>% filter(!is.na(name_date)) %>% arrange(name_date) %>% tail(1)
+        file_date <- selected$name_date[[1]]
+      } else {
+        selected <- file_tbl %>% arrange(file_mtime) %>% tail(1)
+        file_date <- selected$file_mtime[[1]]
+      }
+
+      fsi <- read_xlsx(selected$path[[1]])
+    } else {
+      fsi <- most_recent$data
+      file_date <- most_recent$date[[length(most_recent$date)]]
+    }
     
-    archiveInputs(fsi, group_by = "Country", col_types = "cdcddddddddddddd", today = file_date)
+    archiveInputs(fsi, group_by = "Country", today = file_date)
 }
 
 fsi_process <- function(as_of) {
-  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = "cdcddddddddddddd") %>%
-        mutate(Country = name2iso(Country), FSI = Total, .keep = "none") %>%
+  fsi <- loadInputs("fsi", group_by = "Country", as_of = as_of, col_types = cols(.default = col_character())) %>%
+        mutate(Country = name2iso(Country), FSI = readr::parse_number(Total), .keep = "none") %>%
         normfuncpos(quantile(.$FSI, .98), quantile(.$FSI, .4), "FSI")
   return(fsi)
 }
@@ -2499,7 +2692,7 @@ acled_process <- function(as_of) {
   # acled <- loadInputs("acled", group_by = "event_id_cnty", as_of = effective_access_date, col_types = "cddDc") #158274
   # file.remove("output/inputs-archive/acled.R")
 
-  acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cddcDcD")
+  acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cDcddcD")
 
   # Select date as three years plus two month (date to retrieve ACLED data)
   three_year <- as.yearmon(as_of - 45) - 3.2
@@ -2568,7 +2761,7 @@ acled_events_process <- function(as_of) {
         as_of - wday(as_of) - 8
     }
 
-    acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cddcDcD") %>%
+    acled <- read_csv(paste_path(inputs_archive_path, "acled.csv"), col_types = "cDcddcD") %>%
         subset(event_date > (friday - 360) & event_date <= friday)
 
     acled_year <- acled %>%
@@ -2595,6 +2788,7 @@ acled_events_process <- function(as_of) {
 
     return(acled_conflict_change)
 }
+
 
 #--------------------------—REIGN--------------------------------------------
 reign_collect <- function() {
@@ -2753,6 +2947,7 @@ gic_process <- function(as_of) {
   return(coups_recent)
 }
 
+
 #--------------------------IFES Inter. Foundation for Electoral Systems -------
 ifes_collect <- function() {
   # string <- read_html("https://www.electionguide.org/ajax/election/?sEcho=1&iColumns=5&sColumns=&iDisplayStart=0&iDisplayLength=2000&iSortCol_0=3&sSortDir_0=desc&iSortingCols=1") %>%
@@ -2793,24 +2988,43 @@ ifes_collect <- function() {
   #       election_type = 'c',
   #       country_id = 'd'))
   
-ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
-  html_element("#electionsTable") %>%
-  html_table()
+  ifes_upcoming <- read_html("https://www.electionguide.org/elections/type/upcoming/") %>%
+    html_element("#electionsTable") %>%
+    html_table()
 
-ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
-  html_element("#electionsTable") %>%
-  html_table()
+  ifes_past <- read_html("https://www.electionguide.org/elections/type/past/") %>%
+    html_element("#electionsTable") %>%
+    html_table()
 
-ifes <- bind_rows(ifes_upcoming, ifes_past) %>% 
-  mutate(.keep = "none",
-    Countryname = Country,
-    office = `Election for`,
-    date = str_extract(`Date`, ".*\\d\\d\\d\\d"),
-    date = as.Date(date, format = "%b %d, %Y"),
-    status = Status,
-    election_type = NULL,
-    # Last_Held = as.Date(`Last Held*`, format = "%b %d, %Y"),
-    )
+  ifes_raw <- bind_rows(ifes_upcoming, ifes_past)
+
+  # Locate columns by case-insensitive partial matching so the function is
+  # resilient to minor label changes on the electionguide.org website.
+  find_col <- function(df, pattern) {
+    names(df)[str_detect(names(df), regex(pattern, ignore_case = TRUE))][1]
+  }
+  col_country <- find_col(ifes_raw, "^country$")
+  col_office  <- find_col(ifes_raw, "election.?for")
+  col_date    <- find_col(ifes_raw, "start.?date|^date$")
+  col_status  <- find_col(ifes_raw, "^status$")
+
+  missing_cols <- c(country = col_country, office = col_office,
+                    date = col_date, status = col_status)
+  missing_cols <- missing_cols[is.na(missing_cols)]
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "ifes_collect: expected column(s) not found: %s. Available columns: %s",
+      paste(names(missing_cols), collapse = ", "),
+      paste(names(ifes_raw), collapse = ", ")))
+  }
+
+  ifes <- ifes_raw %>%
+    mutate(.keep = "none",
+      Countryname  = .data[[col_country]],
+      office       = .data[[col_office]],
+      date         = str_extract(.data[[col_date]], ".*\\d{4}"),
+      date         = as.Date(date, format = "%b %d, %Y"),
+      status       = .data[[col_status]])
 
   archiveInputs(ifes, group_by = NULL)
 
