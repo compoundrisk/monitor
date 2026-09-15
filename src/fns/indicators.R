@@ -2387,7 +2387,7 @@ fao_locust_pdf_collect <- function(bulletin_url) {
         subset(str_detect(., "Desert Locust Bulletin")) %>%
         lapply(\(page) {
           bulletin_date <- page[[1]] %>%
-            str_extract("No. \\d+\\s+ (\\d+ [A-Za-z]+ \\d{4})", group = T) %>%
+            str_extract("No. \\d+\\s+(\\d+ [A-Za-z]+ \\d{4})", group = T) %>%
             dmy()
           if (is.na(bulletin_date) || bulletin_date < as.Date("2018-01-01")) return(NULL) # Formatting changes before this date
           locust_lines <- page[1] %>%
