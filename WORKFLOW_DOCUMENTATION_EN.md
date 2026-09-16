@@ -356,7 +356,7 @@ monitor/                              # this repo, `databricks` branch
 │   ├── acaps-*-temp-auto.csv
 │   ├── acaps-risk-list-reviewed/
 │   ├── eiu/, fsi/, gfsi/, ghsi/, fcs/, imf-unemployment/, inform-risk/,
-│   │   food-price-inflation/, efi-mfr/, proteus/                        # manually-uploaded editions
+│   │   food-price-inflation/, efi-mfr/, proteus/, gic/                  # manually-uploaded editions
 │
 ├── monitor-xlsx/                     # separate repo, public workbook
 │
@@ -535,6 +535,7 @@ Status notes below reflect what was actually on disk in a local `hosted-data` ch
 3. **WFP Hunger Hotspots** — `fao_wfp_web_collect()` scrapes hungerhotspots.org using session tokens (`cClientSession`, `cfid`, `CF_CLIENT_*`) that expire. Refresh them via browser DevTools on the site and update the constants in `indicators.R`. This function is currently **commented out**, so `fao_wfp_web_process()` (which *is* active in the Food Security dimension) is serving whatever was last successfully scraped — confirm the archive date in `output/inputs-archive/fao-wfp-web/` before trusting this indicator.
 4. **Food Price Inflation** — automated via `fpi_collect_api()` against the World Bank microdata API, but should still be spot-checked: run it and read the console output (`fpi_collect_api | metadata_date: ... | local_most_recent_date: ...`) to confirm it's actually pulling a newer edition and not silently skipping. If the API's response shape changes, the manual fallback (download from microdata.worldbank.org, unzip into `hosted-data/food-price-inflation/`) still works via the retired `fpi_collect()`/`fpi_process()` functions, though they'd need to be re-wired into the notebooks.
 5. **Credentials (`.access/`)** — required locally and on Databricks for ACAPS, ACLED, IFES, and IRI collection to succeed at all.
+6. **GIC (Global Instances of Coups)** — `gic_collect()` tries a live fetch from jonathanmpowell.com/coups/ first, but that host resets the TLS connection from the Databricks cluster's network specifically (firewall/IP-level block, confirmed reachable from elsewhere) — so it falls back to the most recently dated `.csv` in `hosted-data/gic/`. Update by downloading the current file from https://jonathanmpowell.com/coups/ (the "List of coups by country" link) and dropping it into `hosted-data/gic/`, keeping a filename that contains a `YYYYMMDD`/`YYYY-MM-DD` date (e.g. `pt_20260829.csv`). The original source (uky.edu, hosting Powell & Thyne's file) is dead outright — its co-maintainer left for WVU in April 2026 — so jonathanmpowell.com's fallback file is now the only source, live or mirrored.
 
 ### C. No longer manual (automated since earlier guidance)
 
@@ -558,6 +559,7 @@ Status notes below reflect what was actually on disk in a local `hosted-data` ch
 - **ACAPS Risk List** and **Food Price Inflation** were both flagged as behind on the live dashboard — verify both after the next full run rather than assuming the automation is keeping them current.
 - **FEWS NET** collection is currently disabled (commented out); the URL it uses when re-enabled needs a manual bump every ~2 months.
 - **WFP Hunger Hotspots** is running on a stale scrape because the session tokens it needs have not been refreshed and the collector is disabled.
+- **GIC (coup data)** — the original uky.edu source is dead (its maintainer left for WVU in April 2026); the replacement source, jonathanmpowell.com/coups/, is unreachable from the Databricks cluster's network (TLS connection reset, not an application-level error). `gic_collect()` tries the live fetch and falls back to a manually-mirrored `hosted-data/gic/*.csv` on failure — see [Manual Maintenance Checklist](#manual-maintenance-checklist) item B.6 for how to update it.
 - **Macro Fiscal** dimension is single-source (EIU only) even though an MFR Watchlist collector still runs — worth deciding whether to wire it back in or remove the now-pointless collection call.
 - As of this review, all sources in the checklist above (GHSI, GFSI, EIU, FSI, FCS, IMF Unemployment, INFORM Risk, Proteus) are confirmed up to date. Re-check `hosted-data/<source>/` for the newest filename periodically — this status will drift as new editions are published.
 - A local run has **no fault tolerance** by default (`error_delay` defaults to `FALSE`): one broken source stops the whole script. Set `error_delay <- TRUE` before sourcing the notebooks if you want a best-effort run that skips failing sources.
