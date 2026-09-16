@@ -2996,10 +2996,18 @@ reign_process <- function(as_of) {
 
 # read_html() gives a bare "Error in open.connection(x, "rb") : cannot open
 # the connection" on failure - no URL, no reason - unlike httr/readr's curl-
-# based fetches which at least say what went wrong. Wrap it so a connection
-# failure says which URL and why, instead of forcing another guessing round.
+# based fetches which at least say what went wrong. It also sends xml2/curl's
+# generic default User-Agent, which confirmed-failed against
+# jonathanmpowell.com from the Databricks cluster (works fine with a browser
+# UA from elsewhere) - small WordPress sites commonly firewall out non-browser
+# clients. So fetch through httr with a browser UA first, then hand the body
+# to read_html(), instead of letting xml2 open the connection itself.
 fetch_html_diag <- function(url) {
-  tryCatch(read_html(url), error = function(e) {
+  tryCatch({
+    resp <- httr::GET(url, fao_locust_bulletin_ua, httr::timeout(30))
+    if (httr::http_error(resp)) stop("HTTP ", httr::status_code(resp))
+    read_html(httr::content(resp, "text", encoding = "UTF-8"))
+  }, error = function(e) {
     stop("could not fetch ", url, ": ", conditionMessage(e))
   })
 }
