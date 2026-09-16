@@ -5,18 +5,36 @@
 
 ---
 
+## 🚨 Read This First: Databricks Code vs. Data Freshness
+
+**If a file looks "off" or out of date on Databricks, read this before assuming something is broken.**
+
+On Databricks, `working_path` and `mounted_path` point at two different, unrelated storage locations:
+
+- **`working_path` = `/tmp/crm/monitor`** — ephemeral cluster storage. This is where the code that actually runs lives: every job run re-clones (or fetches/merges) the `databricks` branch of `monitor` + `hosted-data` into `/tmp` before anything executes. `/tmp` is wiped on cluster restart, and it **cannot be seen at all** in the Databricks file browser or the Unity Catalog Volumes UI.
+- **`mounted_path` = `/dbfs/mnt/CompoundRiskMonitor`** — the persistent DBFS mount (also browsable via Unity Catalog Volumes, at `/Volumes/prd_datascience_compoundriskmonitor/volumes/compoundriskmonitor`). This is where **outputs** land (`output/...`, `production/crm-dashboard-prod.csv`) and it does get refreshed by every successful run — but it holds almost none of the actual source code.
+
+**In practice:**
+- `src/*.R` files looking old or different from GitHub in that Databricks/Volumes browser is **expected, not a bug** — you're looking at the persistent DBFS mount, not the ephemeral `/tmp` clone that actually executed.
+- **Output/data files** (anything under `output/...` or `production/...`) looking stale **is** a real signal worth investigating — something didn't run, or didn't write where expected.
+
+Full technical explanation, including a related `run_type` gotcha this same split caused, is in [General Architecture](#general-architecture) below.
+
+---
+
 ## 📑 Table of Contents
 
-1. [Executive Summary](#executive-summary)
-2. [General Architecture](#general-architecture)
-3. [2-Phase Workflow](#2-phase-workflow)
-4. [Local Environment vs Databricks](#local-environment-vs-databricks)
-5. [Data Structure](#data-structure)
-6. [How to Generate Dashboard Inputs](#how-to-generate-dashboard-inputs)
-7. [ACAPS Manual Review Process](#acaps-manual-review-process)
-8. [Technical Details](#technical-details)
-9. [Manual Maintenance Checklist](#manual-maintenance-checklist)
-10. [Known Issues](#known-issues)
+1. [Read This First: Databricks Code vs. Data Freshness](#read-this-first-databricks-code-vs-data-freshness)
+2. [Executive Summary](#executive-summary)
+3. [General Architecture](#general-architecture)
+4. [2-Phase Workflow](#2-phase-workflow)
+5. [Local Environment vs Databricks](#local-environment-vs-databricks)
+6. [Data Structure](#data-structure)
+7. [How to Generate Dashboard Inputs](#how-to-generate-dashboard-inputs)
+8. [ACAPS Manual Review Process](#acaps-manual-review-process)
+9. [Technical Details](#technical-details)
+10. [Manual Maintenance Checklist](#manual-maintenance-checklist)
+11. [Known Issues](#known-issues)
 
 ---
 
@@ -586,7 +604,7 @@ Status notes below reflect what was actually on disk in a local `hosted-data` ch
 
 - **(Resolved incident, keep for reference)** `run_type` (`01-update-inputs.R` / `02-process-indicators.R`) is read via `dbutils.widgets.get("run_type")`, but the widget was never declared anywhere in the notebooks and the "New Daily job" task had no `run_type` parameter configured — so `.get()` always threw and silently fell back to `"manual"`, **even on scheduled runs**. This meant every job run, scheduled or not, wrote to `output/manual/` instead of `output/scheduled/`, which made `output/scheduled/crm-excel/` (and everything else under `output/scheduled/`) look stale for a long time even though the pipeline was actually running fine — see the callout in [General Architecture](#general-architecture) for the full explanation. **Fixed** by adding a `run_type = scheduled` parameter to the job's task in the Databricks Workflows UI (no code change was needed or possible — this can only be set from the Job configuration itself).
 
-- 🔴 **The Power BI / Excel dashboard link is broken, and has been for a while.** The public dashboard's "Data download" (`crm.xlsx`, served from `https://github.com/compoundrisk/monitor-xlsx/raw/main/crm.xlsx`, embedded on `https://compoundrisk.worldbank.org/app-landing`) has a broken connection to the final archive that Power BI expects. This has been a genuine pain to track down, it is still not fixed, and it has already been escalated to a number of people without resolution. Personal recommendation: rather than continuing to fight this Power BI / Excel-link setup, it would be better to move this dashboard to **Posit Connect**, the same way the other already-deployed dashboards work — host it there and simply embed it in the page, instead of routing through a fragile Excel/Power BI data connection. This is a good, well-scoped task to hand to the next ETC.
+- 🔴 **The Power BI / Excel dashboard connection is broken, and has been for a while.** In Databricks, `crm-dashboard-prod.csv` has a broken connection to the final archive that Power BI expects. This has been a genuine pain to track down, it is still not fixed, and it has already been escalated to a number of people without resolution. See [What's Next?](#whats-next) for more detail and a recommendation.
 - **ACAPS Risk List** and **Food Price Inflation** were both flagged as behind on the live dashboard — verify both after the next full run rather than assuming the automation is keeping them current.
 - **FEWS NET** collection is currently disabled (commented out); the URL it uses when re-enabled needs a manual bump every ~2 months.
 - **WFP Hunger Hotspots** is running on a stale scrape because the session tokens it needs have not been refreshed and the collector is disabled.
@@ -646,6 +664,16 @@ LOCAL
 - **Databricks workspace:** https://eastus.azuredatabricks.net
 - **Databricks help:** Kartheek Kandikuppa (kkandikuppa@worldbankgroup.org)
 - **Dashboard contact:** Parisa Nazari Jam (pnazarijam@worldbankgroup.org) / Anna Kojzar (akojzar@worldbankgroup.org)
+
+---
+
+## 🔭 What's Next?
+
+**The Power BI / Excel dashboard connection is broken, and has been for a while.** In Databricks, `crm-dashboard-prod.csv` has a broken connection to the final archive that Power BI expects. This has been a genuine pain to track down, it is still not fixed, and it has already been escalated to a number of people without resolution.
+
+**The public dashboard's "Data download" link is not automatically updated.** Keeping `crm.xlsx` current is a manual process: download the updated per-dimension CSVs from Databricks (`output/scheduled/crm-excel/...`, as described in [Step 2.5: Public Excel and indicator dates](#step-25-public-excel-and-indicator-dates)), open `crm.xlsx`, run "Refresh All" to pull in the new data, and then manually upload the refreshed file to the `compoundrisk/monitor-xlsx` GitHub repo — `crm.xlsx`, served from [`https://github.com/compoundrisk/monitor-xlsx/raw/main/crm.xlsx`](https://github.com/compoundrisk/monitor-xlsx/raw/main/crm.xlsx), embedded on the landing page at [`https://compoundrisk.worldbank.org/app-landing`](https://compoundrisk.worldbank.org/app-landing).
+
+**Recommendation:** rather than continuing to fight this Power BI / Excel-link setup — or even just lifting the same Excel-based dashboard onto Posit Connect as a static re-host — it would be better to build a new dashboard directly on top of the data structure that already exists (`crm-dashboard-data.csv` / `production/crm-dashboard-prod.csv`), as a **Dash or R Shiny app**, and deploy it on **Posit Connect**, the same way the other already-deployed dashboards work: hosted externally and simply embedded in the page, instead of routing through a fragile Excel/Power BI data connection. This is a good, well-scoped task to hand to the next ETC.
 
 ---
 
