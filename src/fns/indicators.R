@@ -3018,40 +3018,64 @@ gic_collect <- function() {
   # (its author, Clayton Thyne, left for WVU in April 2026). The actively
   # maintained continuation is published by co-author Jonathan Powell at
   # jonathanmpowell.com/coups/, but that host resets the TLS connection from
-  # the Databricks cluster's network (blocked at the firewall/IP level, not
-  # fixable from R) even though it's reachable from anywhere else. So this
-  # reads a manually-downloaded copy instead of fetching live:
+  # the Databricks cluster's network specifically (blocked at the
+  # firewall/IP level, not fixable from R) even though it's reachable from
+  # anywhere else. So: try the live fetch first (works fine outside
+  # Databricks, and will work again there if the block is ever lifted), and
+  # fall back to a manually-mirrored copy if it fails:
   #   1. Go to https://jonathanmpowell.com/coups/
   #   2. Download the current CSV ("List of coups by country" link, currently
   #      named like pt_20260829.csv)
   #   3. Drop it into hosted-data/gic/ (keep the dated filename, or any name
   #      containing a YYYYMMDD/YYYY-MM-DD date) and commit/push hosted-data
-  # Same pattern as fsi_collect()/fcs_collect() for other unreliable sources -
-  # picks the most recently dated file in the directory.
-  gic_dir <- "hosted-data/gic"
-  if (!dir.exists(gic_dir)) {
-    stop("gic_collect | ", gic_dir, " not found - see comment above for how to populate it")
-  }
-  gic_files <- list.files(gic_dir, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
-  if (length(gic_files) == 0) {
-    stop("gic_collect | no .csv files found in ", gic_dir, " - see comment above for how to populate it")
-  }
+  # Same fallback pattern as fsi_collect()/fcs_collect() for other
+  # unreliable sources - picks the most recently dated file in the directory.
+  gic <- tryCatch({
+    gic_page <- fetch_html_diag("https://jonathanmpowell.com/coups/")
+    gic_link_nodes <- Filter(
+      \(a) str_detect(html_text(a), regex("list of coups by country", ignore_case = TRUE)),
+      html_elements(gic_page, "a"))
+    if (length(gic_link_nodes) == 0) {
+      stop("could not find the 'List of coups by country' download link - page layout may have changed")
+    }
+    gic_url <- html_attr(gic_link_nodes[[1]], "href")
+    read_csv(gic_url, col_types = "cdddddddc")
+  }, error = function(e) {
+    message("gic_collect | live fetch from jonathanmpowell.com/coups/ failed (", conditionMessage(e),
+            "); falling back to hosted-data/gic")
+    NULL
+  })
 
-  gic_file_tbl <- data.frame(path = gic_files, file_name = basename(gic_files), stringsAsFactors = FALSE) %>%
-    mutate(
-      name_date_text = str_extract(file_name, "20\\d{2}[-._]?\\d{1,2}[-._]?\\d{1,2}"),
-      name_date = str_replace_all(name_date_text, "[^0-9]", "") %>% as.Date(format = "%Y%m%d"),
-      file_mtime = as.Date(file.info(path)$mtime))
+  if (is.null(gic)) {
+    gic_dir <- "hosted-data/gic"
+    if (!dir.exists(gic_dir)) {
+      stop("gic_collect | live fetch failed and ", gic_dir, " not found - see comment above for how to populate it")
+    }
+    gic_files <- list.files(gic_dir, pattern = "\\.csv$", full.names = TRUE, ignore.case = TRUE)
+    if (length(gic_files) == 0) {
+      stop("gic_collect | live fetch failed and no .csv files found in ", gic_dir, " - see comment above for how to populate it")
+    }
 
-  gic_selected <- if (any(!is.na(gic_file_tbl$name_date))) {
-    gic_file_tbl %>% filter(!is.na(name_date)) %>% arrange(name_date) %>% tail(1)
+    gic_file_tbl <- data.frame(path = gic_files, file_name = basename(gic_files), stringsAsFactors = FALSE) %>%
+      mutate(
+        name_date_text = str_extract(file_name, "20\\d{2}[-._]?\\d{1,2}[-._]?\\d{1,2}"),
+        name_date = str_replace_all(name_date_text, "[^0-9]", "") %>% as.Date(format = "%Y%m%d"),
+        file_mtime = as.Date(file.info(path)$mtime))
+
+    gic_selected <- if (any(!is.na(gic_file_tbl$name_date))) {
+      gic_file_tbl %>% filter(!is.na(name_date)) %>% arrange(name_date) %>% tail(1)
+    } else {
+      gic_file_tbl %>% arrange(file_mtime) %>% tail(1)
+    }
+
+    gic <- read_csv(gic_selected$path[[1]], col_types = "cdddddddc")
+    message("gic_collect | source: hosted-data/gic (", gic_selected$file_name[[1]], ")")
   } else {
-    gic_file_tbl %>% arrange(file_mtime) %>% tail(1)
+    message("gic_collect | source: live fetch from jonathanmpowell.com/coups/")
   }
 
-  gic <- read_csv(gic_selected$path[[1]], col_types = "cdddddddc") %>%
-    subset(year > 2020)
-  
+  gic <- gic %>% subset(year > 2020)
+
   version_date <- gic$version[1] %>%
     str_replace_all(c("\\." = "-", "V" = "")) %>%
     as.Date()
