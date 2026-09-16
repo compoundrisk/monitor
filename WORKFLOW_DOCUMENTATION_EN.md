@@ -35,6 +35,8 @@ The **Compound Risk Monitor (CRM)** is a comprehensive global crisis risk monito
 
 For a local run, `hosted-data` and `monitor-xlsx` must be cloned **inside** `monitor/`, as siblings of `src/`.
 
+> 🚨 **Before you go looking for a bug because a file "looks old" on Databricks**, read [the callout in General Architecture](#general-architecture) — the code and the data live on two different filesystems there, and only one of them is what the Databricks file browser shows you.
+
 ---
 
 ## 🏗️ General Architecture
@@ -67,6 +69,19 @@ The system implements an **environment-agnostic model** that adapts automaticall
 ```
 
 ⚠️ **Correction vs earlier drafts of this document:** locally, `mounted_path` and `working_path` are **empty strings**, not `"hosted-data"`. That means every output path built with `paste_path(mounted_path, "output/...")` resolves to a plain **`output/`** folder — a sibling of `hosted-data/`, directly under `monitor/`. `output/` is **not** created inside `hosted-data/`. This matches both the code (`01-update-inputs.R` / `02-process-indicators.R`, lines 14-23) and the repo layout Ben described when onboarding the team.
+
+### 🚨 IMPORTANT: what you see in the Databricks file browser can be stale — here's why
+
+This trips people up regularly, so it's worth being explicit: **on Databricks, `working_path` and `mounted_path` point at two different kinds of storage, and only one of them holds live code.**
+
+- **`working_path` = `/tmp/crm/monitor`** — this is where the **code actually runs from**. At the start of every job, `run-notebooks.R` calls `src/clone-git-repos-into-tmp.sh`, which either clones `monitor` + `hosted-data` fresh into `/tmp/crm` (if they're not there yet) or does a `git fetch origin databricks && git merge origin/databricks` on what's already there. Either way, by the time `source('src/db-notebooks/01-update-inputs.R')` runs, the code in `/tmp` is guaranteed to match the tip of the `databricks` branch. But `/tmp` is **ephemeral cluster storage** — it's wiped on cluster restart, and it is a completely different filesystem from what the Databricks UI's file browser shows you.
+- **`mounted_path` = `/dbfs/mnt/CompoundRiskMonitor`** — this is the **persistent** DBFS mount. It's also browsable through the newer Unity Catalog Volumes UI at `/Volumes/prd_datascience_compoundriskmonitor/volumes/compoundriskmonitor` (same underlying storage, just a different UI on top of it). This is where `output/` (all archived inputs, dimension sheets, `crm-dashboard-data.csv`, `crm-excel/`, etc.) and `production/crm-dashboard-prod.csv` actually land, and those files genuinely do get refreshed by every successful run. But almost none of the **source code** lives here — the one exception is `clone-git-repos-into-tmp.sh` itself, which gets copied back to `/dbfs/.../src/` after every clone/update so the bootstrap script is always findable even before `/tmp` has anything in it.
+
+**What this means in practice:**
+- If you're looking at **data/output files** (anything under `output/` or `production/`) in the Volumes/DBFS browser and they look stale, that's a real signal — something didn't run or didn't write where you expect. Worth investigating (see the `run_type` gotcha immediately below for one concrete way this bites people).
+- If you're looking at **`src/*.R` code files** in that same browser and they look old or different from what's on GitHub, that's **expected and not a bug** — the code that actually executed lives in the ephemeral `/tmp` clone, which the Databricks file browser can't see at all.
+
+**Related gotcha, now fixed (2026-09-16):** `run_type` (which decides whether outputs land in `output/scheduled/` vs `output/manual/`) is read via `dbutils.widgets.get("run_type")`, but no notebook in this repo ever *declares* that widget with `dbutils.widgets.text(...)` — it only ever gets a value if the Databricks Job's task passes it in as a parameter. Since the "New Daily job" task didn't have that parameter configured, `.get()` always threw and silently fell back to `"manual"` — **every single run, including scheduled ones** — so `output/scheduled/` (and `output/scheduled/crm-excel/`, etc.) sat stale for a long time while fresh data was actually landing in `output/manual/` instead. Fixed by adding a `run_type = scheduled` parameter to the job's task in the Databricks Workflows UI (Job → task → Edit task → Parameters). If `output/scheduled/` ever looks stale again, check that parameter first before assuming the pipeline itself is broken.
 
 ### Key System Files
 
@@ -248,7 +263,20 @@ ind_list <- date_indicators()
 write.csv(ind_list, paste_path(output_directory, "crm-excel", "indicators-list-dated.csv"), row.names = F, na = "")
 ```
 
-Produces `crm.xlsx` plus `indicators-list-dated.csv`.
+**This step does NOT produce `crm.xlsx` itself** — that's a correction vs earlier drafts of this doc. `write_excel_source_files()` (in `src/fns/aggregation.R`) only writes the per-dimension **CSV source files** into `crm-excel/`:
+
+- `health.csv`
+- `food-security.csv`
+- `macro-fiscal.csv`
+- `socioeconomic-vulnerability.csv`
+- `natural-hazard.csv`
+- `conflict-and-fragility.csv`
+- `reliability-sheet.csv`
+- `indicators-list-dated.csv`
+
+On Databricks (with `run_type` correctly set to `scheduled`, see the callout above), these land at `/Volumes/prd_datascience_compoundriskmonitor/volumes/compoundriskmonitor/output/scheduled/crm-excel/`.
+
+**Turning these into `crm.xlsx` is a separate, manual process — nothing in this repo automates it.** `crm.xlsx` lives in the `monitor-xlsx` repo (`https://github.com/compoundrisk/monitor-xlsx/raw/main/crm.xlsx`) and is what's served by the "Data download" link on the public dashboard landing page, `https://compoundrisk.worldbank.org/app-landing`. The exact manual steps for refreshing `crm.xlsx` from the `crm-excel/` CSVs above aren't documented anywhere in this repo — whoever owns that step needs to be asked directly. See also [Known Issues](#known-issues) for the current state of the dashboard this workbook feeds.
 
 #### Step 2.6: Archiving this run
 
@@ -556,6 +584,9 @@ Status notes below reflect what was actually on disk in a local `hosted-data` ch
 
 - **(Resolved incident, keep for reference)** The `DECPY_CompoundRiskMonitor_Johan` cluster's init script (`compoundriskmonitor_v2.sh`, running on Databricks Runtime 16.4.x — **not the same as the older `init-script/compoundriskmonitor.sh`** already in this repo) installed `r-base`/`r-base-dev` via `apt-get`. DBR 16.4.x already bundles its own R build with a matching IRkernel; installing `r-base` via APT overwrites the bundled R (`libR.so`, `/usr/bin/R`), so the IRkernel (compiled against the original bundled R) crashes on an ABI mismatch as soon as the R REPL tries to start. This surfaced as every job run failing with `ReplStartFailureException: Kernel exited while we were waiting for the kernel_info_reply message` — the notebook code (including the `.libPaths()`/`library(rlang, ...)`/`library(cli, ...)` lines at the top of the notebooks) never even ran. **Fixed** and now version-controlled at [`init-script/compoundriskmonitor_v2.sh`](init-script/compoundriskmonitor_v2.sh) — `r-base`/`r-base-dev` were removed from the `apt-get install` line (DBR already provides R and headers); everything else (the local-compile workaround for `sf`/`lwgeom`/`rgdal`/`terra`/`exactextractr`/`pdftools`, the DBFS-lock cleanup, and the `.so` dependency verification step) was preserved as-is. **The cluster's init script setting must point at this file** (or be updated to match it) for the fix to take effect — editing the file in git alone does not change what the cluster runs. If a future compile step needs headers, add back only `r-base-dev`, pinned to the exact version already bundled with the runtime (`dpkg -l r-base-core` on a fresh cluster) — never plain `r-base`.
 
+- **(Resolved incident, keep for reference)** `run_type` (`01-update-inputs.R` / `02-process-indicators.R`) is read via `dbutils.widgets.get("run_type")`, but the widget was never declared anywhere in the notebooks and the "New Daily job" task had no `run_type` parameter configured — so `.get()` always threw and silently fell back to `"manual"`, **even on scheduled runs**. This meant every job run, scheduled or not, wrote to `output/manual/` instead of `output/scheduled/`, which made `output/scheduled/crm-excel/` (and everything else under `output/scheduled/`) look stale for a long time even though the pipeline was actually running fine — see the callout in [General Architecture](#general-architecture) for the full explanation. **Fixed** by adding a `run_type = scheduled` parameter to the job's task in the Databricks Workflows UI (no code change was needed or possible — this can only be set from the Job configuration itself).
+
+- 🔴 **The Power BI / Excel dashboard link is broken, and has been for a while.** The public dashboard's "Data download" (`crm.xlsx`, served from `https://github.com/compoundrisk/monitor-xlsx/raw/main/crm.xlsx`, embedded on `https://compoundrisk.worldbank.org/app-landing`) has a broken connection to the final archive that Power BI expects. This has been a genuine pain to track down, it is still not fixed, and it has already been escalated to a number of people without resolution. Personal recommendation: rather than continuing to fight this Power BI / Excel-link setup, it would be better to move this dashboard to **Posit Connect**, the same way the other already-deployed dashboards work — host it there and simply embed it in the page, instead of routing through a fragile Excel/Power BI data connection. This is a good, well-scoped task to hand to the next ETC.
 - **ACAPS Risk List** and **Food Price Inflation** were both flagged as behind on the live dashboard — verify both after the next full run rather than assuming the automation is keeping them current.
 - **FEWS NET** collection is currently disabled (commented out); the URL it uses when re-enabled needs a manual bump every ~2 months.
 - **WFP Hunger Hotspots** is running on a stale scrape because the session tokens it needs have not been refreshed and the collector is disabled.
